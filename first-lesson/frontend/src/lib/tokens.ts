@@ -1,22 +1,20 @@
-// Token storage in memory — not persisted, lost on page reload
-// This is intentional — no XSS risk
-let accessToken: string | null = null;
-let refreshToken: string | null = null;
+const ACCESS_KEY = 'accessToken';
+const REFRESH_KEY = 'refreshToken';
 
 export function setTokens(access: string, refresh: string) {
-  accessToken = access;
-  refreshToken = refresh;
+  localStorage.setItem(ACCESS_KEY, access);
+  localStorage.setItem(REFRESH_KEY, refresh);
 }
 
 export function clearTokens() {
-  accessToken = null;
-  refreshToken = null;
+  localStorage.removeItem(ACCESS_KEY);
+  localStorage.removeItem(REFRESH_KEY);
 }
 
 export function getAccessToken() {
-  return accessToken;
+  return localStorage.getItem(ACCESS_KEY);
 }
 
 export function getRefreshToken() {
-  return refreshToken;
+  return localStorage.getItem(REFRESH_KEY);
 }
