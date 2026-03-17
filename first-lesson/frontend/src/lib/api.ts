@@ -100,6 +100,9 @@ export async function sendMessage(
 
   if (params) {
     const filtered: Record<string, unknown> = {};
+    if (params.model !== undefined && params.model !== DEFAULT_AI_PARAMS.model) {
+      filtered.model = params.model;
+    }
     if (params.temperature !== undefined && params.temperature !== DEFAULT_AI_PARAMS.temperature) {
       filtered.temperature = params.temperature;
     }

@@ -4,13 +4,22 @@ import {
   IsInt,
   IsString,
   IsArray,
+  IsIn,
   Min,
   Max,
   ArrayMaxSize,
   MaxLength,
 } from 'class-validator';
 
+export const ALLOWED_MODELS = ['gpt-4o-mini', 'gpt-3.5-turbo', 'gpt-4o'] as const;
+export const DEFAULT_MODEL = 'gpt-4o-mini';
+
 export class AIParamsDto {
+  @IsOptional()
+  @IsString()
+  @IsIn(ALLOWED_MODELS as unknown as string[])
+  model?: string;
+
   @IsOptional()
   @IsNumber()
   @Min(0)

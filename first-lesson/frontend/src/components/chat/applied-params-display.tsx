@@ -9,6 +9,10 @@ export function AppliedParamsDisplay({ appliedParams }: AppliedParamsDisplayProp
 
   const parts: string[] = [];
 
+  if (appliedParams.model && appliedParams.model !== DEFAULT_AI_PARAMS.model) {
+    parts.push(`model:${appliedParams.model}`);
+  }
+
   if (appliedParams.temperature !== DEFAULT_AI_PARAMS.temperature) {
     parts.push(`temp:${appliedParams.temperature}`);
   }

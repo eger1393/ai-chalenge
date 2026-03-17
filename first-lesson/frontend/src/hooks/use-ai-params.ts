@@ -12,6 +12,7 @@ function loadFromStorage(): AIParams | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return {
+      model: typeof parsed.model === 'string' ? parsed.model : DEFAULT_AI_PARAMS.model,
       temperature: typeof parsed.temperature === 'number' ? parsed.temperature : DEFAULT_AI_PARAMS.temperature,
       maxTokens: typeof parsed.maxTokens === 'number' ? parsed.maxTokens : DEFAULT_AI_PARAMS.maxTokens,
       stop: Array.isArray(parsed.stop) ? parsed.stop.filter((s: unknown) => typeof s === 'string') : DEFAULT_AI_PARAMS.stop,
@@ -57,6 +58,7 @@ export function useAIParams() {
   }, []);
 
   const hasNonDefaults =
+    params.model !== DEFAULT_AI_PARAMS.model ||
     params.temperature !== DEFAULT_AI_PARAMS.temperature ||
     params.maxTokens !== DEFAULT_AI_PARAMS.maxTokens ||
     params.stop.length > 0 ||

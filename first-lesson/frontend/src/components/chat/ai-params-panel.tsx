@@ -1,19 +1,52 @@
 'use client';
 
 import { Plus, X, RotateCcw } from 'lucide-react';
-import { AIParams } from '@/types/ai-params';
+import { AIParams, AVAILABLE_MODELS, MODEL_LABELS } from '@/types/ai-params';
 
 interface AIParamsPanelProps {
   params: AIParams;
   setParam: <K extends keyof AIParams>(key: K, value: AIParams[K]) => void;
   resetParams: () => void;
   hasNonDefaults: boolean;
+  onClose?: () => void;
 }
 
-export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults }: AIParamsPanelProps) {
+export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, onClose }: AIParamsPanelProps) {
   return (
-    <div className="border-t border-gray-200 bg-gray-50 px-4 py-3">
-      <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-4">
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 flex-shrink-0">
+        <h2 className="text-sm font-semibold text-gray-900">Параметры AI</h2>
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+            aria-label="Закрыть панель параметров"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {/* Model */}
+        <div>
+          <label className="text-xs font-medium text-gray-700 block mb-1.5">Model</label>
+          <select
+            value={params.model}
+            onChange={(e) => setParam('model', e.target.value)}
+            className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          >
+            {AVAILABLE_MODELS.map((m) => (
+              <option key={m} value={m}>
+                {MODEL_LABELS[m] ?? m}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Temperature */}
         <div>
           <div className="flex items-center justify-between mb-1.5">
@@ -118,16 +151,14 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults }:
         </div>
 
         {/* Reset */}
-        {hasNonDefaults && (
-          <button
-            type="button"
-            onClick={resetParams}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-          >
-            <RotateCcw className="w-3 h-3" />
-            Сбросить к значениям по умолчанию
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={resetParams}
+          className={`flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-opacity ${hasNonDefaults ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        >
+          <RotateCcw className="w-3 h-3" />
+          Сбросить к значениям по умолчанию
+        </button>
       </div>
     </div>
   );

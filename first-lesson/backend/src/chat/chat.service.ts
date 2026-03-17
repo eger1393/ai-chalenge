@@ -1,6 +1,7 @@
 import { Injectable, BadGatewayException, GatewayTimeoutException } from '@nestjs/common';
 import OpenAI from 'openai';
 import { MessageDto } from './dto/message.dto';
+import { ALLOWED_MODELS, DEFAULT_MODEL } from './dto/ai-params.dto';
 
 @Injectable()
 export class ChatService {
@@ -30,6 +31,10 @@ export class ChatService {
       ? params.stop.slice(0, 4).map((s) => s.slice(0, 64))
       : undefined;
 
+    const model = (params?.model && ALLOWED_MODELS.includes(params.model as any))
+      ? params.model
+      : DEFAULT_MODEL;
+
     const systemPrompt = params?.systemPrompt?.trim()
       ? params.systemPrompt.trim().slice(0, 4000)
       : undefined;
@@ -46,7 +51,7 @@ export class ChatService {
 
     try {
       const completion = await this.openai.chat.completions.create({
-        model: process.env.OPENAI_MODEL || 'gpt-4',
+        model,
         messages,
         temperature,
         max_tokens: maxTokens,
@@ -57,6 +62,7 @@ export class ChatService {
       const usage = completion.usage;
 
       const appliedParams = {
+        model,
         temperature,
         maxTokens,
         ...(stop ? { stop } : {}),
