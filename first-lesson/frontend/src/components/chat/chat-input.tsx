@@ -1,13 +1,17 @@
 'use client';
 
 import { useState, KeyboardEvent, useRef, useEffect } from 'react';
+import { Settings2 } from 'lucide-react';
 
 interface ChatInputProps {
   onSend: (message: string) => void;
   disabled: boolean;
+  showParams?: boolean;
+  onToggleParams?: () => void;
+  hasNonDefaults?: boolean;
 }
 
-export function ChatInput({ onSend, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, showParams, onToggleParams, hasNonDefaults }: ChatInputProps) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -35,6 +39,23 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   return (
     <div className="border-t border-gray-200 bg-white p-4">
       <div className="max-w-3xl mx-auto flex gap-3 items-end">
+        {onToggleParams && (
+          <button
+            type="button"
+            onClick={onToggleParams}
+            className={`relative p-3 rounded-xl transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+              showParams
+                ? 'bg-indigo-100 text-indigo-600'
+                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+            }`}
+            aria-label="Параметры AI"
+          >
+            <Settings2 className="w-5 h-5" />
+            {hasNonDefaults && (
+              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-indigo-500" />
+            )}
+          </button>
+        )}
         <textarea
           ref={textareaRef}
           value={value}

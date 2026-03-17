@@ -1,17 +1,27 @@
 'use client';
 
+import { useState, useCallback } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { useChat } from '@/hooks/use-chat';
+import { useAIParams } from '@/hooks/use-ai-params';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { MessageBubble } from './message-bubble';
 import { TypingIndicator } from './typing-indicator';
 import { ChatInput } from './chat-input';
 import { EmptyState } from './empty-state';
+import { AIParamsPanel } from './ai-params-panel';
 
 export function ChatWindow() {
   const { user, logout } = useAuth();
   const { messages, isLoading, send } = useChat();
+  const { params, setParam, resetParams, hasNonDefaults } = useAIParams();
+  const [showParams, setShowParams] = useState(false);
   const scrollRef = useAutoScroll(messages);
+
+  const handleSend = useCallback(
+    (text: string) => send(text, params),
+    [send, params],
+  );
 
   return (
     <div className="flex flex-col h-screen bg-white">
@@ -54,6 +64,7 @@ export function ChatWindow() {
                 role={msg.role}
                 content={msg.content}
                 error={msg.error}
+                appliedParams={msg.appliedParams}
               />
             ))}
             {isLoading && <TypingIndicator />}
@@ -61,8 +72,24 @@ export function ChatWindow() {
         )}
       </div>
 
+      {/* AI Params Panel */}
+      {showParams && (
+        <AIParamsPanel
+          params={params}
+          setParam={setParam}
+          resetParams={resetParams}
+          hasNonDefaults={hasNonDefaults}
+        />
+      )}
+
       {/* Input */}
-      <ChatInput onSend={send} disabled={isLoading} />
+      <ChatInput
+        onSend={handleSend}
+        disabled={isLoading}
+        showParams={showParams}
+        onToggleParams={() => setShowParams((v) => !v)}
+        hasNonDefaults={hasNonDefaults}
+      />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { setTokens, getAccessToken, getRefreshToken, clearTokens } from './tokens';
+import { AIParams, AppliedParams, DEFAULT_AI_PARAMS } from '@/types/ai-params';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
@@ -93,10 +94,32 @@ export async function getMe() {
 export async function sendMessage(
   message: string,
   conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+  params?: Partial<AIParams>,
 ) {
-  return apiRequest<{ reply: string; usage: unknown }>('/chat/message', {
+  const body: Record<string, unknown> = { message, conversationHistory };
+
+  if (params) {
+    const filtered: Record<string, unknown> = {};
+    if (params.temperature !== undefined && params.temperature !== DEFAULT_AI_PARAMS.temperature) {
+      filtered.temperature = params.temperature;
+    }
+    if (params.maxTokens !== undefined && params.maxTokens !== DEFAULT_AI_PARAMS.maxTokens) {
+      filtered.maxTokens = params.maxTokens;
+    }
+    if (params.stop !== undefined && params.stop.length > 0) {
+      filtered.stop = params.stop;
+    }
+    if (params.systemPrompt !== undefined && params.systemPrompt !== '') {
+      filtered.systemPrompt = params.systemPrompt;
+    }
+    if (Object.keys(filtered).length > 0) {
+      body.params = filtered;
+    }
+  }
+
+  return apiRequest<{ reply: string; usage: unknown; appliedParams?: AppliedParams }>('/chat/message', {
     method: 'POST',
-    body: JSON.stringify({ message, conversationHistory }),
+    body: JSON.stringify(body),
   });
 }
 

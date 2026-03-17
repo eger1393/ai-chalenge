@@ -1,5 +1,6 @@
 import { IsString, IsNotEmpty, MaxLength, IsOptional, IsArray, ValidateNested, ArrayMaxSize } from 'class-validator';
 import { Type } from 'class-transformer';
+import { AIParamsDto } from './ai-params.dto';
 
 export class ConversationMessageDto {
   @IsString()
@@ -22,4 +23,9 @@ export class MessageDto {
   @ValidateNested({ each: true })
   @Type(() => ConversationMessageDto)
   conversationHistory?: ConversationMessageDto[];
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AIParamsDto)
+  params?: AIParamsDto;
 }

@@ -2,19 +2,21 @@
 
 import { useState, useCallback } from 'react';
 import { sendMessage } from '@/lib/api';
+import { AIParams, AppliedParams } from '@/types/ai-params';
 
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   error?: boolean;
+  appliedParams?: AppliedParams;
 }
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const send = useCallback(async (text: string) => {
+  const send = useCallback(async (text: string, params?: AIParams) => {
     if (!text.trim() || isLoading) return;
 
     const userMessage: Message = {
@@ -32,12 +34,13 @@ export function useChat() {
         content: m.content,
       }));
 
-      const response = await sendMessage(text.trim(), history);
+      const response = await sendMessage(text.trim(), history, params);
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: response.reply,
+        appliedParams: response.appliedParams,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);

@@ -1,10 +1,14 @@
+import { AppliedParams } from '@/types/ai-params';
+import { AppliedParamsDisplay } from './applied-params-display';
+
 interface MessageBubbleProps {
   role: 'user' | 'assistant';
   content: string;
   error?: boolean;
+  appliedParams?: AppliedParams;
 }
 
-export function MessageBubble({ role, content, error }: MessageBubbleProps) {
+export function MessageBubble({ role, content, error, appliedParams }: MessageBubbleProps) {
   if (role === 'user') {
     return (
       <div className="flex justify-end mb-4">
@@ -16,7 +20,9 @@ export function MessageBubble({ role, content, error }: MessageBubbleProps) {
   }
 
   return (
-    <div className="flex items-start gap-3 mb-4">
+    <div className="mb-4">
+      <AppliedParamsDisplay appliedParams={appliedParams} />
+      <div className="flex items-start gap-3">
       <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-0.5">
         <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2h-2" />
@@ -30,6 +36,7 @@ export function MessageBubble({ role, content, error }: MessageBubbleProps) {
         }`}
       >
         {content}
+      </div>
       </div>
     </div>
   );
