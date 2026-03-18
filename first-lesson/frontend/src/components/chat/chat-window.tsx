@@ -16,7 +16,7 @@ export function ChatWindow() {
   const { user, logout } = useAuth();
   const { messages, isLoading, send } = useChat();
   const { params, setParam, resetParams, hasNonDefaults } = useAIParams();
-  const { consilium, toggleConsilium, setExpert, addExpert, removeExpert } = useConsilium();
+  const { consilium, roles, toggleConsilium, setExpert, setExpertRole, addExpert, removeExpert } = useConsilium();
   const [showParams, setShowParams] = useState(false);
   const scrollRef = useAutoScroll(messages);
 
@@ -101,8 +101,10 @@ export function ChatWindow() {
           hasNonDefaults={hasNonDefaults}
           onClose={() => setShowParams(false)}
           consilium={consilium}
+          roles={roles}
           toggleConsilium={toggleConsilium}
           setExpert={setExpert}
+          setExpertRole={setExpertRole}
           addExpert={addExpert}
           removeExpert={removeExpert}
         />

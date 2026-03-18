@@ -5,6 +5,7 @@ import * as https from 'https';
 import { MessageDto } from './dto/message.dto';
 import { ALLOWED_MODELS, DEFAULT_MODEL } from './dto/ai-params.dto';
 import { ConsiliumMessageDto } from './dto/consilium.dto';
+import { EXPERT_ROLES } from './constants/expert-roles';
 
 @Injectable()
 export class ChatService {
@@ -76,8 +77,25 @@ export class ChatService {
       content: m.content,
     }));
 
+    // Resolve system prompts: roleId takes priority over custom systemPrompt
+    const resolvedExperts = dto.experts
+      .map((expert) => {
+        let resolvedPrompt: string | undefined;
+        if (expert.roleId) {
+          const role = EXPERT_ROLES.find((r) => r.id === expert.roleId);
+          resolvedPrompt = role?.systemPrompt;
+        }
+        if (!resolvedPrompt && expert.systemPrompt) {
+          resolvedPrompt = expert.systemPrompt;
+        }
+        return resolvedPrompt
+          ? { name: expert.name, systemPrompt: resolvedPrompt }
+          : null;
+      })
+      .filter((e): e is { name: string; systemPrompt: string } => e !== null);
+
     // Phase 1: Send to all experts in parallel
-    const expertPromises = dto.experts.map(async (expert) => {
+    const expertPromises = resolvedExperts.map(async (expert) => {
       const messages = [
         { role: 'system' as const, content: expert.systemPrompt },
         ...history,

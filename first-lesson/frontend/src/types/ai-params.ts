@@ -32,7 +32,14 @@ export const DEFAULT_AI_PARAMS: AIParams = {
 
 export interface Expert {
   name: string;
+  roleId?: string;
   systemPrompt: string;
+  mode: 'role' | 'custom';
+}
+
+export interface Role {
+  id: string;
+  name: string;
 }
 
 export interface ConsiliumParams {
@@ -43,8 +50,8 @@ export interface ConsiliumParams {
 export const DEFAULT_CONSILIUM: ConsiliumParams = {
   enabled: false,
   experts: [
-    { name: 'Эксперт 1', systemPrompt: '' },
-    { name: 'Эксперт 2', systemPrompt: '' },
+    { name: 'Эксперт 1', systemPrompt: '', mode: 'custom', roleId: '' },
+    { name: 'Эксперт 2', systemPrompt: '', mode: 'custom', roleId: '' },
   ],
 };
 

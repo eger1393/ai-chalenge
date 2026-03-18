@@ -36,8 +36,11 @@ export function useChat() {
         content: m.content,
       }));
 
-      if (consilium?.enabled && consilium.experts.filter((e) => e.systemPrompt.trim()).length >= 2) {
-        const activeExperts = consilium.experts.filter((e) => e.systemPrompt.trim());
+      const isExpertFilled = (e: { mode: 'role' | 'custom'; roleId?: string; systemPrompt: string }) =>
+        (e.mode === 'role' && !!e.roleId) || (e.mode === 'custom' && e.systemPrompt.trim().length > 0);
+
+      if (consilium?.enabled && consilium.experts.filter(isExpertFilled).length >= 2) {
+        const activeExperts = consilium.experts.filter(isExpertFilled);
         const consiliumParams: Record<string, unknown> = {};
         if (params?.model !== undefined && params.model !== DEFAULT_AI_PARAMS.model) {
           consiliumParams.model = params.model;

@@ -18,9 +18,14 @@ export class ExpertDto {
   @MaxLength(100)
   name: string;
 
+  @IsOptional()
+  @IsString()
+  roleId?: string;
+
+  @IsOptional()
   @IsString()
   @MaxLength(4000)
-  systemPrompt: string;
+  systemPrompt?: string;
 }
 
 export class ConsiliumMessageDto {

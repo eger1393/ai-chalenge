@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { ConsiliumParams, DEFAULT_CONSILIUM } from '@/types/ai-params';
+import { ConsiliumParams, DEFAULT_CONSILIUM, Role } from '@/types/ai-params';
+import { fetchRoles } from '@/lib/api';
 
 const STORAGE_KEY = 'consiliumParams';
 const MAX_EXPERTS = 3;
@@ -22,6 +23,12 @@ function loadFromStorage(): ConsiliumParams | null {
           typeof (e as Record<string, unknown>).name === 'string' &&
           typeof (e as Record<string, unknown>).systemPrompt === 'string',
       )
+      .map((e: Record<string, unknown>) => ({
+        name: e.name as string,
+        systemPrompt: e.systemPrompt as string,
+        mode: (e.mode === 'role' || e.mode === 'custom' ? e.mode : 'custom') as 'role' | 'custom',
+        roleId: typeof e.roleId === 'string' ? e.roleId : '',
+      }))
       .slice(0, MAX_EXPERTS) as ConsiliumParams['experts'];
     if (experts.length < MIN_EXPERTS) return null;
     return { enabled: parsed.enabled, experts };
@@ -40,6 +47,7 @@ function saveToStorage(params: ConsiliumParams) {
 
 export function useConsilium() {
   const [consilium, setConsilium] = useState<ConsiliumParams>(DEFAULT_CONSILIUM);
+  const [roles, setRoles] = useState<Role[]>([]);
   const hydrated = useRef(false);
 
   useEffect(() => {
@@ -51,6 +59,20 @@ export function useConsilium() {
     }
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchRoles()
+      .then((data) => {
+        if (!cancelled) setRoles(data);
+      })
+      .catch(() => {
+        // roles unavailable — custom mode only
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const toggleConsilium = useCallback(() => {
     setConsilium((prev) => {
       const next = { ...prev, enabled: !prev.enabled };
@@ -60,10 +82,26 @@ export function useConsilium() {
   }, []);
 
   const setExpert = useCallback(
-    (index: number, field: 'name' | 'systemPrompt', value: string) => {
+    (index: number, field: 'name' | 'systemPrompt' | 'mode' | 'roleId', value: string) => {
       setConsilium((prev) => {
         const experts = prev.experts.map((e, i) =>
           i === index ? { ...e, [field]: value } : e,
+        );
+        const next = { ...prev, experts };
+        saveToStorage(next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const setExpertRole = useCallback(
+    (index: number, roleId: string, roleName: string) => {
+      setConsilium((prev) => {
+        const experts = prev.experts.map((e, i) =>
+          i === index
+            ? { ...e, mode: 'role' as const, roleId, name: roleName }
+            : e,
         );
         const next = { ...prev, experts };
         saveToStorage(next);
@@ -80,7 +118,7 @@ export function useConsilium() {
         ...prev,
         experts: [
           ...prev.experts,
-          { name: `Эксперт ${prev.experts.length + 1}`, systemPrompt: '' },
+          { name: `Эксперт ${prev.experts.length + 1}`, systemPrompt: '', mode: 'custom' as const, roleId: '' },
         ],
       };
       saveToStorage(next);
@@ -100,5 +138,5 @@ export function useConsilium() {
     });
   }, []);
 
-  return { consilium, toggleConsilium, setExpert, addExpert, removeExpert };
+  return { consilium, roles, toggleConsilium, setExpert, setExpertRole, addExpert, removeExpert };
 }

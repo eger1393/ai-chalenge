@@ -1,7 +1,7 @@
 'use client';
 
 import { X, RotateCcw } from 'lucide-react';
-import { AIParams, AVAILABLE_MODELS, MODEL_LABELS, ConsiliumParams } from '@/types/ai-params';
+import { AIParams, AVAILABLE_MODELS, MODEL_LABELS, ConsiliumParams, Role } from '@/types/ai-params';
 import { ConsiliumPanel } from './consilium-panel';
 
 interface AIParamsPanelProps {
@@ -11,13 +11,15 @@ interface AIParamsPanelProps {
   hasNonDefaults: boolean;
   onClose?: () => void;
   consilium: ConsiliumParams;
+  roles: Role[];
   toggleConsilium: () => void;
-  setExpert: (index: number, field: 'name' | 'systemPrompt', value: string) => void;
+  setExpert: (index: number, field: 'name' | 'systemPrompt' | 'mode' | 'roleId', value: string) => void;
+  setExpertRole: (index: number, roleId: string, roleName: string) => void;
   addExpert: () => void;
   removeExpert: (index: number) => void;
 }
 
-export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, onClose, consilium, toggleConsilium, setExpert, addExpert, removeExpert }: AIParamsPanelProps) {
+export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, onClose, consilium, roles, toggleConsilium, setExpert, setExpertRole, addExpert, removeExpert }: AIParamsPanelProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -144,8 +146,10 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
         <div className="border-t border-gray-200 pt-4">
           <ConsiliumPanel
             consilium={consilium}
+            roles={roles}
             toggleConsilium={toggleConsilium}
             setExpert={setExpert}
+            setExpertRole={setExpertRole}
             addExpert={addExpert}
             removeExpert={removeExpert}
           />
