@@ -109,8 +109,8 @@ export async function sendMessage(
     if (params.maxTokens !== undefined && params.maxTokens !== DEFAULT_AI_PARAMS.maxTokens) {
       filtered.maxTokens = params.maxTokens;
     }
-    if (params.stop !== undefined && params.stop.length > 0) {
-      filtered.stop = params.stop;
+    if (params.repetitionPenalty !== undefined && params.repetitionPenalty !== DEFAULT_AI_PARAMS.repetitionPenalty) {
+      filtered.repetitionPenalty = params.repetitionPenalty;
     }
     if (params.systemPrompt !== undefined && params.systemPrompt !== '') {
       filtered.systemPrompt = params.systemPrompt;

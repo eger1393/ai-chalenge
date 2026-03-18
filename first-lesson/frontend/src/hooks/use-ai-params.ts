@@ -15,7 +15,7 @@ function loadFromStorage(): AIParams | null {
       model: typeof parsed.model === 'string' ? parsed.model : DEFAULT_AI_PARAMS.model,
       temperature: typeof parsed.temperature === 'number' ? parsed.temperature : DEFAULT_AI_PARAMS.temperature,
       maxTokens: typeof parsed.maxTokens === 'number' ? parsed.maxTokens : DEFAULT_AI_PARAMS.maxTokens,
-      stop: Array.isArray(parsed.stop) ? parsed.stop.filter((s: unknown) => typeof s === 'string') : DEFAULT_AI_PARAMS.stop,
+      repetitionPenalty: typeof parsed.repetitionPenalty === 'number' ? parsed.repetitionPenalty : DEFAULT_AI_PARAMS.repetitionPenalty,
       systemPrompt: typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : DEFAULT_AI_PARAMS.systemPrompt,
     };
   } catch {
@@ -61,7 +61,7 @@ export function useAIParams() {
     params.model !== DEFAULT_AI_PARAMS.model ||
     params.temperature !== DEFAULT_AI_PARAMS.temperature ||
     params.maxTokens !== DEFAULT_AI_PARAMS.maxTokens ||
-    params.stop.length > 0 ||
+    params.repetitionPenalty !== DEFAULT_AI_PARAMS.repetitionPenalty ||
     params.systemPrompt !== '';
 
   return { params, setParam, resetParams, hasNonDefaults };

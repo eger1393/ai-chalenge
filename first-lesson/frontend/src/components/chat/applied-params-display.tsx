@@ -21,9 +21,8 @@ export function AppliedParamsDisplay({ appliedParams }: AppliedParamsDisplayProp
     parts.push(`max:${appliedParams.maxTokens}`);
   }
 
-  if (appliedParams.stop && appliedParams.stop.length > 0) {
-    const formatted = appliedParams.stop.map((s) => `"${s}"`).join(',');
-    parts.push(`stop:[${formatted}]`);
+  if (appliedParams.repetitionPenalty !== undefined && appliedParams.repetitionPenalty !== DEFAULT_AI_PARAMS.repetitionPenalty) {
+    parts.push(`rep:${appliedParams.repetitionPenalty}`);
   }
 
   if (appliedParams.systemPrompt && appliedParams.systemPrompt.length > 0) {

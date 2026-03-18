@@ -2,7 +2,7 @@ export interface AIParams {
   model: string;
   temperature: number;
   maxTokens: number;
-  stop: string[];
+  repetitionPenalty: number;
   systemPrompt: string;
 }
 
@@ -10,22 +10,22 @@ export interface AppliedParams {
   model: string;
   temperature: number;
   maxTokens: number;
-  stop?: string[];
+  repetitionPenalty?: number;
   systemPrompt?: string;
 }
 
-export const AVAILABLE_MODELS = ['gpt-4o-mini', 'gpt-3.5-turbo', 'gpt-4o'] as const;
+export const AVAILABLE_MODELS = ['GigaChat', 'GigaChat-Plus', 'GigaChat-Pro'] as const;
 
 export const MODEL_LABELS: Record<string, string> = {
-  'gpt-4o-mini': 'GPT-4o Mini (дешёвая)',
-  'gpt-3.5-turbo': 'GPT-3.5 Turbo',
-  'gpt-4o': 'GPT-4o (средняя)',
+  'GigaChat': 'GigaChat (бесплатная)',
+  'GigaChat-Plus': 'GigaChat Plus',
+  'GigaChat-Pro': 'GigaChat Pro',
 };
 
 export const DEFAULT_AI_PARAMS: AIParams = {
-  model: 'gpt-4o-mini',
+  model: 'GigaChat',
   temperature: 1.0,
   maxTokens: 2048,
-  stop: [],
+  repetitionPenalty: 1.0,
   systemPrompt: '',
 };

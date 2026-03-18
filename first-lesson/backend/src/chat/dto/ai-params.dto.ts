@@ -3,16 +3,14 @@ import {
   IsNumber,
   IsInt,
   IsString,
-  IsArray,
   IsIn,
   Min,
   Max,
-  ArrayMaxSize,
   MaxLength,
 } from 'class-validator';
 
-export const ALLOWED_MODELS = ['gpt-4o-mini', 'gpt-3.5-turbo', 'gpt-4o'] as const;
-export const DEFAULT_MODEL = 'gpt-4o-mini';
+export const ALLOWED_MODELS = ['GigaChat', 'GigaChat-Plus', 'GigaChat-Pro'] as const;
+export const DEFAULT_MODEL = 'GigaChat';
 
 export class AIParamsDto {
   @IsOptional()
@@ -33,11 +31,10 @@ export class AIParamsDto {
   maxTokens?: number;
 
   @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(4)
-  @IsString({ each: true })
-  @MaxLength(64, { each: true })
-  stop?: string[];
+  @IsNumber()
+  @Min(0)
+  @Max(2)
+  repetitionPenalty?: number;
 
   @IsOptional()
   @IsString()

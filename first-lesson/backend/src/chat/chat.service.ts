@@ -1,46 +1,85 @@
 import { Injectable, BadGatewayException, GatewayTimeoutException } from '@nestjs/common';
-import OpenAI from 'openai';
+import axios, { AxiosInstance } from 'axios';
+import { v4 as uuidv4 } from 'uuid';
+import * as https from 'https';
 import { MessageDto } from './dto/message.dto';
 import { ALLOWED_MODELS, DEFAULT_MODEL } from './dto/ai-params.dto';
 
 @Injectable()
 export class ChatService {
-  private openai: OpenAI;
+  private accessToken: string | null = null;
+  private tokenExpiresAt: number = 0;
+  private httpClient: AxiosInstance;
 
   constructor() {
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-      timeout: parseInt(process.env.OPENAI_TIMEOUT || '30000'),
+    this.httpClient = axios.create({
+      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+      timeout: parseInt(process.env.GIGACHAT_TIMEOUT || '30000'),
     });
   }
 
+  private async getAccessToken(): Promise<string> {
+    if (this.accessToken && Date.now() < this.tokenExpiresAt - 60_000) {
+      return this.accessToken;
+    }
+
+    const authKey = process.env.GIGACHAT_AUTH_KEY;
+    if (!authKey) {
+      throw new Error('GIGACHAT_AUTH_KEY is not set');
+    }
+
+    try {
+      const response = await this.httpClient.post(
+        'https://ngw.devices.sberbank.ru:9443/api/v2/oauth',
+        'scope=GIGACHAT_API_PERS',
+        {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Authorization': `Basic ${authKey}`,
+            'RqUID': uuidv4(),
+          },
+        },
+      );
+
+      this.accessToken = response.data.access_token;
+      this.tokenExpiresAt = response.data.expires_at;
+      return this.accessToken!;
+    } catch (error: any) {
+      this.accessToken = null;
+      this.tokenExpiresAt = 0;
+      throw new BadGatewayException(
+        `GigaChat OAuth error: ${error.response?.data?.message || error.message}`,
+      );
+    }
+  }
+
   async sendMessage(dto: MessageDto) {
-    const envMaxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || '2048');
     const params = dto.params;
+    const envMaxTokens = parseInt(process.env.GIGACHAT_MAX_TOKENS || '2048');
 
-    // Extract and clamp parameters
-    const temperature = params?.temperature != null
-      ? Math.min(2, Math.max(0, params.temperature))
-      : 1.0;
+    const model =
+      params?.model && ALLOWED_MODELS.includes(params.model as any)
+        ? params.model
+        : DEFAULT_MODEL;
 
-    const maxTokens = params?.maxTokens != null
-      ? Math.min(envMaxTokens, Math.max(1, params.maxTokens))
-      : envMaxTokens;
+    const temperature =
+      params?.temperature != null
+        ? Math.max(0, Math.min(2, params.temperature))
+        : 1.0;
 
-    const stop = params?.stop?.length
-      ? params.stop.slice(0, 4).map((s) => s.slice(0, 64))
-      : undefined;
+    const maxTokens =
+      params?.maxTokens != null
+        ? Math.max(1, Math.min(params.maxTokens, envMaxTokens))
+        : envMaxTokens;
 
-    const model = (params?.model && ALLOWED_MODELS.includes(params.model as any))
-      ? params.model
-      : DEFAULT_MODEL;
+    const repetitionPenalty =
+      params?.repetitionPenalty != null
+        ? Math.max(0, Math.min(2, params.repetitionPenalty))
+        : 1.0;
 
-    const systemPrompt = params?.systemPrompt?.trim()
-      ? params.systemPrompt.trim().slice(0, 4000)
-      : undefined;
+    const systemPrompt = params?.systemPrompt?.trim()?.slice(0, 4000) || undefined;
 
-    // Build messages array
-    const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+    const messages = [
       ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
       ...(dto.conversationHistory || []).map((m) => ({
         role: m.role as 'user' | 'assistant',
@@ -50,41 +89,63 @@ export class ChatService {
     ];
 
     try {
-      const completion = await this.openai.chat.completions.create({
-        model,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-        ...(stop ? { stop } : {}),
-      });
+      const token = await this.getAccessToken();
 
-      const reply = completion.choices[0]?.message?.content || '';
-      const usage = completion.usage;
+      const response = await this.httpClient.post(
+        'https://gigachat.devices.sberbank.ru/api/v1/chat/completions',
+        {
+          model,
+          messages,
+          temperature,
+          max_tokens: maxTokens,
+          repetition_penalty: repetitionPenalty,
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        },
+      );
 
-      const appliedParams = {
+      const data = response.data;
+      const reply = data.choices?.[0]?.message?.content || '';
+      const usage = data.usage || {};
+
+      const appliedParams: Record<string, unknown> = {
         model,
         temperature,
         maxTokens,
-        ...(stop ? { stop } : {}),
-        ...(systemPrompt ? { systemPrompt } : {}),
       };
+      if (repetitionPenalty !== 1.0) appliedParams.repetitionPenalty = repetitionPenalty;
+      if (systemPrompt) appliedParams.systemPrompt = systemPrompt;
 
       return {
         reply,
-        usage: usage
-          ? {
-              promptTokens: usage.prompt_tokens,
-              completionTokens: usage.completion_tokens,
-              totalTokens: usage.total_tokens,
-            }
-          : null,
+        usage: {
+          promptTokens: usage.prompt_tokens || 0,
+          completionTokens: usage.completion_tokens || 0,
+          totalTokens: usage.total_tokens || 0,
+        },
         appliedParams,
       };
     } catch (error: any) {
-      if (error?.code === 'ETIMEDOUT' || error?.message?.includes('timeout')) {
-        throw new GatewayTimeoutException('OpenAI API timeout');
+      if (error instanceof BadGatewayException || error instanceof GatewayTimeoutException) {
+        throw error;
       }
-      throw new BadGatewayException(`OpenAI API error: ${error?.message || 'Unknown error'}`);
+
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        throw new GatewayTimeoutException('GigaChat API request timed out');
+      }
+
+      if (error.response?.status === 401) {
+        this.accessToken = null;
+        this.tokenExpiresAt = 0;
+      }
+
+      throw new BadGatewayException(
+        `GigaChat API error: ${error.response?.data?.message || error.message}`,
+      );
     }
   }
 }
