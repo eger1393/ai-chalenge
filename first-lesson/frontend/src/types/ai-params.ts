@@ -29,3 +29,27 @@ export const DEFAULT_AI_PARAMS: AIParams = {
   repetitionPenalty: 1.0,
   systemPrompt: '',
 };
+
+export interface Expert {
+  name: string;
+  systemPrompt: string;
+}
+
+export interface ConsiliumParams {
+  enabled: boolean;
+  experts: Expert[];
+}
+
+export const DEFAULT_CONSILIUM: ConsiliumParams = {
+  enabled: false,
+  experts: [
+    { name: 'Эксперт 1', systemPrompt: '' },
+    { name: 'Эксперт 2', systemPrompt: '' },
+  ],
+};
+
+export interface ExpertOpinion {
+  expert: string;
+  reply: string;
+  error?: boolean;
+}

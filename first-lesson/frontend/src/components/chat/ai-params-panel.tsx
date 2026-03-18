@@ -1,7 +1,8 @@
 'use client';
 
 import { X, RotateCcw } from 'lucide-react';
-import { AIParams, AVAILABLE_MODELS, MODEL_LABELS } from '@/types/ai-params';
+import { AIParams, AVAILABLE_MODELS, MODEL_LABELS, ConsiliumParams } from '@/types/ai-params';
+import { ConsiliumPanel } from './consilium-panel';
 
 interface AIParamsPanelProps {
   params: AIParams;
@@ -9,9 +10,14 @@ interface AIParamsPanelProps {
   resetParams: () => void;
   hasNonDefaults: boolean;
   onClose?: () => void;
+  consilium: ConsiliumParams;
+  toggleConsilium: () => void;
+  setExpert: (index: number, field: 'name' | 'systemPrompt', value: string) => void;
+  addExpert: () => void;
+  removeExpert: (index: number) => void;
 }
 
-export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, onClose }: AIParamsPanelProps) {
+export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, onClose, consilium, toggleConsilium, setExpert, addExpert, removeExpert }: AIParamsPanelProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -113,22 +119,35 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
           </div>
         </div>
 
-        {/* System Prompt */}
-        <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="text-xs font-medium text-gray-700">Системный промпт</label>
-            <span className="text-[10px] text-gray-400">
-              {params.systemPrompt.length}/4000
-            </span>
+        {/* System Prompt — hidden when consilium is active */}
+        {!consilium.enabled && (
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-gray-700">Системный промпт</label>
+              <span className="text-[10px] text-gray-400">
+                {params.systemPrompt.length}/4000
+              </span>
+            </div>
+            <p className="text-[10px] text-gray-400 mb-1.5">Инструкции для модели: формат ответа, роль, стиль, ограничения.</p>
+            <textarea
+              value={params.systemPrompt}
+              maxLength={4000}
+              onChange={(e) => setParam('systemPrompt', e.target.value)}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              placeholder="Инструкции для модели..."
+            />
           </div>
-          <p className="text-[10px] text-gray-400 mb-1.5">Инструкции для модели: формат ответа, роль, стиль, ограничения.</p>
-          <textarea
-            value={params.systemPrompt}
-            maxLength={4000}
-            onChange={(e) => setParam('systemPrompt', e.target.value)}
-            rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            placeholder="Инструкции для модели..."
+        )}
+
+        {/* Consilium */}
+        <div className="border-t border-gray-200 pt-4">
+          <ConsiliumPanel
+            consilium={consilium}
+            toggleConsilium={toggleConsilium}
+            setExpert={setExpert}
+            addExpert={addExpert}
+            removeExpert={removeExpert}
           />
         </div>
 

@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { sendMessage } from '@/lib/api';
-import { AIParams, AppliedParams } from '@/types/ai-params';
+import { sendMessage, sendConsilium } from '@/lib/api';
+import { AIParams, AppliedParams, ConsiliumParams, DEFAULT_AI_PARAMS, ExpertOpinion } from '@/types/ai-params';
 
 export interface Message {
   id: string;
@@ -10,13 +10,15 @@ export interface Message {
   content: string;
   error?: boolean;
   appliedParams?: AppliedParams;
+  expertOpinions?: ExpertOpinion[];
+  isConsilium?: boolean;
 }
 
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const send = useCallback(async (text: string, params?: AIParams) => {
+  const send = useCallback(async (text: string, params?: AIParams, consilium?: ConsiliumParams) => {
     if (!text.trim() || isLoading) return;
 
     const userMessage: Message = {
@@ -34,16 +36,43 @@ export function useChat() {
         content: m.content,
       }));
 
-      const response = await sendMessage(text.trim(), history, params);
+      if (consilium?.enabled && consilium.experts.filter((e) => e.systemPrompt.trim()).length >= 2) {
+        const activeExperts = consilium.experts.filter((e) => e.systemPrompt.trim());
+        const consiliumParams: Record<string, unknown> = {};
+        if (params?.model !== undefined && params.model !== DEFAULT_AI_PARAMS.model) {
+          consiliumParams.model = params.model;
+        }
+        if (params?.temperature !== undefined && params.temperature !== DEFAULT_AI_PARAMS.temperature) {
+          consiliumParams.temperature = params.temperature;
+        }
+        if (params?.maxTokens !== undefined && params.maxTokens !== DEFAULT_AI_PARAMS.maxTokens) {
+          consiliumParams.maxTokens = params.maxTokens;
+        }
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: response.reply,
-        appliedParams: response.appliedParams,
-      };
+        const response = await sendConsilium(text.trim(), history, activeExperts, consiliumParams as { model?: string; temperature?: number; maxTokens?: number });
 
-      setMessages((prev) => [...prev, assistantMessage]);
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: response.reply,
+          appliedParams: response.appliedParams,
+          expertOpinions: response.expertOpinions,
+          isConsilium: true,
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+      } else {
+        const response = await sendMessage(text.trim(), history, params);
+
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: response.reply,
+          appliedParams: response.appliedParams,
+        };
+
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
     } catch (err: unknown) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),

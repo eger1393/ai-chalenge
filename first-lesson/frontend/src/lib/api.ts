@@ -126,6 +126,28 @@ export async function sendMessage(
   });
 }
 
+export async function sendConsilium(
+  message: string,
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
+  experts: Array<{ name: string; systemPrompt: string }>,
+  params?: { model?: string; temperature?: number; maxTokens?: number },
+) {
+  return apiRequest<{
+    reply: string;
+    expertOpinions: Array<{ expert: string; reply: string; error?: boolean }>;
+    usage: unknown;
+    appliedParams?: AppliedParams;
+  }>('/chat/consilium', {
+    method: 'POST',
+    body: JSON.stringify({
+      message,
+      conversationHistory,
+      experts,
+      ...params,
+    }),
+  });
+}
+
 export function logout() {
   clearTokens();
   if (typeof window !== 'undefined') {
