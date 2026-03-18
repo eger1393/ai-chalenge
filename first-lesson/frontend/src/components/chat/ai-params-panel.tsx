@@ -33,7 +33,8 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {/* Model */}
         <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1.5">Model</label>
+          <label className="text-xs font-medium text-gray-700 block mb-1">Модель</label>
+          <p className="text-[10px] text-gray-400 mb-1.5">Выбор модели GigaChat. Бесплатная — базовая модель без подписки.</p>
           <select
             value={params.model}
             onChange={(e) => setParam('model', e.target.value)}
@@ -49,10 +50,11 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
 
         {/* Temperature */}
         <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-medium text-gray-700">Temperature</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-gray-700">Температура</label>
             <span className="text-xs font-mono text-gray-500">{params.temperature.toFixed(1)}</span>
           </div>
+          <p className="text-[10px] text-gray-400 mb-1.5">Чем выше — тем более креативные ответы. 0 — детерминированный, 2 — максимальная случайность.</p>
           <input
             type="range"
             min={0}
@@ -71,7 +73,8 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
 
         {/* Max Tokens */}
         <div>
-          <label className="text-xs font-medium text-gray-700 block mb-1.5">Max Tokens</label>
+          <label className="text-xs font-medium text-gray-700 block mb-1">Макс. токенов</label>
+          <p className="text-[10px] text-gray-400 mb-1.5">Максимальная длина ответа в токенах. 1 токен ≈ 1 слово.</p>
           <input
             type="number"
             min={1}
@@ -89,10 +92,11 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
 
         {/* Repetition Penalty */}
         <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-medium text-gray-700">Repetition Penalty</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-gray-700">Штраф за повторы</label>
             <span className="text-xs font-mono text-gray-500">{params.repetitionPenalty.toFixed(1)}</span>
           </div>
+          <p className="text-[10px] text-gray-400 mb-1.5">Снижает повторения в ответе. 1.0 — без штрафа, выше — меньше повторов.</p>
           <input
             type="range"
             min={0}
@@ -111,12 +115,13 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
 
         {/* System Prompt */}
         <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <label className="text-xs font-medium text-gray-700">System Prompt</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-gray-700">Системный промпт</label>
             <span className="text-[10px] text-gray-400">
               {params.systemPrompt.length}/4000
             </span>
           </div>
+          <p className="text-[10px] text-gray-400 mb-1.5">Инструкции для модели: формат ответа, роль, стиль, ограничения.</p>
           <textarea
             value={params.systemPrompt}
             maxLength={4000}

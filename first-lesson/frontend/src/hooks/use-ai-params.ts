@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { AIParams, DEFAULT_AI_PARAMS } from '@/types/ai-params';
+import { AIParams, AVAILABLE_MODELS, DEFAULT_AI_PARAMS } from '@/types/ai-params';
 
 const STORAGE_KEY = 'aiParams';
 
@@ -12,7 +12,7 @@ function loadFromStorage(): AIParams | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return {
-      model: typeof parsed.model === 'string' ? parsed.model : DEFAULT_AI_PARAMS.model,
+      model: typeof parsed.model === 'string' && (AVAILABLE_MODELS as readonly string[]).includes(parsed.model) ? parsed.model : DEFAULT_AI_PARAMS.model,
       temperature: typeof parsed.temperature === 'number' ? parsed.temperature : DEFAULT_AI_PARAMS.temperature,
       maxTokens: typeof parsed.maxTokens === 'number' ? parsed.maxTokens : DEFAULT_AI_PARAMS.maxTokens,
       repetitionPenalty: typeof parsed.repetitionPenalty === 'number' ? parsed.repetitionPenalty : DEFAULT_AI_PARAMS.repetitionPenalty,
