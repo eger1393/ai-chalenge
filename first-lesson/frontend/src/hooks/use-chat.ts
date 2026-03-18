@@ -31,11 +31,6 @@ export function useChat() {
     setIsLoading(true);
 
     try {
-      const history = messages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
-
       const isExpertFilled = (e: { mode: 'role' | 'custom'; roleId?: string; systemPrompt: string }) =>
         (e.mode === 'role' && !!e.roleId) || (e.mode === 'custom' && e.systemPrompt.trim().length > 0);
 
@@ -52,7 +47,7 @@ export function useChat() {
           consiliumParams.maxTokens = params.maxTokens;
         }
 
-        const response = await sendConsilium(text.trim(), history, activeExperts, consiliumParams as { model?: string; temperature?: number; maxTokens?: number });
+        const response = await sendConsilium(text.trim(), [], activeExperts, consiliumParams as { model?: string; temperature?: number; maxTokens?: number });
 
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -65,7 +60,7 @@ export function useChat() {
 
         setMessages((prev) => [...prev, assistantMessage]);
       } else {
-        const response = await sendMessage(text.trim(), history, params);
+        const response = await sendMessage(text.trim(), [], params);
 
         const assistantMessage: Message = {
           id: (Date.now() + 1).toString(),
@@ -87,7 +82,7 @@ export function useChat() {
     } finally {
       setIsLoading(false);
     }
-  }, [messages, isLoading]);
+  }, [isLoading]);
 
   const clearMessages = useCallback(() => {
     setMessages([]);
