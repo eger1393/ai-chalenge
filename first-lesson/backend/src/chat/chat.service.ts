@@ -94,8 +94,11 @@ export class ChatService {
       })
       .filter((e): e is { name: string; systemPrompt: string } => e !== null);
 
-    // Phase 1: Send to all experts in parallel
-    const expertPromises = resolvedExperts.map(async (expert) => {
+    // Phase 1: Send to experts sequentially (GigaChat free tier rate limits parallel requests)
+    const expertResults: Array<{ expert: string; reply: string; usage: any; error?: boolean }> = [];
+
+    for (let i = 0; i < resolvedExperts.length; i++) {
+      const expert = resolvedExperts[i];
       const messages = [
         { role: 'system' as const, content: expert.systemPrompt },
         ...history,
@@ -114,26 +117,64 @@ export class ChatService {
             },
           },
         );
-        return {
+        expertResults.push({
           expert: expert.name,
           reply: response.data.choices?.[0]?.message?.content || '',
           usage: response.data.usage || {},
-        };
+        });
       } catch (error: any) {
         if (error.response?.status === 401) {
           this.accessToken = null;
           this.tokenExpiresAt = 0;
         }
-        return {
+        // Retry once on 429 after a delay
+        if (error.response?.status === 429) {
+          await new Promise((r) => setTimeout(r, 2000));
+          try {
+            const token = await this.getAccessToken();
+            const retryResponse = await this.httpClient.post(
+              'https://gigachat.devices.sberbank.ru/api/v1/chat/completions',
+              { model, messages, temperature, max_tokens: maxTokens },
+              {
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json',
+                },
+              },
+            );
+            expertResults.push({
+              expert: expert.name,
+              reply: retryResponse.data.choices?.[0]?.message?.content || '',
+              usage: retryResponse.data.usage || {},
+            });
+            continue;
+          } catch (retryError: any) {
+            // Fall through to error handling
+            expertResults.push({
+              expert: expert.name,
+              reply: `Ошибка: ${retryError.response?.data?.message || retryError.message}`,
+              usage: {},
+              error: true,
+            });
+            continue;
+          }
+        }
+        expertResults.push({
           expert: expert.name,
           reply: `Ошибка: ${error.response?.data?.message || error.message}`,
           usage: {},
           error: true,
-        };
+        });
       }
-    });
 
-    const expertResults = await Promise.all(expertPromises);
+      // Small delay between requests to avoid rate limiting
+      if (i < resolvedExperts.length - 1) {
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+
+    // Delay before synthesis to avoid rate limiting
+    await new Promise((r) => setTimeout(r, 1000));
 
     // Phase 2: Synthesis - combine all expert opinions
     const synthesisSystemPrompt = `Ты — модератор консилиума экспертов. Тебе даны мнения ${expertResults.length} экспертов по вопросу пользователя. Проанализируй все мнения, выдели общие выводы и различия, и сформируй единый объективный ответ. Укажи, в чём эксперты сходятся и в чём расходятся.`;
