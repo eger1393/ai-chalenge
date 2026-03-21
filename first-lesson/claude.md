@@ -63,7 +63,7 @@
 **Шаг 2:** Сформировать E2E сценарий и сохранить в файл:
 
 ```
-./swarm-report/<slug>-e2e-scenario.md
+./swarm-report/<YYYY-MM-DD-HH-MM>-<slug>-e2e-scenario.md
 ```
 
 Файл содержит чеклист всех шагов пользовательского сценария в формате:
@@ -116,10 +116,10 @@
 Отчёт каждой задачи сохраняется в файл в папку `./swarm-report/`. Формат:
 
 ```
-./swarm-report/<slug>-<YYYY-MM-DD>.md
+./swarm-report/<YYYY-MM-DD-HH-MM-><slug>.md
 ```
 
-Пример: `./swarm-report/telegram-notifications-2026-02-20.md`
+Пример: `./swarm-report/2026-02-20-16-15-telegram-notifications.md`
 
 ---
 
@@ -295,7 +295,7 @@ Report     -> Done
 4. Зафиксировать шаги воспроизведения в файл:
 
 ```
-./swarm-report/<slug-бага>-reproduce.md
+./swarm-report/YYYY-MM-DD-HH-MM-<slug-бага>-reproduce.md
 ```
 
 Формат:
@@ -429,8 +429,6 @@ Report     -> Done
 3. Если есть Web-интерфейс — через Chrome MCP открыть и проверить базовую работоспособность (опционально, по запросу)
 
 #### Report — содержимое отчёта деплоя
-
-Отчёт сохраняется в `./swarm-report/deploy-<slug>-<YYYY-MM-DD>.md`:
 
 - Дата и время деплоя
 - Что задеплоено (коммиты, краткое описание)
