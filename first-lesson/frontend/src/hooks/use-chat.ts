@@ -12,6 +12,7 @@ export interface Message {
   appliedParams?: AppliedParams;
   expertOpinions?: ExpertOpinion[];
   isConsilium?: boolean;
+  cost?: number;
 }
 
 export function useChat() {
@@ -56,6 +57,7 @@ export function useChat() {
           appliedParams: response.appliedParams,
           expertOpinions: response.expertOpinions,
           isConsilium: true,
+          cost: response.cost,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
@@ -67,6 +69,7 @@ export function useChat() {
           role: 'assistant',
           content: response.reply,
           appliedParams: response.appliedParams,
+          cost: response.cost,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);

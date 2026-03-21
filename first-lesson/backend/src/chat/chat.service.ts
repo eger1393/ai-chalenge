@@ -1,58 +1,135 @@
 import { Injectable, BadGatewayException, GatewayTimeoutException } from '@nestjs/common';
-import axios, { AxiosInstance } from 'axios';
-import { v4 as uuidv4 } from 'uuid';
-import * as https from 'https';
+import OpenAI from 'openai';
 import { MessageDto } from './dto/message.dto';
-import { ALLOWED_MODELS, DEFAULT_MODEL } from './dto/ai-params.dto';
+import { ALLOWED_MODELS, DEFAULT_MODEL, MODEL_PRICING } from './dto/ai-params.dto';
 import { ConsiliumMessageDto } from './dto/consilium.dto';
 import { EXPERT_ROLES } from './constants/expert-roles';
 
 @Injectable()
 export class ChatService {
-  private accessToken: string | null = null;
-  private tokenExpiresAt: number = 0;
-  private httpClient: AxiosInstance;
+  private openai: OpenAI;
 
   constructor() {
-    this.httpClient = axios.create({
-      httpsAgent: new https.Agent({ rejectUnauthorized: false }),
-      timeout: parseInt(process.env.GIGACHAT_TIMEOUT || '30000'),
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      timeout: parseInt(process.env.OPENAI_TIMEOUT || '60000'),
     });
   }
 
-  private async getAccessToken(): Promise<string> {
-    if (this.accessToken && Date.now() < this.tokenExpiresAt - 60_000) {
-      return this.accessToken;
-    }
+  private calculateCost(model: string, promptTokens: number, completionTokens: number): number {
+    const pricing = MODEL_PRICING[model] || MODEL_PRICING[DEFAULT_MODEL];
+    return (promptTokens / 1_000_000) * pricing.input + (completionTokens / 1_000_000) * pricing.output;
+  }
 
-    const authKey = process.env.GIGACHAT_AUTH_KEY;
-    if (!authKey) {
-      throw new Error('GIGACHAT_AUTH_KEY is not set');
-    }
-
+  private async callOpenAI(
+    model: string,
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    temperature: number,
+    maxTokens: number,
+    frequencyPenalty?: number,
+  ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
     try {
-      const response = await this.httpClient.post(
-        'https://ngw.devices.sberbank.ru:9443/api/v2/oauth',
-        'scope=GIGACHAT_API_PERS',
-        {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Authorization': `Basic ${authKey}`,
-            'RqUID': uuidv4(),
-          },
-        },
-      );
-
-      this.accessToken = response.data.access_token;
-      this.tokenExpiresAt = response.data.expires_at;
-      return this.accessToken!;
-    } catch (error: any) {
-      this.accessToken = null;
-      this.tokenExpiresAt = 0;
-      throw new BadGatewayException(
-        `GigaChat OAuth error: ${error.response?.data?.message || error.message}`,
-      );
+      return await this.openai.chat.completions.create({
+        model,
+        messages,
+        temperature,
+        max_tokens: maxTokens,
+        ...(frequencyPenalty != null && frequencyPenalty !== 0 ? { frequency_penalty: frequencyPenalty } : {}),
+      });
+    } catch (error: unknown) {
+      if (error instanceof OpenAI.APIConnectionTimeoutError) {
+        throw new GatewayTimeoutException('OpenAI API request timed out');
+      }
+      if (error instanceof OpenAI.RateLimitError) {
+        // Retry once after delay on 429
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          return await this.openai.chat.completions.create({
+            model,
+            messages,
+            temperature,
+            max_tokens: maxTokens,
+            ...(frequencyPenalty != null && frequencyPenalty !== 0 ? { frequency_penalty: frequencyPenalty } : {}),
+          });
+        } catch (retryError: unknown) {
+          const message = retryError instanceof Error ? retryError.message : 'Unknown error';
+          throw new BadGatewayException(`OpenAI API rate limit error after retry: ${message}`);
+        }
+      }
+      if (error instanceof OpenAI.APIError) {
+        throw new BadGatewayException(`OpenAI API error (${error.status}): ${error.message}`);
+      }
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadGatewayException(`OpenAI API error: ${message}`);
     }
+  }
+
+  async sendMessage(dto: MessageDto) {
+    const params = dto.params;
+    const envMaxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || '4096');
+
+    const model =
+      params?.model && ALLOWED_MODELS.includes(params.model as any)
+        ? params.model
+        : DEFAULT_MODEL;
+
+    const temperature =
+      params?.temperature != null
+        ? Math.max(0, Math.min(2, params.temperature))
+        : 1.0;
+
+    const maxTokens =
+      params?.maxTokens != null
+        ? Math.max(1, Math.min(params.maxTokens, envMaxTokens))
+        : envMaxTokens;
+
+    // Map repetitionPenalty (0-2, default 1) to frequency_penalty (-2 to 2, default 0)
+    // repetitionPenalty 1.0 = neutral = frequency_penalty 0
+    const repetitionPenalty =
+      params?.repetitionPenalty != null
+        ? Math.max(0, Math.min(2, params.repetitionPenalty))
+        : 1.0;
+    const frequencyPenalty = Math.max(-2, Math.min(2, (repetitionPenalty - 1.0) * 2));
+
+    const systemPrompt = params?.systemPrompt?.trim()?.slice(0, 4000) || undefined;
+
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+      ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
+      ...(dto.conversationHistory || []).map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      })),
+      { role: 'user' as const, content: dto.message },
+    ];
+
+    const response = await this.callOpenAI(model, messages, temperature, maxTokens, frequencyPenalty);
+
+    const reply = response.choices?.[0]?.message?.content || '';
+    const usage = response.usage;
+    const promptTokens = usage?.prompt_tokens || 0;
+    const completionTokens = usage?.completion_tokens || 0;
+    const totalTokens = usage?.total_tokens || 0;
+    const cost = this.calculateCost(model, promptTokens, completionTokens);
+
+    const appliedParams: Record<string, unknown> = {
+      model,
+      temperature,
+      maxTokens,
+    };
+    if (repetitionPenalty !== 1.0) appliedParams.repetitionPenalty = repetitionPenalty;
+    if (frequencyPenalty !== 0) appliedParams.frequencyPenalty = frequencyPenalty;
+    if (systemPrompt) appliedParams.systemPrompt = systemPrompt;
+
+    return {
+      reply,
+      usage: {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+      },
+      appliedParams,
+      cost,
+    };
   }
 
   async sendConsilium(dto: ConsiliumMessageDto) {
@@ -66,7 +143,7 @@ export class ChatService {
         ? Math.max(0, Math.min(2, dto.temperature))
         : 1.0;
 
-    const envMaxTokens = parseInt(process.env.GIGACHAT_MAX_TOKENS || '2048');
+    const envMaxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || '4096');
     const maxTokens =
       dto.maxTokens != null
         ? Math.max(1, Math.min(dto.maxTokens, envMaxTokens))
@@ -94,87 +171,49 @@ export class ChatService {
       })
       .filter((e): e is { name: string; systemPrompt: string } => e !== null);
 
-    // Phase 1: Send to experts sequentially (GigaChat free tier rate limits parallel requests)
-    const expertResults: Array<{ expert: string; reply: string; usage: any; error?: boolean }> = [];
+    // Phase 1: Send to experts sequentially (rate limit safety)
+    const expertResults: Array<{ expert: string; reply: string; usage: { promptTokens: number; completionTokens: number; totalTokens: number }; cost: number; error?: boolean }> = [];
 
     for (let i = 0; i < resolvedExperts.length; i++) {
       const expert = resolvedExperts[i];
-      const messages = [
+      const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
         { role: 'system' as const, content: expert.systemPrompt },
         ...history,
         { role: 'user' as const, content: dto.message },
       ];
 
       try {
-        const token = await this.getAccessToken();
-        const response = await this.httpClient.post(
-          'https://gigachat.devices.sberbank.ru/api/v1/chat/completions',
-          { model, messages, temperature, max_tokens: maxTokens },
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-          },
-        );
+        const response = await this.callOpenAI(model, messages, temperature, maxTokens);
+        const usage = response.usage;
+        const promptTokens = usage?.prompt_tokens || 0;
+        const completionTokens = usage?.completion_tokens || 0;
+        const totalTokens = usage?.total_tokens || 0;
+
         expertResults.push({
           expert: expert.name,
-          reply: response.data.choices?.[0]?.message?.content || '',
-          usage: response.data.usage || {},
+          reply: response.choices?.[0]?.message?.content || '',
+          usage: { promptTokens, completionTokens, totalTokens },
+          cost: this.calculateCost(model, promptTokens, completionTokens),
         });
-      } catch (error: any) {
-        if (error.response?.status === 401) {
-          this.accessToken = null;
-          this.tokenExpiresAt = 0;
-        }
-        // Retry once on 429 after a delay
-        if (error.response?.status === 429) {
-          await new Promise((r) => setTimeout(r, 2000));
-          try {
-            const token = await this.getAccessToken();
-            const retryResponse = await this.httpClient.post(
-              'https://gigachat.devices.sberbank.ru/api/v1/chat/completions',
-              { model, messages, temperature, max_tokens: maxTokens },
-              {
-                headers: {
-                  'Authorization': `Bearer ${token}`,
-                  'Content-Type': 'application/json',
-                },
-              },
-            );
-            expertResults.push({
-              expert: expert.name,
-              reply: retryResponse.data.choices?.[0]?.message?.content || '',
-              usage: retryResponse.data.usage || {},
-            });
-            continue;
-          } catch (retryError: any) {
-            // Fall through to error handling
-            expertResults.push({
-              expert: expert.name,
-              reply: `Ошибка: ${retryError.response?.data?.message || retryError.message}`,
-              usage: {},
-              error: true,
-            });
-            continue;
-          }
-        }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
         expertResults.push({
           expert: expert.name,
-          reply: `Ошибка: ${error.response?.data?.message || error.message}`,
-          usage: {},
+          reply: `Error: ${message}`,
+          usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+          cost: 0,
           error: true,
         });
       }
 
       // Small delay between requests to avoid rate limiting
       if (i < resolvedExperts.length - 1) {
-        await new Promise((r) => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, 500));
       }
     }
 
-    // Delay before synthesis to avoid rate limiting
-    await new Promise((r) => setTimeout(r, 1000));
+    // Delay before synthesis
+    await new Promise((r) => setTimeout(r, 500));
 
     // Phase 2: Synthesis - combine all expert opinions
     const synthesisSystemPrompt = `Ты — модератор консилиума экспертов. Тебе даны мнения ${expertResults.length} экспертов по вопросу пользователя. Проанализируй все мнения, выдели общие выводы и различия, и сформируй единый объективный ответ. Укажи, в чём эксперты сходятся и в чём расходятся.`;
@@ -184,7 +223,7 @@ export class ChatService {
       .map((r) => `### ${r.expert}\n${r.reply}`)
       .join('\n\n');
 
-    const synthesisMessages = [
+    const synthesisMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
       { role: 'system' as const, content: synthesisSystemPrompt },
       ...history,
       { role: 'user' as const, content: dto.message },
@@ -199,40 +238,26 @@ export class ChatService {
     ];
 
     try {
-      const token = await this.getAccessToken();
-      const synthesisResponse = await this.httpClient.post(
-        'https://gigachat.devices.sberbank.ru/api/v1/chat/completions',
-        { model, messages: synthesisMessages, temperature, max_tokens: maxTokens },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        },
-      );
+      const synthesisResponse = await this.callOpenAI(model, synthesisMessages, temperature, maxTokens);
 
-      const synthesisReply =
-        synthesisResponse.data.choices?.[0]?.message?.content || '';
-      const synthesisUsage = synthesisResponse.data.usage || {};
+      const synthesisReply = synthesisResponse.choices?.[0]?.message?.content || '';
+      const synthesisUsage = synthesisResponse.usage;
+      const synthPromptTokens = synthesisUsage?.prompt_tokens || 0;
+      const synthCompletionTokens = synthesisUsage?.completion_tokens || 0;
+      const synthTotalTokens = synthesisUsage?.total_tokens || 0;
+      const synthCost = this.calculateCost(model, synthPromptTokens, synthCompletionTokens);
 
-      // Calculate total usage
+      // Calculate total usage and cost
       const totalUsage = {
         promptTokens:
-          expertResults.reduce(
-            (sum, r) => sum + (r.usage.prompt_tokens || 0),
-            0,
-          ) + (synthesisUsage.prompt_tokens || 0),
+          expertResults.reduce((sum, r) => sum + r.usage.promptTokens, 0) + synthPromptTokens,
         completionTokens:
-          expertResults.reduce(
-            (sum, r) => sum + (r.usage.completion_tokens || 0),
-            0,
-          ) + (synthesisUsage.completion_tokens || 0),
+          expertResults.reduce((sum, r) => sum + r.usage.completionTokens, 0) + synthCompletionTokens,
         totalTokens:
-          expertResults.reduce(
-            (sum, r) => sum + (r.usage.total_tokens || 0),
-            0,
-          ) + (synthesisUsage.total_tokens || 0),
+          expertResults.reduce((sum, r) => sum + r.usage.totalTokens, 0) + synthTotalTokens,
       };
+
+      const totalCost = expertResults.reduce((sum, r) => sum + r.cost, 0) + synthCost;
 
       return {
         reply: synthesisReply,
@@ -243,111 +268,14 @@ export class ChatService {
         })),
         usage: totalUsage,
         appliedParams: { model, temperature, maxTokens },
+        cost: totalCost,
       };
-    } catch (error: any) {
-      if (error.response?.status === 401) {
-        this.accessToken = null;
-        this.tokenExpiresAt = 0;
-      }
-      throw new BadGatewayException(
-        `GigaChat synthesis error: ${error.response?.data?.message || error.message}`,
-      );
-    }
-  }
-
-  async sendMessage(dto: MessageDto) {
-    const params = dto.params;
-    const envMaxTokens = parseInt(process.env.GIGACHAT_MAX_TOKENS || '2048');
-
-    const model =
-      params?.model && ALLOWED_MODELS.includes(params.model as any)
-        ? params.model
-        : DEFAULT_MODEL;
-
-    const temperature =
-      params?.temperature != null
-        ? Math.max(0, Math.min(2, params.temperature))
-        : 1.0;
-
-    const maxTokens =
-      params?.maxTokens != null
-        ? Math.max(1, Math.min(params.maxTokens, envMaxTokens))
-        : envMaxTokens;
-
-    const repetitionPenalty =
-      params?.repetitionPenalty != null
-        ? Math.max(0, Math.min(2, params.repetitionPenalty))
-        : 1.0;
-
-    const systemPrompt = params?.systemPrompt?.trim()?.slice(0, 4000) || undefined;
-
-    const messages = [
-      ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
-      ...(dto.conversationHistory || []).map((m) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
-      })),
-      { role: 'user' as const, content: dto.message },
-    ];
-
-    try {
-      const token = await this.getAccessToken();
-
-      const response = await this.httpClient.post(
-        'https://gigachat.devices.sberbank.ru/api/v1/chat/completions',
-        {
-          model,
-          messages,
-          temperature,
-          max_tokens: maxTokens,
-          repetition_penalty: repetitionPenalty,
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        },
-      );
-
-      const data = response.data;
-      const reply = data.choices?.[0]?.message?.content || '';
-      const usage = data.usage || {};
-
-      const appliedParams: Record<string, unknown> = {
-        model,
-        temperature,
-        maxTokens,
-      };
-      if (repetitionPenalty !== 1.0) appliedParams.repetitionPenalty = repetitionPenalty;
-      if (systemPrompt) appliedParams.systemPrompt = systemPrompt;
-
-      return {
-        reply,
-        usage: {
-          promptTokens: usage.prompt_tokens || 0,
-          completionTokens: usage.completion_tokens || 0,
-          totalTokens: usage.total_tokens || 0,
-        },
-        appliedParams,
-      };
-    } catch (error: any) {
+    } catch (error: unknown) {
       if (error instanceof BadGatewayException || error instanceof GatewayTimeoutException) {
         throw error;
       }
-
-      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-        throw new GatewayTimeoutException('GigaChat API request timed out');
-      }
-
-      if (error.response?.status === 401) {
-        this.accessToken = null;
-        this.tokenExpiresAt = 0;
-      }
-
-      throw new BadGatewayException(
-        `GigaChat API error: ${error.response?.data?.message || error.message}`,
-      );
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      throw new BadGatewayException(`OpenAI synthesis error: ${message}`);
     }
   }
 }

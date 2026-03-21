@@ -42,7 +42,7 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
         {/* Model */}
         <div>
           <label className="text-xs font-medium text-gray-700 block mb-1">Модель</label>
-          <p className="text-[10px] text-gray-400 mb-1.5">Выбор модели GigaChat. Бесплатная — базовая модель без подписки.</p>
+          <p className="text-[10px] text-gray-400 mb-1.5">Выбор модели OpenAI. Цены указаны за 1M токенов (вход/выход).</p>
           <select
             value={params.model}
             onChange={(e) => setParam('model', e.target.value)}
@@ -86,11 +86,11 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
           <input
             type="number"
             min={1}
-            max={4096}
+            max={16384}
             value={params.maxTokens}
             onChange={(e) => {
               const v = parseInt(e.target.value, 10);
-              if (!isNaN(v) && v >= 1 && v <= 4096) {
+              if (!isNaN(v) && v >= 1 && v <= 16384) {
                 setParam('maxTokens', v);
               }
             }}
@@ -104,10 +104,10 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
             <label className="text-xs font-medium text-gray-700">Штраф за повторы</label>
             <span className="text-xs font-mono text-gray-500">{params.repetitionPenalty.toFixed(1)}</span>
           </div>
-          <p className="text-[10px] text-gray-400 mb-1.5">Снижает повторения в ответе. 1.0 — без штрафа, выше — меньше повторов.</p>
+          <p className="text-[10px] text-gray-400 mb-1.5">OpenAI frequency_penalty. 0 — без штрафа, положительные — меньше повторов, отрицательные — больше повторов.</p>
           <input
             type="range"
-            min={0}
+            min={-2}
             max={2}
             step={0.1}
             value={params.repetitionPenalty}
@@ -115,8 +115,8 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
             className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
           />
           <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+            <span>-2</span>
             <span>0</span>
-            <span>1</span>
             <span>2</span>
           </div>
         </div>

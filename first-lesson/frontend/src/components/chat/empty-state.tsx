@@ -8,7 +8,7 @@ export function EmptyState() {
       </div>
       <h2 className="text-lg font-semibold text-gray-800 mb-2">Начните диалог</h2>
       <p className="text-sm text-gray-500 max-w-xs">
-        Введите вопрос или задание ниже, и GigaChat ответит вам
+        Введите вопрос или задание ниже, и ChatGPT ответит вам
       </p>
     </div>
   );

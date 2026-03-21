@@ -6,8 +6,8 @@ import { AuthProvider } from '@/context/auth-context';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'GigaChat App',
-  description: 'Chat with GigaChat',
+  title: 'ChatGPT App',
+  description: 'Chat with OpenAI GPT models',
 };
 
 export default function RootLayout({

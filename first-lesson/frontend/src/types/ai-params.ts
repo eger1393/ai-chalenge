@@ -14,19 +14,21 @@ export interface AppliedParams {
   systemPrompt?: string;
 }
 
-export const AVAILABLE_MODELS = ['GigaChat', 'GigaChat-Plus', 'GigaChat-Pro'] as const;
+export const AVAILABLE_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-nano', 'gpt-4.1-mini', 'gpt-4.1'] as const;
 
 export const MODEL_LABELS: Record<string, string> = {
-  'GigaChat': 'GigaChat (бесплатная)',
-  'GigaChat-Plus': 'GigaChat Plus',
-  'GigaChat-Pro': 'GigaChat Pro',
+  'gpt-4o-mini': 'GPT-4o Mini — $0.15/$0.60',
+  'gpt-4o': 'GPT-4o — $2.50/$10.00',
+  'gpt-4.1-nano': 'GPT-4.1 Nano — $0.10/$0.40',
+  'gpt-4.1-mini': 'GPT-4.1 Mini — $0.40/$1.60',
+  'gpt-4.1': 'GPT-4.1 — $2.00/$8.00',
 };
 
 export const DEFAULT_AI_PARAMS: AIParams = {
-  model: 'GigaChat',
+  model: 'gpt-4o-mini',
   temperature: 1.0,
-  maxTokens: 2048,
-  repetitionPenalty: 1.0,
+  maxTokens: 4096,
+  repetitionPenalty: 0,
   systemPrompt: '',
 };
 

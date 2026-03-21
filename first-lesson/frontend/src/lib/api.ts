@@ -120,7 +120,7 @@ export async function sendMessage(
     }
   }
 
-  return apiRequest<{ reply: string; usage: unknown; appliedParams?: AppliedParams }>('/chat/message', {
+  return apiRequest<{ reply: string; usage: unknown; appliedParams?: AppliedParams; cost?: number }>('/chat/message', {
     method: 'POST',
     body: JSON.stringify(body),
   });
@@ -148,6 +148,7 @@ export async function sendConsilium(
     expertOpinions: Array<{ expert: string; reply: string; error?: boolean }>;
     usage: unknown;
     appliedParams?: AppliedParams;
+    cost?: number;
   }>('/chat/consilium', {
     method: 'POST',
     body: JSON.stringify({

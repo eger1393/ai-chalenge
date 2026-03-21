@@ -12,9 +12,10 @@ interface MessageBubbleProps {
   appliedParams?: AppliedParams;
   expertOpinions?: ExpertOpinion[];
   isConsilium?: boolean;
+  cost?: number;
 }
 
-export function MessageBubble({ role, content, error, appliedParams, expertOpinions, isConsilium }: MessageBubbleProps) {
+export function MessageBubble({ role, content, error, appliedParams, expertOpinions, isConsilium, cost }: MessageBubbleProps) {
   if (role === 'user') {
     return (
       <div className="flex justify-end mb-4">
@@ -27,7 +28,7 @@ export function MessageBubble({ role, content, error, appliedParams, expertOpini
 
   return (
     <div className="mb-4">
-      <AppliedParamsDisplay appliedParams={appliedParams} />
+      <AppliedParamsDisplay appliedParams={appliedParams} cost={cost} />
       {isConsilium && expertOpinions && expertOpinions.length > 0 && (
         <ExpertOpinionsAccordion opinions={expertOpinions} />
       )}
