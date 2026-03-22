@@ -14,7 +14,7 @@ export interface AppliedParams {
   systemPrompt?: string;
 }
 
-export const AVAILABLE_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-nano', 'gpt-4.1-mini', 'gpt-4.1'] as const;
+export const AVAILABLE_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-nano', 'gpt-4.1-mini', 'gpt-4.1', 'gpt-5.4', 'gpt-5.4-mini'] as const;
 
 export const MODEL_LABELS: Record<string, string> = {
   'gpt-4o-mini': 'GPT-4o Mini — $0.15/$0.60',
@@ -22,6 +22,8 @@ export const MODEL_LABELS: Record<string, string> = {
   'gpt-4.1-nano': 'GPT-4.1 Nano — $0.10/$0.40',
   'gpt-4.1-mini': 'GPT-4.1 Mini — $0.40/$1.60',
   'gpt-4.1': 'GPT-4.1 — $2.00/$8.00',
+  'gpt-5.4': 'GPT-5.4 — $2.50/$15.00',
+  'gpt-5.4-mini': 'GPT-5.4 Mini — $0.75/$4.50',
 };
 
 export const DEFAULT_AI_PARAMS: AIParams = {
