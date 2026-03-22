@@ -1,5 +1,5 @@
 import { setTokens, getAccessToken, getRefreshToken, clearTokens } from './tokens';
-import { AIParams, AppliedParams, DEFAULT_AI_PARAMS, Expert, Role } from '@/types/ai-params';
+import { AIParams, AppliedParams, DEFAULT_AI_PARAMS, Expert, Role, Usage } from '@/types/ai-params';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
@@ -120,7 +120,7 @@ export async function sendMessage(
     }
   }
 
-  return apiRequest<{ reply: string; usage: unknown; appliedParams?: AppliedParams; cost?: number }>('/chat/message', {
+  return apiRequest<{ reply: string; usage: Usage; appliedParams?: AppliedParams; cost?: number; durationMs?: number }>('/chat/message', {
     method: 'POST',
     body: JSON.stringify(body),
   });
@@ -146,9 +146,10 @@ export async function sendConsilium(
   return apiRequest<{
     reply: string;
     expertOpinions: Array<{ expert: string; reply: string; error?: boolean }>;
-    usage: unknown;
+    usage: Usage;
     appliedParams?: AppliedParams;
     cost?: number;
+    durationMs?: number;
   }>('/chat/consilium', {
     method: 'POST',
     body: JSON.stringify({

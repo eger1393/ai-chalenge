@@ -62,3 +62,9 @@ export interface ExpertOpinion {
   reply: string;
   error?: boolean;
 }
+
+export interface Usage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}

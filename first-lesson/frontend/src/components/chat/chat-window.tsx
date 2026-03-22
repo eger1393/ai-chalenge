@@ -71,6 +71,8 @@ export function ChatWindow() {
                   expertOpinions={msg.expertOpinions}
                   isConsilium={msg.isConsilium}
                   cost={msg.cost}
+                  usage={msg.usage}
+                  durationMs={msg.durationMs}
                 />
               ))}
               {isLoading && <TypingIndicator />}

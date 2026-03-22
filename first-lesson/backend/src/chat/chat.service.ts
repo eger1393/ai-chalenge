@@ -102,7 +102,9 @@ export class ChatService {
       { role: 'user' as const, content: dto.message },
     ];
 
+    const startTime = Date.now();
     const response = await this.callOpenAI(model, messages, temperature, maxTokens, frequencyPenalty);
+    const durationMs = Date.now() - startTime;
 
     const reply = response.choices?.[0]?.message?.content || '';
     const usage = response.usage;
@@ -129,6 +131,7 @@ export class ChatService {
       },
       appliedParams,
       cost,
+      durationMs,
     };
   }
 
@@ -170,6 +173,8 @@ export class ChatService {
           : null;
       })
       .filter((e): e is { name: string; systemPrompt: string } => e !== null);
+
+    const consiliumStart = Date.now();
 
     // Phase 1: Send to experts sequentially (rate limit safety)
     const expertResults: Array<{ expert: string; reply: string; usage: { promptTokens: number; completionTokens: number; totalTokens: number }; cost: number; error?: boolean }> = [];
@@ -258,6 +263,7 @@ export class ChatService {
       };
 
       const totalCost = expertResults.reduce((sum, r) => sum + r.cost, 0) + synthCost;
+      const durationMs = Date.now() - consiliumStart;
 
       return {
         reply: synthesisReply,
@@ -269,6 +275,7 @@ export class ChatService {
         usage: totalUsage,
         appliedParams: { model, temperature, maxTokens },
         cost: totalCost,
+        durationMs,
       };
     } catch (error: unknown) {
       if (error instanceof BadGatewayException || error instanceof GatewayTimeoutException) {

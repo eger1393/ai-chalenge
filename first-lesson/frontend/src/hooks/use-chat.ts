@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { sendMessage, sendConsilium } from '@/lib/api';
-import { AIParams, AppliedParams, ConsiliumParams, DEFAULT_AI_PARAMS, ExpertOpinion } from '@/types/ai-params';
+import { AIParams, AppliedParams, ConsiliumParams, DEFAULT_AI_PARAMS, ExpertOpinion, Usage } from '@/types/ai-params';
 
 export interface Message {
   id: string;
@@ -13,6 +13,8 @@ export interface Message {
   expertOpinions?: ExpertOpinion[];
   isConsilium?: boolean;
   cost?: number;
+  usage?: Usage;
+  durationMs?: number;
 }
 
 export function useChat() {
@@ -58,6 +60,8 @@ export function useChat() {
           expertOpinions: response.expertOpinions,
           isConsilium: true,
           cost: response.cost,
+          usage: response.usage,
+          durationMs: response.durationMs,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
@@ -70,6 +74,8 @@ export function useChat() {
           content: response.reply,
           appliedParams: response.appliedParams,
           cost: response.cost,
+          usage: response.usage,
+          durationMs: response.durationMs,
         };
 
         setMessages((prev) => [...prev, assistantMessage]);
