@@ -38,7 +38,7 @@ export class AIParamsDto {
   @IsOptional()
   @IsInt()
   @Min(1)
-  @Max(4096)
+  @Max(32768)
   maxTokens?: number;
 
   @IsOptional()

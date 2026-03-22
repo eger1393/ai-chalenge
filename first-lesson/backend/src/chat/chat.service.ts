@@ -92,7 +92,7 @@ export class ChatService {
 
   async sendMessage(dto: MessageDto) {
     const params = dto.params;
-    const envMaxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || '4096');
+    const envMaxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || '16384');
 
     const model =
       params?.model && ALLOWED_MODELS.includes(params.model as any)
@@ -134,11 +134,12 @@ export class ChatService {
     const response = await this.callOpenAI(model, messages, temperature, maxTokens, frequencyPenalty);
     const durationMs = Date.now() - startTime;
 
-    const reply = response.choices?.[0]?.message?.content;
+    const finishReason = response.choices?.[0]?.finish_reason;
+    const reply = response.choices?.[0]?.message?.content ?? '';
     if (!reply) {
-      const finishReason = response.choices?.[0]?.finish_reason;
       this.logger.warn(`Empty reply from OpenAI (model=${model} finish_reason=${finishReason})`);
-      throw new BadGatewayException(`Model returned an empty response (finish_reason: ${finishReason ?? 'unknown'})`);
+    } else if (finishReason === 'length') {
+      this.logger.warn(`Reply truncated by token limit (model=${model} maxTokens=${maxTokens})`);
     }
 
     const usage = response.usage;
@@ -182,7 +183,7 @@ export class ChatService {
         ? Math.max(0, Math.min(2, dto.temperature))
         : 1.0;
 
-    const envMaxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || '4096');
+    const envMaxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || '16384');
     const maxTokens =
       dto.maxTokens != null
         ? Math.max(1, Math.min(dto.maxTokens, envMaxTokens))

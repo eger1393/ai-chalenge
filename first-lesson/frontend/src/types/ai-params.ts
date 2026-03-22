@@ -29,7 +29,7 @@ export const MODEL_LABELS: Record<string, string> = {
 export const DEFAULT_AI_PARAMS: AIParams = {
   model: 'gpt-4o-mini',
   temperature: 1.0,
-  maxTokens: 4096,
+  maxTokens: 16384,
   repetitionPenalty: 0,
   systemPrompt: '',
 };
