@@ -13,7 +13,7 @@ export class ChatService {
   constructor() {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
-      timeout: parseInt(process.env.OPENAI_TIMEOUT || '60000'),
+      timeout: parseInt(process.env.OPENAI_TIMEOUT || '600000'),
       // Disable SDK-level retries — we handle retries ourselves for rate limits.
       // Without this the SDK retries 2x internally, causing 2× timeout duration (e.g. 118s instead of 60s).
       maxRetries: 0,
