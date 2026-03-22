@@ -1,4 +1,4 @@
-import { Injectable, BadGatewayException, GatewayTimeoutException } from '@nestjs/common';
+import { Injectable, BadGatewayException, GatewayTimeoutException, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { MessageDto } from './dto/message.dto';
 import { ALLOWED_MODELS, DEFAULT_MODEL, MODEL_PRICING } from './dto/ai-params.dto';
@@ -7,12 +7,16 @@ import { EXPERT_ROLES } from './constants/expert-roles';
 
 @Injectable()
 export class ChatService {
+  private readonly logger = new Logger(ChatService.name);
   private openai: OpenAI;
 
   constructor() {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
       timeout: parseInt(process.env.OPENAI_TIMEOUT || '60000'),
+      // Disable SDK-level retries — we handle retries ourselves for rate limits.
+      // Without this the SDK retries 2x internally, causing 2× timeout duration (e.g. 118s instead of 60s).
+      maxRetries: 0,
     });
   }
 
@@ -52,26 +56,36 @@ export class ChatService {
     frequencyPenalty?: number,
   ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
     const params = this.buildCompletionParams(model, messages, temperature, maxTokens, frequencyPenalty);
+    this.logger.debug(`→ OpenAI request: model=${model} messages=${messages.length} maxTokens=${maxTokens} temp=${temperature}`);
+    const t0 = Date.now();
     try {
-      return await this.openai.chat.completions.create(params);
+      const response = await this.openai.chat.completions.create(params);
+      this.logger.debug(`← OpenAI response: ${Date.now() - t0}ms | tokens=${response.usage?.total_tokens ?? '?'} | finish=${response.choices?.[0]?.finish_reason}`);
+      return response;
     } catch (error: unknown) {
       if (error instanceof OpenAI.APIConnectionTimeoutError) {
-        throw new GatewayTimeoutException('OpenAI API request timed out');
+        this.logger.error(`OpenAI timeout after ${Date.now() - t0}ms (model=${model})`);
+        throw new GatewayTimeoutException(`OpenAI request timed out after ${Math.round((Date.now() - t0) / 1000)}s`);
       }
       if (error instanceof OpenAI.RateLimitError) {
-        // Retry once after delay on 429
+        this.logger.warn(`OpenAI rate limit hit, retrying after 2s (model=${model})`);
         await new Promise((r) => setTimeout(r, 2000));
         try {
-          return await this.openai.chat.completions.create(params);
+          const response = await this.openai.chat.completions.create(params);
+          this.logger.debug(`← OpenAI retry response: ${Date.now() - t0}ms | tokens=${response.usage?.total_tokens ?? '?'}`);
+          return response;
         } catch (retryError: unknown) {
           const message = retryError instanceof Error ? retryError.message : 'Unknown error';
+          this.logger.error(`OpenAI rate limit retry failed: ${message}`);
           throw new BadGatewayException(`OpenAI API rate limit error after retry: ${message}`);
         }
       }
       if (error instanceof OpenAI.APIError) {
+        this.logger.error(`OpenAI API error ${error.status}: ${error.message}`);
         throw new BadGatewayException(`OpenAI API error (${error.status}): ${error.message}`);
       }
       const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`OpenAI unexpected error: ${message}`);
       throw new BadGatewayException(`OpenAI API error: ${message}`);
     }
   }
@@ -114,16 +128,26 @@ export class ChatService {
       { role: 'user' as const, content: dto.message },
     ];
 
+    this.logger.log(`sendMessage: model=${model} msgLen=${dto.message.length}`);
+
     const startTime = Date.now();
     const response = await this.callOpenAI(model, messages, temperature, maxTokens, frequencyPenalty);
     const durationMs = Date.now() - startTime;
 
-    const reply = response.choices?.[0]?.message?.content || '';
+    const reply = response.choices?.[0]?.message?.content;
+    if (!reply) {
+      const finishReason = response.choices?.[0]?.finish_reason;
+      this.logger.warn(`Empty reply from OpenAI (model=${model} finish_reason=${finishReason})`);
+      throw new BadGatewayException(`Model returned an empty response (finish_reason: ${finishReason ?? 'unknown'})`);
+    }
+
     const usage = response.usage;
     const promptTokens = usage?.prompt_tokens || 0;
     const completionTokens = usage?.completion_tokens || 0;
     const totalTokens = usage?.total_tokens || 0;
     const cost = this.calculateCost(model, promptTokens, completionTokens);
+
+    this.logger.log(`sendMessage done: model=${model} tokens=${totalTokens} cost=$${cost.toFixed(4)} duration=${durationMs}ms`);
 
     const appliedParams: Record<string, unknown> = {
       model,
@@ -186,6 +210,8 @@ export class ChatService {
       })
       .filter((e): e is { name: string; systemPrompt: string } => e !== null);
 
+    this.logger.log(`sendConsilium: model=${model} experts=${resolvedExperts.length}`);
+
     const consiliumStart = Date.now();
 
     // Phase 1: Send to experts sequentially (rate limit safety)
@@ -193,6 +219,7 @@ export class ChatService {
 
     for (let i = 0; i < resolvedExperts.length; i++) {
       const expert = resolvedExperts[i];
+      this.logger.log(`  Expert [${i + 1}/${resolvedExperts.length}]: ${expert.name}`);
       const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
         { role: 'system' as const, content: expert.systemPrompt },
         ...history,
@@ -205,15 +232,18 @@ export class ChatService {
         const promptTokens = usage?.prompt_tokens || 0;
         const completionTokens = usage?.completion_tokens || 0;
         const totalTokens = usage?.total_tokens || 0;
+        const expertReply = response.choices?.[0]?.message?.content || '';
 
         expertResults.push({
           expert: expert.name,
-          reply: response.choices?.[0]?.message?.content || '',
+          reply: expertReply,
           usage: { promptTokens, completionTokens, totalTokens },
           cost: this.calculateCost(model, promptTokens, completionTokens),
         });
+        this.logger.log(`  Expert ${expert.name}: tokens=${totalTokens} replyLen=${expertReply.length}`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.warn(`  Expert ${expert.name} failed: ${message}`);
         expertResults.push({
           expert: expert.name,
           reply: `Error: ${message}`,
@@ -233,6 +263,7 @@ export class ChatService {
     await new Promise((r) => setTimeout(r, 500));
 
     // Phase 2: Synthesis - combine all expert opinions
+    this.logger.log(`  Synthesis phase (${expertResults.filter(r => !r.error).length} valid opinions)`);
     const synthesisSystemPrompt = `Ты — модератор консилиума экспертов. Тебе даны мнения ${expertResults.length} экспертов по вопросу пользователя. Проанализируй все мнения, выдели общие выводы и различия, и сформируй единый объективный ответ. Укажи, в чём эксперты сходятся и в чём расходятся.`;
 
     const expertOpinions = expertResults
@@ -277,6 +308,8 @@ export class ChatService {
       const totalCost = expertResults.reduce((sum, r) => sum + r.cost, 0) + synthCost;
       const durationMs = Date.now() - consiliumStart;
 
+      this.logger.log(`sendConsilium done: model=${model} totalTokens=${totalUsage.totalTokens} cost=$${totalCost.toFixed(4)} duration=${durationMs}ms`);
+
       return {
         reply: synthesisReply,
         expertOpinions: expertResults.map((r) => ({
@@ -294,6 +327,7 @@ export class ChatService {
         throw error;
       }
       const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Synthesis failed: ${message}`);
       throw new BadGatewayException(`OpenAI synthesis error: ${message}`);
     }
   }
