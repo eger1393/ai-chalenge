@@ -21,6 +21,29 @@ export class ChatService {
     return (promptTokens / 1_000_000) * pricing.input + (completionTokens / 1_000_000) * pricing.output;
   }
 
+  // gpt-5.x and newer models require max_completion_tokens instead of max_tokens
+  private usesMaxCompletionTokens(model: string): boolean {
+    return /^gpt-5/.test(model);
+  }
+
+  private buildCompletionParams(
+    model: string,
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    temperature: number,
+    maxTokens: number,
+    frequencyPenalty?: number,
+  ): Parameters<typeof this.openai.chat.completions.create>[0] {
+    return {
+      model,
+      messages,
+      temperature,
+      ...(this.usesMaxCompletionTokens(model)
+        ? { max_completion_tokens: maxTokens }
+        : { max_tokens: maxTokens }),
+      ...(frequencyPenalty != null && frequencyPenalty !== 0 ? { frequency_penalty: frequencyPenalty } : {}),
+    };
+  }
+
   private async callOpenAI(
     model: string,
     messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
@@ -28,14 +51,9 @@ export class ChatService {
     maxTokens: number,
     frequencyPenalty?: number,
   ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+    const params = this.buildCompletionParams(model, messages, temperature, maxTokens, frequencyPenalty);
     try {
-      return await this.openai.chat.completions.create({
-        model,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-        ...(frequencyPenalty != null && frequencyPenalty !== 0 ? { frequency_penalty: frequencyPenalty } : {}),
-      });
+      return await this.openai.chat.completions.create(params);
     } catch (error: unknown) {
       if (error instanceof OpenAI.APIConnectionTimeoutError) {
         throw new GatewayTimeoutException('OpenAI API request timed out');
@@ -44,13 +62,7 @@ export class ChatService {
         // Retry once after delay on 429
         await new Promise((r) => setTimeout(r, 2000));
         try {
-          return await this.openai.chat.completions.create({
-            model,
-            messages,
-            temperature,
-            max_tokens: maxTokens,
-            ...(frequencyPenalty != null && frequencyPenalty !== 0 ? { frequency_penalty: frequencyPenalty } : {}),
-          });
+          return await this.openai.chat.completions.create(params);
         } catch (retryError: unknown) {
           const message = retryError instanceof Error ? retryError.message : 'Unknown error';
           throw new BadGatewayException(`OpenAI API rate limit error after retry: ${message}`);
