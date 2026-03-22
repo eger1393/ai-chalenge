@@ -32,7 +32,7 @@ export class ChatService {
     temperature: number,
     maxTokens: number,
     frequencyPenalty?: number,
-  ): Parameters<typeof this.openai.chat.completions.create>[0] {
+  ): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming {
     return {
       model,
       messages,
