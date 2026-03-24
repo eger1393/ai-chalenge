@@ -34,6 +34,10 @@ export class ConsiliumMessageDto {
   message: string;
 
   @IsOptional()
+  @IsString()
+  conversationId?: string;
+
+  @IsOptional()
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ConversationMessageDto)

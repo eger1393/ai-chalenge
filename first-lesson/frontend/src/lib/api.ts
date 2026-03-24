@@ -1,5 +1,6 @@
 import { setTokens, getAccessToken, getRefreshToken, clearTokens } from './tokens';
 import { AIParams, AppliedParams, DEFAULT_AI_PARAMS, Expert, Role, Usage } from '@/types/ai-params';
+import { Conversation, ConversationDetail, ContextWindow } from '@/types/conversation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
@@ -95,8 +96,15 @@ export async function sendMessage(
   message: string,
   conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
   params?: Partial<AIParams>,
+  conversationId?: string,
 ) {
-  const body: Record<string, unknown> = { message, conversationHistory };
+  const body: Record<string, unknown> = { message };
+
+  if (conversationId) {
+    body.conversationId = conversationId;
+  } else {
+    body.conversationHistory = conversationHistory;
+  }
 
   if (params) {
     const filtered: Record<string, unknown> = {};
@@ -120,7 +128,7 @@ export async function sendMessage(
     }
   }
 
-  return apiRequest<{ reply: string; usage: Usage; appliedParams?: AppliedParams; cost?: number; durationMs?: number }>('/chat/message', {
+  return apiRequest<{ reply: string; usage: Usage; appliedParams?: AppliedParams; cost?: number; durationMs?: number; contextWindow?: ContextWindow; conversationId?: string }>('/chat/message', {
     method: 'POST',
     body: JSON.stringify(body),
   });
@@ -135,6 +143,7 @@ export async function sendConsilium(
   conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
   experts: Expert[],
   params?: { model?: string; temperature?: number; maxTokens?: number },
+  conversationId?: string,
 ) {
   const mappedExperts = experts.map((e) => ({
     name: e.name,
@@ -143,6 +152,18 @@ export async function sendConsilium(
       : { systemPrompt: e.systemPrompt }),
   }));
 
+  const body: Record<string, unknown> = {
+    message,
+    experts: mappedExperts,
+    ...params,
+  };
+
+  if (conversationId) {
+    body.conversationId = conversationId;
+  } else {
+    body.conversationHistory = conversationHistory;
+  }
+
   return apiRequest<{
     reply: string;
     expertOpinions: Array<{ expert: string; reply: string; error?: boolean }>;
@@ -150,14 +171,39 @@ export async function sendConsilium(
     appliedParams?: AppliedParams;
     cost?: number;
     durationMs?: number;
+    contextWindow?: ContextWindow;
+    conversationId?: string;
   }>('/chat/consilium', {
     method: 'POST',
-    body: JSON.stringify({
-      message,
-      conversationHistory,
-      experts: mappedExperts,
-      ...params,
-    }),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function createConversation(data?: { title?: string; model?: string; systemPrompt?: string }) {
+  return apiRequest<Conversation>('/conversations', {
+    method: 'POST',
+    body: JSON.stringify(data || {}),
+  });
+}
+
+export async function listConversations(limit = 10) {
+  return apiRequest<Conversation[]>(`/conversations?limit=${limit}`);
+}
+
+export async function getConversation(id: string) {
+  return apiRequest<ConversationDetail>(`/conversations/${id}`);
+}
+
+export async function updateConversation(id: string, data: { title?: string }) {
+  return apiRequest<Conversation>(`/conversations/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteConversation(id: string) {
+  return apiRequest<void>(`/conversations/${id}`, {
+    method: 'DELETE',
   });
 }
 

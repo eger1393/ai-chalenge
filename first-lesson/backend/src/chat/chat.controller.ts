@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Request } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ChatService } from './chat.service';
@@ -13,8 +13,8 @@ export class ChatController {
   @Post('message')
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 20, ttl: 60000 } })
-  sendMessage(@Body() dto: MessageDto) {
-    return this.chatService.sendMessage(dto);
+  sendMessage(@Request() req, @Body() dto: MessageDto) {
+    return this.chatService.sendMessage(dto, req.user.username);
   }
 
   @Get('roles')
@@ -26,7 +26,7 @@ export class ChatController {
   @Post('consilium')
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 20, ttl: 60000 } })
-  consilium(@Body() dto: ConsiliumMessageDto) {
-    return this.chatService.sendConsilium(dto);
+  consilium(@Request() req, @Body() dto: ConsiliumMessageDto) {
+    return this.chatService.sendConsilium(dto, req.user.username);
   }
 }

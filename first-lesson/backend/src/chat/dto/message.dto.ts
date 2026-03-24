@@ -18,6 +18,10 @@ export class MessageDto {
   message: string;
 
   @IsOptional()
+  @IsString()
+  conversationId?: string;
+
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(50)
   @ValidateNested({ each: true })

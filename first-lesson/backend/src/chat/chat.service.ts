@@ -1,21 +1,20 @@
-import { Injectable, BadGatewayException, GatewayTimeoutException, Logger } from '@nestjs/common';
+import { Injectable, BadGatewayException, BadRequestException, GatewayTimeoutException, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { MessageDto } from './dto/message.dto';
-import { ALLOWED_MODELS, DEFAULT_MODEL, MODEL_PRICING } from './dto/ai-params.dto';
+import { ALLOWED_MODELS, DEFAULT_MODEL, MODEL_PRICING, MODEL_CONTEXT_WINDOWS } from './dto/ai-params.dto';
 import { ConsiliumMessageDto } from './dto/consilium.dto';
 import { EXPERT_ROLES } from './constants/expert-roles';
+import { ConversationService } from '../conversation/conversation.service';
 
 @Injectable()
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
   private openai: OpenAI;
 
-  constructor() {
+  constructor(private readonly conversationService: ConversationService) {
     this.openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
       timeout: parseInt(process.env.OPENAI_TIMEOUT || '600000'),
-      // Disable SDK-level retries — we handle retries ourselves for rate limits.
-      // Without this the SDK retries 2x internally, causing 2× timeout duration (e.g. 118s instead of 60s).
       maxRetries: 0,
     });
   }
@@ -46,6 +45,48 @@ export class ChatService {
         : { max_tokens: maxTokens }),
       ...(frequencyPenalty != null && frequencyPenalty !== 0 ? { frequency_penalty: frequencyPenalty } : {}),
     };
+  }
+
+  private estimateTokens(text: string): number {
+    return Math.ceil(text.length / 4);
+  }
+
+  private truncateMessages(
+    messages: Array<{ role: string; content: string }>,
+    model: string,
+    systemPrompt?: string,
+  ): { messages: Array<{ role: string; content: string }>; usedTokens: number } {
+    const contextWindow = MODEL_CONTEXT_WINDOWS[model] || 128000;
+    const maxBudget = Math.floor(contextWindow * 0.80);
+    const warningThreshold = Math.floor(contextWindow * 0.85);
+
+    let totalTokens = systemPrompt ? this.estimateTokens(systemPrompt) : 0;
+    for (const msg of messages) {
+      totalTokens += this.estimateTokens(msg.content);
+    }
+
+    if (totalTokens <= warningThreshold) {
+      return { messages, usedTokens: totalTokens };
+    }
+
+    const first2 = messages.slice(0, 2);
+    const rest = messages.slice(2);
+
+    let budgetUsed = systemPrompt ? this.estimateTokens(systemPrompt) : 0;
+    for (const msg of first2) {
+      budgetUsed += this.estimateTokens(msg.content);
+    }
+
+    const kept: Array<{ role: string; content: string }> = [];
+    for (let i = rest.length - 1; i >= 0; i--) {
+      const tokens = this.estimateTokens(rest[i].content);
+      if (budgetUsed + tokens > maxBudget) break;
+      budgetUsed += tokens;
+      kept.unshift(rest[i]);
+    }
+
+    const truncated = [...first2, ...kept];
+    return { messages: truncated, usedTokens: budgetUsed };
   }
 
   private async callOpenAI(
@@ -90,7 +131,7 @@ export class ChatService {
     }
   }
 
-  async sendMessage(dto: MessageDto) {
+  async sendMessage(dto: MessageDto, username?: string) {
     const params = dto.params;
     const envMaxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || '16384');
 
@@ -109,8 +150,6 @@ export class ChatService {
         ? Math.max(1, Math.min(params.maxTokens, envMaxTokens))
         : envMaxTokens;
 
-    // Map repetitionPenalty (0-2, default 1) to frequency_penalty (-2 to 2, default 0)
-    // repetitionPenalty 1.0 = neutral = frequency_penalty 0
     const repetitionPenalty =
       params?.repetitionPenalty != null
         ? Math.max(0, Math.min(2, params.repetitionPenalty))
@@ -119,13 +158,59 @@ export class ChatService {
 
     const systemPrompt = params?.systemPrompt?.trim()?.slice(0, 4000) || undefined;
 
+    let conversationId = dto.conversationId;
+    let contextWindow: { model: string; maxTokens: number; usedTokens: number; usagePercent: number } | undefined;
+
+    let historyMessages: Array<{ role: string; content: string }>;
+
+    if (conversationId) {
+      const conversation = await this.conversationService.getConversation(conversationId);
+      if (!conversation) {
+        throw new BadRequestException('Conversation not found');
+      }
+      if (username && conversation.username !== username) {
+        throw new BadRequestException('Conversation not found');
+      }
+
+      const dbMessages = await this.conversationService.getMessagesForContext(conversationId);
+      historyMessages = dbMessages;
+    } else if (dto.conversationHistory) {
+      historyMessages = dto.conversationHistory.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+    } else {
+      historyMessages = [];
+    }
+
+    const allMessages = [...historyMessages, { role: 'user', content: dto.message }];
+
+    let truncatedMessages: Array<{ role: string; content: string }>;
+    let usedTokens: number;
+
+    if (conversationId) {
+      const result = this.truncateMessages(allMessages, model, systemPrompt);
+      truncatedMessages = result.messages;
+      usedTokens = result.usedTokens;
+
+      const windowSize = MODEL_CONTEXT_WINDOWS[model] || 128000;
+      contextWindow = {
+        model,
+        maxTokens: windowSize,
+        usedTokens,
+        usagePercent: Math.round((usedTokens / windowSize) * 100),
+      };
+    } else {
+      truncatedMessages = allMessages;
+      usedTokens = 0;
+    }
+
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
       ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
-      ...(dto.conversationHistory || []).map((m) => ({
+      ...truncatedMessages.map((m) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
       })),
-      { role: 'user' as const, content: dto.message },
     ];
 
     this.logger.log(`sendMessage: model=${model} msgLen=${dto.message.length}`);
@@ -150,6 +235,23 @@ export class ChatService {
 
     this.logger.log(`sendMessage done: model=${model} tokens=${totalTokens} cost=$${cost.toFixed(4)} duration=${durationMs}ms`);
 
+    if (conversationId) {
+      await this.conversationService.addMessage(conversationId, 'user', dto.message);
+      await this.conversationService.addMessage(conversationId, 'assistant', reply, {
+        model,
+        tokenCount: totalTokens,
+        promptTokens,
+        completionTokens,
+        cost,
+      });
+
+      const messageCount = await this.conversationService.getMessageCount(conversationId);
+      if (messageCount <= 2) {
+        const title = dto.message.slice(0, 50) + (dto.message.length > 50 ? '...' : '');
+        await this.conversationService.updateTitle(conversationId, title);
+      }
+    }
+
     const appliedParams: Record<string, unknown> = {
       model,
       temperature,
@@ -159,20 +261,25 @@ export class ChatService {
     if (frequencyPenalty !== 0) appliedParams.frequencyPenalty = frequencyPenalty;
     if (systemPrompt) appliedParams.systemPrompt = systemPrompt;
 
-    return {
+    const result: Record<string, unknown> = {
       reply,
-      usage: {
-        promptTokens,
-        completionTokens,
-        totalTokens,
-      },
+      usage: { promptTokens, completionTokens, totalTokens },
       appliedParams,
       cost,
       durationMs,
     };
+
+    if (conversationId) {
+      result.conversationId = conversationId;
+    }
+    if (contextWindow) {
+      result.contextWindow = contextWindow;
+    }
+
+    return result;
   }
 
-  async sendConsilium(dto: ConsiliumMessageDto) {
+  async sendConsilium(dto: ConsiliumMessageDto, username?: string) {
     const model =
       dto.model && ALLOWED_MODELS.includes(dto.model as any)
         ? dto.model
@@ -189,12 +296,31 @@ export class ChatService {
         ? Math.max(1, Math.min(dto.maxTokens, envMaxTokens))
         : envMaxTokens;
 
-    const history = (dto.conversationHistory || []).map((m) => ({
-      role: m.role as 'user' | 'assistant',
-      content: m.content,
-    }));
+    let conversationId = dto.conversationId;
 
-    // Resolve system prompts: roleId takes priority over custom systemPrompt
+    let history: Array<{ role: 'user' | 'assistant'; content: string }>;
+
+    if (conversationId) {
+      const conversation = await this.conversationService.getConversation(conversationId);
+      if (!conversation) {
+        throw new BadRequestException('Conversation not found');
+      }
+      if (username && conversation.username !== username) {
+        throw new BadRequestException('Conversation not found');
+      }
+
+      const dbMessages = await this.conversationService.getMessagesForContext(conversationId);
+      history = dbMessages.map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
+    } else {
+      history = (dto.conversationHistory || []).map((m) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
+    }
+
     const resolvedExperts = dto.experts
       .map((expert) => {
         let resolvedPrompt: string | undefined;
@@ -215,7 +341,6 @@ export class ChatService {
 
     const consiliumStart = Date.now();
 
-    // Phase 1: Send to experts sequentially (rate limit safety)
     const expertResults: Array<{ expert: string; reply: string; usage: { promptTokens: number; completionTokens: number; totalTokens: number }; cost: number; error?: boolean }> = [];
 
     for (let i = 0; i < resolvedExperts.length; i++) {
@@ -254,16 +379,13 @@ export class ChatService {
         });
       }
 
-      // Small delay between requests to avoid rate limiting
       if (i < resolvedExperts.length - 1) {
         await new Promise((r) => setTimeout(r, 500));
       }
     }
 
-    // Delay before synthesis
     await new Promise((r) => setTimeout(r, 500));
 
-    // Phase 2: Synthesis - combine all expert opinions
     this.logger.log(`  Synthesis phase (${expertResults.filter(r => !r.error).length} valid opinions)`);
     const synthesisSystemPrompt = `Ты — модератор консилиума экспертов. Тебе даны мнения ${expertResults.length} экспертов по вопросу пользователя. Проанализируй все мнения, выдели общие выводы и различия, и сформируй единый объективный ответ. Укажи, в чём эксперты сходятся и в чём расходятся.`;
 
@@ -276,14 +398,8 @@ export class ChatService {
       { role: 'system' as const, content: synthesisSystemPrompt },
       ...history,
       { role: 'user' as const, content: dto.message },
-      {
-        role: 'assistant' as const,
-        content: `Мнения экспертов:\n\n${expertOpinions}`,
-      },
-      {
-        role: 'user' as const,
-        content: 'Проанализируй мнения экспертов и сформируй единый ответ.',
-      },
+      { role: 'assistant' as const, content: `Мнения экспертов:\n\n${expertOpinions}` },
+      { role: 'user' as const, content: 'Проанализируй мнения экспертов и сформируй единый ответ.' },
     ];
 
     try {
@@ -296,14 +412,10 @@ export class ChatService {
       const synthTotalTokens = synthesisUsage?.total_tokens || 0;
       const synthCost = this.calculateCost(model, synthPromptTokens, synthCompletionTokens);
 
-      // Calculate total usage and cost
       const totalUsage = {
-        promptTokens:
-          expertResults.reduce((sum, r) => sum + r.usage.promptTokens, 0) + synthPromptTokens,
-        completionTokens:
-          expertResults.reduce((sum, r) => sum + r.usage.completionTokens, 0) + synthCompletionTokens,
-        totalTokens:
-          expertResults.reduce((sum, r) => sum + r.usage.totalTokens, 0) + synthTotalTokens,
+        promptTokens: expertResults.reduce((sum, r) => sum + r.usage.promptTokens, 0) + synthPromptTokens,
+        completionTokens: expertResults.reduce((sum, r) => sum + r.usage.completionTokens, 0) + synthCompletionTokens,
+        totalTokens: expertResults.reduce((sum, r) => sum + r.usage.totalTokens, 0) + synthTotalTokens,
       };
 
       const totalCost = expertResults.reduce((sum, r) => sum + r.cost, 0) + synthCost;
@@ -311,18 +423,40 @@ export class ChatService {
 
       this.logger.log(`sendConsilium done: model=${model} totalTokens=${totalUsage.totalTokens} cost=$${totalCost.toFixed(4)} duration=${durationMs}ms`);
 
-      return {
+      if (conversationId) {
+        await this.conversationService.addMessage(conversationId, 'user', dto.message);
+
+        const assistantMsg = await this.conversationService.addMessage(
+          conversationId, 'assistant', synthesisReply,
+          { model, tokenCount: totalUsage.totalTokens, promptTokens: totalUsage.promptTokens, completionTokens: totalUsage.completionTokens, cost: totalCost, isConsilium: true },
+        );
+
+        await this.conversationService.addExpertOpinions(
+          assistantMsg.id,
+          expertResults.map((r) => ({ expertName: r.expert, content: r.reply, isError: r.error || false })),
+        );
+
+        const messageCount = await this.conversationService.getMessageCount(conversationId);
+        if (messageCount <= 2) {
+          const title = dto.message.slice(0, 50) + (dto.message.length > 50 ? '...' : '');
+          await this.conversationService.updateTitle(conversationId, title);
+        }
+      }
+
+      const result: Record<string, unknown> = {
         reply: synthesisReply,
-        expertOpinions: expertResults.map((r) => ({
-          expert: r.expert,
-          reply: r.reply,
-          error: r.error || false,
-        })),
+        expertOpinions: expertResults.map((r) => ({ expert: r.expert, reply: r.reply, error: r.error || false })),
         usage: totalUsage,
         appliedParams: { model, temperature, maxTokens },
         cost: totalCost,
         durationMs,
       };
+
+      if (conversationId) {
+        result.conversationId = conversationId;
+      }
+
+      return result;
     } catch (error: unknown) {
       if (error instanceof BadGatewayException || error instanceof GatewayTimeoutException) {
         throw error;

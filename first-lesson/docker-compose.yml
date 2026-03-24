@@ -1,6 +1,18 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: chatdb
+      POSTGRES_USER: chatuser
+      POSTGRES_PASSWORD: chatpass
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -12,6 +24,8 @@ services:
     networks:
       - app-network
     restart: unless-stopped
+    depends_on:
+      - postgres
 
   frontend:
     build:
@@ -30,3 +44,7 @@ services:
 networks:
   app-network:
     driver: bridge
+
+volumes:
+  pgdata:
+    driver: local
