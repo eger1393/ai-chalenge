@@ -29,6 +29,11 @@ export interface ConversationMessage {
   tokenCount?: number;
   promptTokens?: number;
   completionTokens?: number;
+  currentMessageTokens?: number;
+  historyTokens?: number;
+  appliedModel?: string;
+  appliedTemperature?: number;
+  appliedMaxTokens?: number;
 }
 
 export interface ConversationTotals {
@@ -41,6 +46,7 @@ export interface ConversationTotals {
 
 export interface ConversationDetail extends Conversation {
   messages: ConversationMessage[];
+  conversationTotals?: ConversationTotals;
 }
 
 export interface ContextWindow {

@@ -102,6 +102,17 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           CREATE INDEX IF NOT EXISTS idx_expert_opinions_message ON expert_opinions(message_id);
         `,
       },
+      {
+        name: '002_add_message_metadata',
+        sql: `
+          ALTER TABLE messages ADD COLUMN IF NOT EXISTS duration_ms INTEGER DEFAULT 0;
+          ALTER TABLE messages ADD COLUMN IF NOT EXISTS current_message_tokens INTEGER DEFAULT 0;
+          ALTER TABLE messages ADD COLUMN IF NOT EXISTS history_tokens INTEGER DEFAULT 0;
+          ALTER TABLE messages ADD COLUMN IF NOT EXISTS applied_model VARCHAR(50);
+          ALTER TABLE messages ADD COLUMN IF NOT EXISTS applied_temperature DOUBLE PRECISION;
+          ALTER TABLE messages ADD COLUMN IF NOT EXISTS applied_max_tokens INTEGER;
+        `,
+      },
     ];
   }
 }

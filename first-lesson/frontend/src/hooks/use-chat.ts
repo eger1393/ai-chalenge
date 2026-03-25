@@ -46,9 +46,19 @@ export function useChat() {
             promptTokens: m.promptTokens || 0,
             completionTokens: m.completionTokens || 0,
             totalTokens: (m.promptTokens || 0) + (m.completionTokens || 0),
+            currentMessageTokens: m.currentMessageTokens || undefined,
+            historyTokens: m.historyTokens || undefined,
           } : m.usage,
+          appliedParams: m.appliedModel ? {
+            model: m.appliedModel,
+            temperature: m.appliedTemperature ?? 1.0,
+            maxTokens: m.appliedMaxTokens ?? 16384,
+          } : undefined,
         })),
       );
+      if (detail.conversationTotals) {
+        setConversationTotals(detail.conversationTotals);
+      }
     } catch (e) {
       console.error('Failed to load conversation', e);
     } finally {

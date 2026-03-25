@@ -287,6 +287,12 @@ export class ChatService {
         promptTokens,
         completionTokens,
         cost,
+        durationMs,
+        currentMessageTokens: tokenBreakdown.currentMessageTokens,
+        historyTokens: tokenBreakdown.historyTokens,
+        appliedModel: model,
+        appliedTemperature: temperature,
+        appliedMaxTokens: maxTokens,
       });
 
       const messageCount = await this.conversationService.getMessageCount(conversationId);
@@ -481,7 +487,7 @@ export class ChatService {
 
         const assistantMsg = await this.conversationService.addMessage(
           conversationId, 'assistant', synthesisReply,
-          { model, tokenCount: totalUsage.totalTokens, promptTokens: totalUsage.promptTokens, completionTokens: totalUsage.completionTokens, cost: totalCost, isConsilium: true },
+          { model, tokenCount: totalUsage.totalTokens, promptTokens: totalUsage.promptTokens, completionTokens: totalUsage.completionTokens, cost: totalCost, isConsilium: true, durationMs, appliedModel: model, appliedTemperature: temperature, appliedMaxTokens: maxTokens },
         );
 
         await this.conversationService.addExpertOpinions(

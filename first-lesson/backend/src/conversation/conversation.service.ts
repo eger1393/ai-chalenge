@@ -8,6 +8,12 @@ interface AddMessageMetadata {
   completionTokens?: number;
   cost?: number;
   isConsilium?: boolean;
+  durationMs?: number;
+  currentMessageTokens?: number;
+  historyTokens?: number;
+  appliedModel?: string;
+  appliedTemperature?: number;
+  appliedMaxTokens?: number;
 }
 
 interface ExpertOpinionInput {
@@ -106,6 +112,12 @@ export class ConversationService {
       cost: m.cost,
       isConsilium: m.is_consilium,
       createdAt: m.created_at,
+      durationMs: m.duration_ms || undefined,
+      currentMessageTokens: m.current_message_tokens || undefined,
+      historyTokens: m.history_tokens || undefined,
+      appliedModel: m.applied_model || undefined,
+      appliedTemperature: m.applied_temperature != null ? parseFloat(m.applied_temperature) : undefined,
+      appliedMaxTokens: m.applied_max_tokens || undefined,
       expertOpinions: m.is_consilium
         ? (expertOpinions[m.id] || []).map((o: any) => ({
             expert: o.expert_name,
@@ -115,7 +127,8 @@ export class ConversationService {
         : undefined,
     }));
 
-    return { ...conversation, messages };
+    const totals = await this.getConversationTotals(id);
+    return { ...conversation, messages, conversationTotals: totals };
   }
 
   async update(username: string, id: string, data: { title?: string }) {
@@ -165,8 +178,8 @@ export class ConversationService {
   ) {
     const id = crypto.randomUUID();
     const { rows } = await this.db.query(
-      `INSERT INTO messages (id, conversation_id, role, content, model, token_count, prompt_tokens, completion_tokens, cost, is_consilium)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO messages (id, conversation_id, role, content, model, token_count, prompt_tokens, completion_tokens, cost, is_consilium, duration_ms, current_message_tokens, history_tokens, applied_model, applied_temperature, applied_max_tokens)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING *`,
       [
         id,
@@ -179,6 +192,12 @@ export class ConversationService {
         metadata?.completionTokens || 0,
         metadata?.cost || 0,
         metadata?.isConsilium || false,
+        metadata?.durationMs || 0,
+        metadata?.currentMessageTokens || 0,
+        metadata?.historyTokens || 0,
+        metadata?.appliedModel || null,
+        metadata?.appliedTemperature ?? null,
+        metadata?.appliedMaxTokens || null,
       ],
     );
 
