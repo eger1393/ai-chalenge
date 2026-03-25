@@ -4,6 +4,7 @@ export interface AIParams {
   maxTokens: number;
   repetitionPenalty: number;
   systemPrompt: string;
+  contextLimit: number;
 }
 
 export interface AppliedParams {
@@ -26,12 +27,23 @@ export const MODEL_LABELS: Record<string, string> = {
   'gpt-5.4-mini': 'GPT-5.4 Mini — $0.75/$4.50',
 };
 
+export const MODEL_CONTEXT_SIZES: Record<string, number> = {
+  'gpt-4o-mini': 128000,
+  'gpt-4o': 128000,
+  'gpt-4.1-nano': 1048576,
+  'gpt-4.1-mini': 1048576,
+  'gpt-4.1': 1048576,
+  'gpt-5.4': 128000,
+  'gpt-5.4-mini': 128000,
+};
+
 export const DEFAULT_AI_PARAMS: AIParams = {
   model: 'gpt-4o-mini',
   temperature: 1.0,
   maxTokens: 16384,
   repetitionPenalty: 0,
   systemPrompt: '',
+  contextLimit: 0,
 };
 
 export interface Expert {

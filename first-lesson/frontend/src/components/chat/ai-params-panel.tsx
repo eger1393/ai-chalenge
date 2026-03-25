@@ -1,7 +1,7 @@
 'use client';
 
 import { X, RotateCcw } from 'lucide-react';
-import { AIParams, AVAILABLE_MODELS, MODEL_LABELS, ConsiliumParams, Role } from '@/types/ai-params';
+import { AIParams, AVAILABLE_MODELS, MODEL_LABELS, MODEL_CONTEXT_SIZES, ConsiliumParams, Role } from '@/types/ai-params';
 import { ConsiliumPanel } from './consilium-panel';
 
 interface AIParamsPanelProps {
@@ -96,6 +96,33 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
             }}
             className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
+        </div>
+
+        {/* Context Limit */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-medium text-gray-700">Лимит контекста</label>
+            <span className="text-xs font-mono text-gray-500">
+              {params.contextLimit === 0 ? 'Авто' : `${(params.contextLimit / 1000).toFixed(0)}K`}
+            </span>
+          </div>
+          <p className="text-[10px] text-gray-400 mb-1.5">
+            Ограничение контекста диалога. 0 = используется весь контекст модели ({((MODEL_CONTEXT_SIZES[params.model] || 128000) / 1000).toFixed(0)}K).
+          </p>
+          <input
+            type="range"
+            min={0}
+            max={MODEL_CONTEXT_SIZES[params.model] || 128000}
+            step={1000}
+            value={params.contextLimit}
+            onChange={(e) => setParam('contextLimit', parseInt(e.target.value, 10))}
+            className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+          />
+          <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+            <span>Авто</span>
+            <span>{((MODEL_CONTEXT_SIZES[params.model] || 128000) / 2000).toFixed(0)}K</span>
+            <span>{((MODEL_CONTEXT_SIZES[params.model] || 128000) / 1000).toFixed(0)}K</span>
+          </div>
         </div>
 
         {/* Repetition Penalty */}

@@ -123,6 +123,9 @@ export async function sendMessage(
     if (params.systemPrompt !== undefined && params.systemPrompt !== '') {
       filtered.systemPrompt = params.systemPrompt;
     }
+    if (params.contextLimit !== undefined && params.contextLimit > 0) {
+      filtered.contextLimit = params.contextLimit;
+    }
     if (Object.keys(filtered).length > 0) {
       body.params = filtered;
     }

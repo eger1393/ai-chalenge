@@ -60,4 +60,10 @@ export class AIParamsDto {
   @IsString()
   @MaxLength(4000)
   systemPrompt?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1048576)
+  contextLimit?: number;
 }

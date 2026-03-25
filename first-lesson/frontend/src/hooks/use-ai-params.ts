@@ -17,6 +17,7 @@ function loadFromStorage(): AIParams | null {
       maxTokens: typeof parsed.maxTokens === 'number' ? parsed.maxTokens : DEFAULT_AI_PARAMS.maxTokens,
       repetitionPenalty: typeof parsed.repetitionPenalty === 'number' ? parsed.repetitionPenalty : DEFAULT_AI_PARAMS.repetitionPenalty,
       systemPrompt: typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : DEFAULT_AI_PARAMS.systemPrompt,
+      contextLimit: typeof parsed.contextLimit === 'number' ? parsed.contextLimit : DEFAULT_AI_PARAMS.contextLimit,
     };
   } catch {
     return null;
@@ -62,7 +63,8 @@ export function useAIParams() {
     params.temperature !== DEFAULT_AI_PARAMS.temperature ||
     params.maxTokens !== DEFAULT_AI_PARAMS.maxTokens ||
     params.repetitionPenalty !== DEFAULT_AI_PARAMS.repetitionPenalty ||
-    params.systemPrompt !== '';
+    params.systemPrompt !== '' ||
+    params.contextLimit !== DEFAULT_AI_PARAMS.contextLimit;
 
   return { params, setParam, resetParams, hasNonDefaults };
 }

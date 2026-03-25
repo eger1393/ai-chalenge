@@ -90,8 +90,10 @@ export class ChatService {
     messages: Array<{ role: string; content: string }>,
     model: string,
     systemPrompt?: string,
+    contextLimit?: number,
   ): { messages: Array<{ role: string; content: string }>; usedTokens: number; truncatedCount: number; truncatedTokens: number } {
-    const contextWindow = MODEL_CONTEXT_WINDOWS[model] || 128000;
+    const modelWindow = MODEL_CONTEXT_WINDOWS[model] || 128000;
+    const contextWindow = contextLimit && contextLimit > 0 ? Math.min(contextLimit, modelWindow) : modelWindow;
     const maxBudget = Math.floor(contextWindow * 0.80);
     const warningThreshold = Math.floor(contextWindow * 0.85);
 
@@ -192,6 +194,7 @@ export class ChatService {
     const frequencyPenalty = Math.max(-2, Math.min(2, (repetitionPenalty - 1.0) * 2));
 
     const systemPrompt = params?.systemPrompt?.trim()?.slice(0, 4000) || undefined;
+    const contextLimit = params?.contextLimit != null && params.contextLimit > 0 ? params.contextLimit : undefined;
 
     let conversationId = dto.conversationId;
     let contextWindow: { model: string; maxTokens: number; usedTokens: number; usagePercent: number } | undefined;
@@ -226,13 +229,14 @@ export class ChatService {
     let truncatedTokensCount = 0;
 
     if (conversationId) {
-      const result = this.truncateMessages(allMessages, model, systemPrompt);
+      const result = this.truncateMessages(allMessages, model, systemPrompt, contextLimit);
       truncatedMessages = result.messages;
       usedTokens = result.usedTokens;
       truncatedCount = result.truncatedCount;
       truncatedTokensCount = result.truncatedTokens;
 
-      const windowSize = MODEL_CONTEXT_WINDOWS[model] || 128000;
+      const modelWindowSize = MODEL_CONTEXT_WINDOWS[model] || 128000;
+      const windowSize = contextLimit ? Math.min(contextLimit, modelWindowSize) : modelWindowSize;
       contextWindow = {
         model,
         maxTokens: windowSize,
