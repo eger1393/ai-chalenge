@@ -179,6 +179,8 @@ export function ChatLayout() {
                     usage={msg.usage}
                     durationMs={msg.durationMs}
                     truncation={msg.truncation}
+                    contextUsedTokens={msg.contextUsedTokens}
+                    contextMaxTokens={msg.contextMaxTokens}
                   />
                 ))}
                 {chat.isLoading && <TypingIndicator />}

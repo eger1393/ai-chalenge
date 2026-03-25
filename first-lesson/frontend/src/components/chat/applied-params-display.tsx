@@ -12,14 +12,22 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+function formatTokensShort(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return n.toString();
+}
+
 interface AppliedParamsDisplayProps {
   appliedParams?: AppliedParams;
   cost?: number;
   usage?: Usage;
   durationMs?: number;
+  contextUsedTokens?: number;
+  contextMaxTokens?: number;
 }
 
-export function AppliedParamsDisplay({ appliedParams, cost, usage, durationMs }: AppliedParamsDisplayProps) {
+export function AppliedParamsDisplay({ appliedParams, cost, usage, durationMs, contextUsedTokens, contextMaxTokens }: AppliedParamsDisplayProps) {
   const parts: string[] = [];
 
   if (appliedParams) {
@@ -51,8 +59,9 @@ export function AppliedParamsDisplay({ appliedParams, cost, usage, durationMs }:
   const hasCost = cost != null && cost > 0;
   const hasUsage = usage != null && usage.totalTokens > 0;
   const hasDuration = durationMs != null && durationMs > 0;
+  const hasContext = contextMaxTokens != null && contextMaxTokens > 0;
 
-  if (parts.length === 0 && !hasCost && !hasUsage && !hasDuration) return null;
+  if (parts.length === 0 && !hasCost && !hasUsage && !hasDuration && !hasContext) return null;
 
   return (
     <div className="text-xs font-mono text-gray-400 mb-1 ml-11 flex flex-wrap gap-x-1 items-center">
@@ -80,6 +89,14 @@ export function AppliedParamsDisplay({ appliedParams, cost, usage, durationMs }:
         <>
           <span>|</span>
           <span className="text-emerald-600">{formatCost(cost!)}</span>
+        </>
+      )}
+      {hasContext && (
+        <>
+          <span>|</span>
+          <span className={`${(contextUsedTokens || 0) / contextMaxTokens! > 0.85 ? 'text-red-500' : (contextUsedTokens || 0) / contextMaxTokens! > 0.6 ? 'text-amber-500' : 'text-violet-500'}`}>
+            ctx:{formatTokensShort(contextUsedTokens || 0)}/{formatTokensShort(contextMaxTokens!)} ({Math.round(((contextUsedTokens || 0) / contextMaxTokens!) * 100)}%)
+          </span>
         </>
       )}
     </div>

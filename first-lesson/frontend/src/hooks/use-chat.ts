@@ -17,6 +17,8 @@ export interface Message {
   usage?: Usage;
   durationMs?: number;
   truncation?: { droppedMessages: number; droppedTokens: number };
+  contextUsedTokens?: number;
+  contextMaxTokens?: number;
 }
 
 export function useChat() {
@@ -59,6 +61,8 @@ export function useChat() {
             droppedMessages: m.truncatedMessages,
             droppedTokens: m.truncatedTokens || 0,
           } : undefined,
+          contextUsedTokens: m.contextUsedTokens || undefined,
+          contextMaxTokens: m.contextMaxTokens || undefined,
         })),
       );
       const lastAssistantWithContext = [...detail.messages].reverse().find(
@@ -182,6 +186,8 @@ export function useChat() {
             usage: response.usage,
             durationMs: response.durationMs,
             truncation: response.truncation,
+            contextUsedTokens: response.contextWindow?.usedTokens,
+            contextMaxTokens: response.contextWindow?.maxTokens,
           };
 
           setMessages((prev) => [...prev, assistantMessage]);
@@ -209,6 +215,8 @@ export function useChat() {
             usage: response.usage,
             durationMs: response.durationMs,
             truncation: response.truncation,
+            contextUsedTokens: response.contextWindow?.usedTokens,
+            contextMaxTokens: response.contextWindow?.maxTokens,
           };
 
           setMessages((prev) => [...prev, assistantMessage]);

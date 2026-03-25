@@ -16,9 +16,11 @@ interface MessageBubbleProps {
   usage?: Usage;
   durationMs?: number;
   truncation?: { droppedMessages: number; droppedTokens: number };
+  contextUsedTokens?: number;
+  contextMaxTokens?: number;
 }
 
-export function MessageBubble({ role, content, error, appliedParams, expertOpinions, isConsilium, cost, usage, durationMs, truncation }: MessageBubbleProps) {
+export function MessageBubble({ role, content, error, appliedParams, expertOpinions, isConsilium, cost, usage, durationMs, truncation, contextUsedTokens, contextMaxTokens }: MessageBubbleProps) {
   if (role === 'user') {
     return (
       <div className="flex justify-end mb-4">
@@ -36,7 +38,7 @@ export function MessageBubble({ role, content, error, appliedParams, expertOpini
           Контекст обрезан: удалено {truncation.droppedMessages} сообщ. (~{truncation.droppedTokens} tok)
         </div>
       )}
-      <AppliedParamsDisplay appliedParams={appliedParams} cost={cost} usage={usage} durationMs={durationMs} />
+      <AppliedParamsDisplay appliedParams={appliedParams} cost={cost} usage={usage} durationMs={durationMs} contextUsedTokens={contextUsedTokens} contextMaxTokens={contextMaxTokens} />
       {isConsilium && expertOpinions && expertOpinions.length > 0 && (
         <ExpertOpinionsAccordion opinions={expertOpinions} />
       )}
