@@ -59,6 +59,11 @@ export const DEFAULT_CONSILIUM: ConsiliumParams = {
   ],
 };
 
+export interface Truncation {
+  droppedMessages: number;
+  droppedTokens: number;
+}
+
 export interface ExpertOpinion {
   expert: string;
   reply: string;

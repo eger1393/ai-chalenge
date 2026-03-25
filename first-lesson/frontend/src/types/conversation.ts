@@ -34,6 +34,10 @@ export interface ConversationMessage {
   appliedModel?: string;
   appliedTemperature?: number;
   appliedMaxTokens?: number;
+  contextUsedTokens?: number;
+  contextMaxTokens?: number;
+  truncatedMessages?: number;
+  truncatedTokens?: number;
 }
 
 export interface ConversationTotals {

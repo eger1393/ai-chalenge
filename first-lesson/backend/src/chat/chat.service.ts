@@ -90,7 +90,7 @@ export class ChatService {
     messages: Array<{ role: string; content: string }>,
     model: string,
     systemPrompt?: string,
-  ): { messages: Array<{ role: string; content: string }>; usedTokens: number } {
+  ): { messages: Array<{ role: string; content: string }>; usedTokens: number; truncatedCount: number; truncatedTokens: number } {
     const contextWindow = MODEL_CONTEXT_WINDOWS[model] || 128000;
     const maxBudget = Math.floor(contextWindow * 0.80);
     const warningThreshold = Math.floor(contextWindow * 0.85);
@@ -101,7 +101,7 @@ export class ChatService {
     }
 
     if (totalTokens <= warningThreshold) {
-      return { messages, usedTokens: totalTokens };
+      return { messages, usedTokens: totalTokens, truncatedCount: 0, truncatedTokens: 0 };
     }
 
     const first2 = messages.slice(0, 2);
@@ -121,7 +121,7 @@ export class ChatService {
     }
 
     const truncated = [...first2, ...kept];
-    return { messages: truncated, usedTokens: budgetUsed };
+    return { messages: truncated, usedTokens: budgetUsed, truncatedCount: messages.length - truncated.length, truncatedTokens: totalTokens - budgetUsed };
   }
 
   private async callOpenAI(
@@ -222,11 +222,15 @@ export class ChatService {
 
     let truncatedMessages: Array<{ role: string; content: string }>;
     let usedTokens: number;
+    let truncatedCount = 0;
+    let truncatedTokensCount = 0;
 
     if (conversationId) {
       const result = this.truncateMessages(allMessages, model, systemPrompt);
       truncatedMessages = result.messages;
       usedTokens = result.usedTokens;
+      truncatedCount = result.truncatedCount;
+      truncatedTokensCount = result.truncatedTokens;
 
       const windowSize = MODEL_CONTEXT_WINDOWS[model] || 128000;
       contextWindow = {
@@ -293,6 +297,10 @@ export class ChatService {
         appliedModel: model,
         appliedTemperature: temperature,
         appliedMaxTokens: maxTokens,
+        contextUsedTokens: contextWindow?.usedTokens || 0,
+        contextMaxTokens: contextWindow?.maxTokens || 0,
+        truncatedMessages: truncatedCount,
+        truncatedTokens: truncatedTokensCount,
       });
 
       const messageCount = await this.conversationService.getMessageCount(conversationId);
@@ -333,6 +341,12 @@ export class ChatService {
     }
     if (contextWindow) {
       result.contextWindow = contextWindow;
+    }
+    if (truncatedCount > 0) {
+      result.truncation = {
+        droppedMessages: truncatedCount,
+        droppedTokens: truncatedTokensCount,
+      };
     }
 
     return result;

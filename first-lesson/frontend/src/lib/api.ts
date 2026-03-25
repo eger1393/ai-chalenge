@@ -128,7 +128,7 @@ export async function sendMessage(
     }
   }
 
-  return apiRequest<{ reply: string; usage: Usage; appliedParams?: AppliedParams; cost?: number; durationMs?: number; contextWindow?: ContextWindow; conversationId?: string; conversationTotals?: ConversationTotals }>('/chat/message', {
+  return apiRequest<{ reply: string; usage: Usage; appliedParams?: AppliedParams; cost?: number; durationMs?: number; contextWindow?: ContextWindow; conversationId?: string; conversationTotals?: ConversationTotals; truncation?: { droppedMessages: number; droppedTokens: number } }>('/chat/message', {
     method: 'POST',
     body: JSON.stringify(body),
   });
@@ -174,6 +174,7 @@ export async function sendConsilium(
     contextWindow?: ContextWindow;
     conversationId?: string;
     conversationTotals?: ConversationTotals;
+    truncation?: { droppedMessages: number; droppedTokens: number };
   }>('/chat/consilium', {
     method: 'POST',
     body: JSON.stringify(body),

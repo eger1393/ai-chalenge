@@ -113,6 +113,15 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           ALTER TABLE messages ADD COLUMN IF NOT EXISTS applied_max_tokens INTEGER;
         `,
       },
+      {
+        name: '003_add_context_truncation',
+        sql: `
+          ALTER TABLE messages ADD COLUMN IF NOT EXISTS context_used_tokens INTEGER DEFAULT 0;
+          ALTER TABLE messages ADD COLUMN IF NOT EXISTS context_max_tokens INTEGER DEFAULT 0;
+          ALTER TABLE messages ADD COLUMN IF NOT EXISTS truncated_messages INTEGER DEFAULT 0;
+          ALTER TABLE messages ADD COLUMN IF NOT EXISTS truncated_tokens INTEGER DEFAULT 0;
+        `,
+      },
     ];
   }
 }

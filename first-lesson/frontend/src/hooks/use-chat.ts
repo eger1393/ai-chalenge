@@ -16,6 +16,7 @@ export interface Message {
   cost?: number;
   usage?: Usage;
   durationMs?: number;
+  truncation?: { droppedMessages: number; droppedTokens: number };
 }
 
 export function useChat() {
@@ -54,8 +55,25 @@ export function useChat() {
             temperature: m.appliedTemperature ?? 1.0,
             maxTokens: m.appliedMaxTokens ?? 16384,
           } : undefined,
+          truncation: m.truncatedMessages ? {
+            droppedMessages: m.truncatedMessages,
+            droppedTokens: m.truncatedTokens || 0,
+          } : undefined,
         })),
       );
+      const lastAssistantWithContext = [...detail.messages].reverse().find(
+        m => m.role === 'assistant' && m.contextMaxTokens
+      );
+      if (lastAssistantWithContext) {
+        setContextWindow({
+          model: lastAssistantWithContext.appliedModel || detail.model,
+          maxTokens: lastAssistantWithContext.contextMaxTokens!,
+          usedTokens: lastAssistantWithContext.contextUsedTokens || 0,
+          usagePercent: Math.round(
+            ((lastAssistantWithContext.contextUsedTokens || 0) / lastAssistantWithContext.contextMaxTokens!) * 100
+          ),
+        });
+      }
       if (detail.conversationTotals) {
         setConversationTotals(detail.conversationTotals);
       }
@@ -163,6 +181,7 @@ export function useChat() {
             cost: response.cost,
             usage: response.usage,
             durationMs: response.durationMs,
+            truncation: response.truncation,
           };
 
           setMessages((prev) => [...prev, assistantMessage]);
@@ -189,6 +208,7 @@ export function useChat() {
             cost: response.cost,
             usage: response.usage,
             durationMs: response.durationMs,
+            truncation: response.truncation,
           };
 
           setMessages((prev) => [...prev, assistantMessage]);

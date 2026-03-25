@@ -178,6 +178,7 @@ export function ChatLayout() {
                     cost={msg.cost}
                     usage={msg.usage}
                     durationMs={msg.durationMs}
+                    truncation={msg.truncation}
                   />
                 ))}
                 {chat.isLoading && <TypingIndicator />}

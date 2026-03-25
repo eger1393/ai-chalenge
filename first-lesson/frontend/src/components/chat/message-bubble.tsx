@@ -15,9 +15,10 @@ interface MessageBubbleProps {
   cost?: number;
   usage?: Usage;
   durationMs?: number;
+  truncation?: { droppedMessages: number; droppedTokens: number };
 }
 
-export function MessageBubble({ role, content, error, appliedParams, expertOpinions, isConsilium, cost, usage, durationMs }: MessageBubbleProps) {
+export function MessageBubble({ role, content, error, appliedParams, expertOpinions, isConsilium, cost, usage, durationMs, truncation }: MessageBubbleProps) {
   if (role === 'user') {
     return (
       <div className="flex justify-end mb-4">
@@ -30,6 +31,11 @@ export function MessageBubble({ role, content, error, appliedParams, expertOpini
 
   return (
     <div className="mb-4">
+      {truncation && truncation.droppedMessages > 0 && (
+        <div className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 mb-1 ml-11">
+          Контекст обрезан: удалено {truncation.droppedMessages} сообщ. (~{truncation.droppedTokens} tok)
+        </div>
+      )}
       <AppliedParamsDisplay appliedParams={appliedParams} cost={cost} usage={usage} durationMs={durationMs} />
       {isConsilium && expertOpinions && expertOpinions.length > 0 && (
         <ExpertOpinionsAccordion opinions={expertOpinions} />
