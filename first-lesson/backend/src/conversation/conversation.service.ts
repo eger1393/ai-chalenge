@@ -96,8 +96,23 @@ export class ConversationService {
     }
 
     const messages = messageRows.map((m) => ({
-      ...m,
-      expertOpinions: m.is_consilium ? (expertOpinions[m.id] || []) : undefined,
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      model: m.model,
+      tokenCount: m.token_count,
+      promptTokens: m.prompt_tokens,
+      completionTokens: m.completion_tokens,
+      cost: m.cost,
+      isConsilium: m.is_consilium,
+      createdAt: m.created_at,
+      expertOpinions: m.is_consilium
+        ? (expertOpinions[m.id] || []).map((o: any) => ({
+            expert: o.expert_name,
+            reply: o.content,
+            error: o.is_error,
+          }))
+        : undefined,
     }));
 
     return { ...conversation, messages };
@@ -233,5 +248,26 @@ export class ConversationService {
       [conversationId],
     );
     return rows[0].count;
+  }
+
+  async getConversationTotals(conversationId: string) {
+    const { rows } = await this.db.query(
+      `SELECT
+         COUNT(*)::int AS total_messages,
+         COALESCE(SUM(token_count), 0)::int AS total_tokens,
+         COALESCE(SUM(prompt_tokens), 0)::int AS total_prompt_tokens,
+         COALESCE(SUM(completion_tokens), 0)::int AS total_completion_tokens,
+         COALESCE(SUM(cost), 0)::float AS total_cost
+       FROM messages
+       WHERE conversation_id = $1`,
+      [conversationId],
+    );
+    return {
+      totalMessages: rows[0].total_messages,
+      totalTokens: rows[0].total_tokens,
+      totalPromptTokens: rows[0].total_prompt_tokens,
+      totalCompletionTokens: rows[0].total_completion_tokens,
+      totalCost: rows[0].total_cost,
+    };
   }
 }

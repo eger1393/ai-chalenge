@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { sendMessage, sendConsilium, createConversation, getConversation } from '@/lib/api';
 import { AIParams, AppliedParams, ConsiliumParams, DEFAULT_AI_PARAMS, ExpertOpinion, Usage } from '@/types/ai-params';
-import { ContextWindow } from '@/types/conversation';
+import { ContextWindow, ConversationTotals } from '@/types/conversation';
 
 export interface Message {
   id: string;
@@ -24,6 +24,7 @@ export function useChat() {
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [contextWindow, setContextWindow] = useState<ContextWindow | null>(null);
+  const [conversationTotals, setConversationTotals] = useState<ConversationTotals | null>(null);
   const conversationIdRef = useRef<string | null>(null);
 
   const loadConversation = useCallback(async (id: string) => {
@@ -40,6 +41,12 @@ export function useChat() {
           cost: m.cost,
           isConsilium: m.isConsilium,
           expertOpinions: m.expertOpinions,
+          durationMs: m.durationMs,
+          usage: m.promptTokens || m.completionTokens ? {
+            promptTokens: m.promptTokens || 0,
+            completionTokens: m.completionTokens || 0,
+            totalTokens: (m.promptTokens || 0) + (m.completionTokens || 0),
+          } : m.usage,
         })),
       );
     } catch (e) {
@@ -54,6 +61,7 @@ export function useChat() {
     conversationIdRef.current = null;
     setMessages([]);
     setContextWindow(null);
+    setConversationTotals(null);
   }, []);
 
   const send = useCallback(
@@ -131,6 +139,9 @@ export function useChat() {
           if (response.contextWindow) {
             setContextWindow(response.contextWindow);
           }
+          if (response.conversationTotals) {
+            setConversationTotals(response.conversationTotals);
+          }
 
           const assistantMessage: Message = {
             id: (Date.now() + 1).toString(),
@@ -155,6 +166,9 @@ export function useChat() {
 
           if (response.contextWindow) {
             setContextWindow(response.contextWindow);
+          }
+          if (response.conversationTotals) {
+            setConversationTotals(response.conversationTotals);
           }
 
           const assistantMessage: Message = {
@@ -200,6 +214,7 @@ export function useChat() {
     conversationId,
     setConversationId,
     contextWindow,
+    conversationTotals,
     loadConversation,
     startNew,
   };

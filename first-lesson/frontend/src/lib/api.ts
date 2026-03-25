@@ -1,6 +1,6 @@
 import { setTokens, getAccessToken, getRefreshToken, clearTokens } from './tokens';
 import { AIParams, AppliedParams, DEFAULT_AI_PARAMS, Expert, Role, Usage } from '@/types/ai-params';
-import { Conversation, ConversationDetail, ContextWindow } from '@/types/conversation';
+import { Conversation, ConversationDetail, ConversationTotals, ContextWindow } from '@/types/conversation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
@@ -128,7 +128,7 @@ export async function sendMessage(
     }
   }
 
-  return apiRequest<{ reply: string; usage: Usage; appliedParams?: AppliedParams; cost?: number; durationMs?: number; contextWindow?: ContextWindow; conversationId?: string }>('/chat/message', {
+  return apiRequest<{ reply: string; usage: Usage; appliedParams?: AppliedParams; cost?: number; durationMs?: number; contextWindow?: ContextWindow; conversationId?: string; conversationTotals?: ConversationTotals }>('/chat/message', {
     method: 'POST',
     body: JSON.stringify(body),
   });
@@ -173,6 +173,7 @@ export async function sendConsilium(
     durationMs?: number;
     contextWindow?: ContextWindow;
     conversationId?: string;
+    conversationTotals?: ConversationTotals;
   }>('/chat/consilium', {
     method: 'POST',
     body: JSON.stringify(body),

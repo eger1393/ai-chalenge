@@ -148,7 +148,7 @@ export function ChatLayout() {
           </header>
 
           {/* Context indicator */}
-          <ContextIndicator contextWindow={chat.contextWindow} />
+          <ContextIndicator contextWindow={chat.contextWindow} conversationTotals={chat.conversationTotals} />
 
           {/* Messages */}
           <div
@@ -176,6 +176,8 @@ export function ChatLayout() {
                     expertOpinions={msg.expertOpinions}
                     isConsilium={msg.isConsilium}
                     cost={msg.cost}
+                    usage={msg.usage}
+                    durationMs={msg.durationMs}
                   />
                 ))}
                 {chat.isLoading && <TypingIndicator />}

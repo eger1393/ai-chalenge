@@ -1,5 +1,6 @@
 import { Injectable, BadGatewayException, BadRequestException, GatewayTimeoutException, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
+import { encodingForModel, getEncoding } from 'js-tiktoken';
 import { MessageDto } from './dto/message.dto';
 import { ALLOWED_MODELS, DEFAULT_MODEL, MODEL_PRICING, MODEL_CONTEXT_WINDOWS } from './dto/ai-params.dto';
 import { ConsiliumMessageDto } from './dto/consilium.dto';
@@ -10,6 +11,7 @@ import { ConversationService } from '../conversation/conversation.service';
 export class ChatService {
   private readonly logger = new Logger(ChatService.name);
   private openai: OpenAI;
+  private encodingCache: Map<string, ReturnType<typeof getEncoding>> = new Map();
 
   constructor(private readonly conversationService: ConversationService) {
     this.openai = new OpenAI({
@@ -47,8 +49,41 @@ export class ChatService {
     };
   }
 
-  private estimateTokens(text: string): number {
-    return Math.ceil(text.length / 4);
+  private getEncodingForModel(model: string): ReturnType<typeof getEncoding> {
+    const cached = this.encodingCache.get(model);
+    if (cached) return cached;
+
+    let enc: ReturnType<typeof getEncoding>;
+    try {
+      enc = encodingForModel(model as Parameters<typeof encodingForModel>[0]);
+    } catch {
+      enc = getEncoding('cl100k_base');
+    }
+    this.encodingCache.set(model, enc);
+    return enc;
+  }
+
+  private countTokens(text: string, model: string): number {
+    const enc = this.getEncodingForModel(model);
+    return enc.encode(text).length;
+  }
+
+  private countTokensBreakdown(
+    historyMessages: Array<{ role: string; content: string }>,
+    currentMessage: string,
+    systemPrompt: string | undefined,
+    model: string,
+  ): { currentMessageTokens: number; historyTokens: number; systemPromptTokens: number } {
+    const currentMessageTokens = this.countTokens(currentMessage, model);
+
+    let historyTokens = 0;
+    for (const msg of historyMessages) {
+      historyTokens += this.countTokens(msg.content, model) + 4; // +4 overhead per message
+    }
+
+    const systemPromptTokens = systemPrompt ? this.countTokens(systemPrompt, model) : 0;
+
+    return { currentMessageTokens, historyTokens, systemPromptTokens };
   }
 
   private truncateMessages(
@@ -60,9 +95,9 @@ export class ChatService {
     const maxBudget = Math.floor(contextWindow * 0.80);
     const warningThreshold = Math.floor(contextWindow * 0.85);
 
-    let totalTokens = systemPrompt ? this.estimateTokens(systemPrompt) : 0;
+    let totalTokens = systemPrompt ? this.countTokens(systemPrompt, model) : 0;
     for (const msg of messages) {
-      totalTokens += this.estimateTokens(msg.content);
+      totalTokens += this.countTokens(msg.content, model);
     }
 
     if (totalTokens <= warningThreshold) {
@@ -72,14 +107,14 @@ export class ChatService {
     const first2 = messages.slice(0, 2);
     const rest = messages.slice(2);
 
-    let budgetUsed = systemPrompt ? this.estimateTokens(systemPrompt) : 0;
+    let budgetUsed = systemPrompt ? this.countTokens(systemPrompt, model) : 0;
     for (const msg of first2) {
-      budgetUsed += this.estimateTokens(msg.content);
+      budgetUsed += this.countTokens(msg.content, model);
     }
 
     const kept: Array<{ role: string; content: string }> = [];
     for (let i = rest.length - 1; i >= 0; i--) {
-      const tokens = this.estimateTokens(rest[i].content);
+      const tokens = this.countTokens(rest[i].content, model);
       if (budgetUsed + tokens > maxBudget) break;
       budgetUsed += tokens;
       kept.unshift(rest[i]);
@@ -213,6 +248,13 @@ export class ChatService {
       })),
     ];
 
+    const tokenBreakdown = this.countTokensBreakdown(
+      historyMessages,
+      dto.message,
+      systemPrompt,
+      model,
+    );
+
     this.logger.log(`sendMessage: model=${model} msgLen=${dto.message.length}`);
 
     const startTime = Date.now();
@@ -236,7 +278,9 @@ export class ChatService {
     this.logger.log(`sendMessage done: model=${model} tokens=${totalTokens} cost=$${cost.toFixed(4)} duration=${durationMs}ms`);
 
     if (conversationId) {
-      await this.conversationService.addMessage(conversationId, 'user', dto.message);
+      await this.conversationService.addMessage(conversationId, 'user', dto.message, {
+        tokenCount: tokenBreakdown.currentMessageTokens,
+      });
       await this.conversationService.addMessage(conversationId, 'assistant', reply, {
         model,
         tokenCount: totalTokens,
@@ -263,7 +307,14 @@ export class ChatService {
 
     const result: Record<string, unknown> = {
       reply,
-      usage: { promptTokens, completionTokens, totalTokens },
+      usage: {
+        promptTokens,
+        completionTokens,
+        totalTokens,
+        currentMessageTokens: tokenBreakdown.currentMessageTokens,
+        historyTokens: tokenBreakdown.historyTokens,
+        systemPromptTokens: tokenBreakdown.systemPromptTokens,
+      },
       appliedParams,
       cost,
       durationMs,
@@ -271,6 +322,8 @@ export class ChatService {
 
     if (conversationId) {
       result.conversationId = conversationId;
+      const totals = await this.conversationService.getConversationTotals(conversationId);
+      result.conversationTotals = totals;
     }
     if (contextWindow) {
       result.contextWindow = contextWindow;
@@ -454,6 +507,8 @@ export class ChatService {
 
       if (conversationId) {
         result.conversationId = conversationId;
+        const totals = await this.conversationService.getConversationTotals(conversationId);
+        result.conversationTotals = totals;
       }
 
       return result;

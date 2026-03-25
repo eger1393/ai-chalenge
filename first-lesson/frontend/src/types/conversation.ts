@@ -1,3 +1,5 @@
+import { Usage } from './ai-params';
+
 export interface Conversation {
   id: string;
   title: string;
@@ -22,6 +24,19 @@ export interface ConversationMessage {
   isConsilium?: boolean;
   createdAt: string;
   expertOpinions?: Array<{ expert: string; reply: string; error?: boolean }>;
+  usage?: Usage;
+  durationMs?: number;
+  tokenCount?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+}
+
+export interface ConversationTotals {
+  totalMessages: number;
+  totalTokens: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalCost: number;
 }
 
 export interface ConversationDetail extends Conversation {

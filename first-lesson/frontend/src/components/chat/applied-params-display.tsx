@@ -61,7 +61,13 @@ export function AppliedParamsDisplay({ appliedParams, cost, usage, durationMs }:
         <>
           {parts.length > 0 && <span>|</span>}
           <span className="text-sky-500">{usage!.totalTokens} tok</span>
-          <span className="text-gray-300 text-[10px]">({usage!.promptTokens}↑ {usage!.completionTokens}↓)</span>
+          {usage!.currentMessageTokens != null ? (
+            <span className="text-gray-300 text-[10px]">
+              (запрос:{usage!.currentMessageTokens} история:{usage!.historyTokens} ответ:{usage!.completionTokens})
+            </span>
+          ) : (
+            <span className="text-gray-300 text-[10px]">({usage!.promptTokens}↑ {usage!.completionTokens}↓)</span>
+          )}
         </>
       )}
       {hasDuration && (
