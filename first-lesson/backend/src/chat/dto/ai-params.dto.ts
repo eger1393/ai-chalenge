@@ -66,4 +66,16 @@ export class AIParamsDto {
   @Min(0)
   @Max(1048576)
   contextLimit?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1)
+  summaryMode?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  @Max(100)
+  summaryKeepLast?: number;
 }

@@ -86,6 +86,31 @@ export class ChatService {
     return { currentMessageTokens, historyTokens, systemPromptTokens };
   }
 
+  private async generateSummary(
+    existingSummary: string | null,
+    newMessages: Array<{ role: string; content: string }>,
+  ): Promise<string> {
+    const formattedMessages = newMessages
+      .map(m => `${m.role === 'user' ? 'Пользователь' : 'Ассистент'}: ${m.content.slice(0, 500)}`)
+      .join('\n');
+
+    const userContent = existingSummary
+      ? `Предыдущее краткое содержание:\n${existingSummary}\n\nНовые сообщения для добавления в сводку:\n${formattedMessages}`
+      : `Сообщения для суммаризации:\n${formattedMessages}`;
+
+    const response = await this.callOpenAI(
+      'gpt-4o-mini',
+      [
+        { role: 'system', content: 'Ты суммаризатор диалогов. Создай краткое содержание диалога, сохранив ключевые факты, решения, вопросы и контекст. Будь кратким но информативным. Максимум 500 слов.' },
+        { role: 'user', content: userContent },
+      ],
+      0.3,
+      2048,
+    );
+
+    return response.choices?.[0]?.message?.content || existingSummary || '';
+  }
+
   private truncateMessages(
     messages: Array<{ role: string; content: string }>,
     model: string,
@@ -219,6 +244,32 @@ export class ChatService {
       }));
     } else {
       historyMessages = [];
+    }
+
+    const summaryMode = params?.summaryMode === 1;
+    const summaryKeepLast = params?.summaryKeepLast ?? 10;
+
+    if (summaryMode && conversationId && historyMessages.length > summaryKeepLast) {
+      const cutoff = historyMessages.length - summaryKeepLast;
+      const recentMessages = historyMessages.slice(cutoff);
+
+      const { summary: existingSummary, summaryUpToIndex } = await this.conversationService.getSummary(conversationId);
+
+      if (summaryUpToIndex < cutoff) {
+        const unsummarized = historyMessages.slice(summaryUpToIndex, cutoff);
+        const newSummary = await this.generateSummary(existingSummary, unsummarized);
+        await this.conversationService.updateSummary(conversationId, newSummary, cutoff);
+
+        historyMessages = [
+          { role: 'user', content: `[Краткое содержание предыдущей части диалога]\n${newSummary}` },
+          ...recentMessages,
+        ];
+      } else if (existingSummary) {
+        historyMessages = [
+          { role: 'user', content: `[Краткое содержание предыдущей части диалога]\n${existingSummary}` },
+          ...recentMessages,
+        ];
+      }
     }
 
     const allMessages = [...historyMessages, { role: 'user', content: dto.message }];

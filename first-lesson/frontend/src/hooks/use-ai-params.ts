@@ -18,6 +18,8 @@ function loadFromStorage(): AIParams | null {
       repetitionPenalty: typeof parsed.repetitionPenalty === 'number' ? parsed.repetitionPenalty : DEFAULT_AI_PARAMS.repetitionPenalty,
       systemPrompt: typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : DEFAULT_AI_PARAMS.systemPrompt,
       contextLimit: typeof parsed.contextLimit === 'number' ? parsed.contextLimit : DEFAULT_AI_PARAMS.contextLimit,
+      summaryMode: typeof parsed.summaryMode === 'boolean' ? parsed.summaryMode : DEFAULT_AI_PARAMS.summaryMode,
+      summaryKeepLast: typeof parsed.summaryKeepLast === 'number' ? parsed.summaryKeepLast : DEFAULT_AI_PARAMS.summaryKeepLast,
     };
   } catch {
     return null;
@@ -64,7 +66,9 @@ export function useAIParams() {
     params.maxTokens !== DEFAULT_AI_PARAMS.maxTokens ||
     params.repetitionPenalty !== DEFAULT_AI_PARAMS.repetitionPenalty ||
     params.systemPrompt !== '' ||
-    params.contextLimit !== DEFAULT_AI_PARAMS.contextLimit;
+    params.contextLimit !== DEFAULT_AI_PARAMS.contextLimit ||
+    params.summaryMode !== DEFAULT_AI_PARAMS.summaryMode ||
+    params.summaryKeepLast !== DEFAULT_AI_PARAMS.summaryKeepLast;
 
   return { params, setParam, resetParams, hasNonDefaults };
 }

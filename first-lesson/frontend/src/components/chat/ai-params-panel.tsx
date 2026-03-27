@@ -125,6 +125,52 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
           </div>
         </div>
 
+        {/* Summary Mode */}
+        <div className="border-t border-gray-200 pt-4">
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <label className="text-xs font-medium text-gray-700">Режим суммаризации</label>
+              <p className="text-[10px] text-gray-400">Старые сообщения заменяются краткой сводкой</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setParam('summaryMode', !params.summaryMode)}
+              className={`relative w-10 h-5 rounded-full transition-colors ${
+                params.summaryMode ? 'bg-indigo-600' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                  params.summaryMode ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+          {params.summaryMode && (
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-gray-700">Хранить последних</label>
+                <span className="text-xs font-mono text-gray-500">{params.summaryKeepLast} сообщ.</span>
+              </div>
+              <p className="text-[10px] text-gray-400 mb-1.5">Сколько последних сообщений хранить дословно. Остальные заменяются сводкой.</p>
+              <input
+                type="range"
+                min={2}
+                max={50}
+                step={2}
+                value={params.summaryKeepLast}
+                onChange={(e) => setParam('summaryKeepLast', parseInt(e.target.value, 10))}
+                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+              />
+              <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                <span>2</span>
+                <span>26</span>
+                <span>50</span>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Repetition Penalty */}
         <div>
           <div className="flex items-center justify-between mb-1">

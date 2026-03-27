@@ -126,6 +126,10 @@ export async function sendMessage(
     if (params.contextLimit !== undefined && params.contextLimit > 0) {
       filtered.contextLimit = params.contextLimit;
     }
+    if (params.summaryMode) {
+      filtered.summaryMode = 1;
+      filtered.summaryKeepLast = params.summaryKeepLast;
+    }
     if (Object.keys(filtered).length > 0) {
       body.params = filtered;
     }

@@ -281,6 +281,30 @@ export class ConversationService {
     return rows[0].count;
   }
 
+  async getSummary(conversationId: string): Promise<{ summary: string | null; summaryUpToIndex: number }> {
+    const { rows } = await this.db.query(
+      'SELECT summary, summary_up_to_index FROM conversations WHERE id = $1',
+      [conversationId],
+    );
+    if (rows.length === 0) return { summary: null, summaryUpToIndex: 0 };
+    return { summary: rows[0].summary, summaryUpToIndex: rows[0].summary_up_to_index || 0 };
+  }
+
+  async updateSummary(conversationId: string, summary: string, upToIndex: number): Promise<void> {
+    await this.db.query(
+      'UPDATE conversations SET summary = $1, summary_up_to_index = $2 WHERE id = $3',
+      [summary, upToIndex, conversationId],
+    );
+  }
+
+  async getAllMessages(conversationId: string): Promise<Array<{ role: string; content: string }>> {
+    const { rows } = await this.db.query(
+      'SELECT role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC',
+      [conversationId],
+    );
+    return rows;
+  }
+
   async getConversationTotals(conversationId: string) {
     const { rows } = await this.db.query(
       `SELECT

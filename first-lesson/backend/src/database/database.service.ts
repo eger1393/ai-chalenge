@@ -122,6 +122,13 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           ALTER TABLE messages ADD COLUMN IF NOT EXISTS truncated_tokens INTEGER DEFAULT 0;
         `,
       },
+      {
+        name: '004_add_conversation_summary',
+        sql: `
+          ALTER TABLE conversations ADD COLUMN IF NOT EXISTS summary TEXT;
+          ALTER TABLE conversations ADD COLUMN IF NOT EXISTS summary_up_to_index INTEGER DEFAULT 0;
+        `,
+      },
     ];
   }
 }

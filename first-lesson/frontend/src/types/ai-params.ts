@@ -5,6 +5,8 @@ export interface AIParams {
   repetitionPenalty: number;
   systemPrompt: string;
   contextLimit: number;
+  summaryMode: boolean;
+  summaryKeepLast: number;
 }
 
 export interface AppliedParams {
@@ -44,6 +46,8 @@ export const DEFAULT_AI_PARAMS: AIParams = {
   repetitionPenalty: 0,
   systemPrompt: '',
   contextLimit: 0,
+  summaryMode: false,
+  summaryKeepLast: 10,
 };
 
 export interface Expert {
