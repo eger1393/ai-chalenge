@@ -1,6 +1,6 @@
 import { setTokens, getAccessToken, getRefreshToken, clearTokens } from './tokens';
 import { AIParams, AppliedParams, DEFAULT_AI_PARAMS, Expert, Role, Usage } from '@/types/ai-params';
-import { Conversation, ConversationDetail, ConversationTotals, ContextWindow } from '@/types/conversation';
+import { Conversation, ConversationBranch, ConversationDetail, ConversationFact, ConversationTotals, ContextWindow } from '@/types/conversation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
@@ -126,9 +126,15 @@ export async function sendMessage(
     if (params.contextLimit !== undefined && params.contextLimit > 0) {
       filtered.contextLimit = params.contextLimit;
     }
-    if (params.summaryMode) {
+    if (params.contextStrategy && params.contextStrategy !== 'sliding_window') {
+      filtered.contextStrategy = params.contextStrategy;
+    }
+    if (params.contextStrategy === 'sliding_window') {
       filtered.summaryMode = 1;
-      filtered.summaryKeepLast = params.summaryKeepLast;
+      filtered.summaryKeepLast = params.slidingWindowKeepLast;
+    }
+    if (params.contextStrategy === 'sticky_facts') {
+      filtered.factsKeepLast = params.factsKeepLast;
     }
     if (Object.keys(filtered).length > 0) {
       body.params = filtered;
@@ -188,7 +194,7 @@ export async function sendConsilium(
   });
 }
 
-export async function createConversation(data?: { title?: string; model?: string; systemPrompt?: string }) {
+export async function createConversation(data?: { title?: string; model?: string; systemPrompt?: string; contextStrategy?: string }) {
   return apiRequest<Conversation>('/conversations', {
     method: 'POST',
     body: JSON.stringify(data || {}),
@@ -214,6 +220,52 @@ export async function deleteConversation(id: string) {
   return apiRequest<void>(`/conversations/${id}`, {
     method: 'DELETE',
   });
+}
+
+// Facts API
+export async function getConversationFacts(id: string): Promise<ConversationFact[]> {
+  return apiRequest<ConversationFact[]>(`/conversations/${id}/facts`);
+}
+
+export async function setConversationFact(id: string, key: string, value: string): Promise<void> {
+  await apiRequest<void>(`/conversations/${id}/facts`, {
+    method: 'POST',
+    body: JSON.stringify({ key, value }),
+  });
+}
+
+export async function deleteConversationFact(id: string, key: string): Promise<void> {
+  await apiRequest<void>(`/conversations/${id}/facts/${encodeURIComponent(key)}`, {
+    method: 'DELETE',
+  });
+}
+
+// Branches API
+export async function getConversationBranches(id: string): Promise<ConversationBranch[]> {
+  return apiRequest<ConversationBranch[]>(`/conversations/${id}/branches`);
+}
+
+export async function createBranch(convId: string, name: string, checkpointMessageId: string): Promise<ConversationBranch> {
+  return apiRequest<ConversationBranch>(`/conversations/${convId}/branches`, {
+    method: 'POST',
+    body: JSON.stringify({ name, checkpointMessageId }),
+  });
+}
+
+export async function activateBranch(convId: string, branchId: string): Promise<void> {
+  await apiRequest<void>(`/conversations/${convId}/branches/${branchId}/activate`, {
+    method: 'POST',
+  });
+}
+
+export async function deleteBranch(convId: string, branchId: string): Promise<void> {
+  await apiRequest<void>(`/conversations/${convId}/branches/${branchId}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getBranchMessages(convId: string, branchId: string): Promise<ConversationFact[]> {
+  return apiRequest<ConversationFact[]>(`/conversations/${convId}/branches/${branchId}/messages`);
 }
 
 export function logout() {

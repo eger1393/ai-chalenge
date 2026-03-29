@@ -11,6 +11,28 @@ function loadFromStorage(): AIParams | null {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
+
+    // Migration: old summaryMode/summaryKeepLast -> new contextStrategy/slidingWindowKeepLast
+    let contextStrategy = DEFAULT_AI_PARAMS.contextStrategy;
+    let slidingWindowKeepLast = DEFAULT_AI_PARAMS.slidingWindowKeepLast;
+    let factsKeepLast = DEFAULT_AI_PARAMS.factsKeepLast;
+
+    if ('summaryMode' in parsed) {
+      // Legacy format
+      contextStrategy = 'sliding_window';
+      slidingWindowKeepLast = typeof parsed.summaryKeepLast === 'number' ? parsed.summaryKeepLast : 10;
+    } else {
+      if (typeof parsed.contextStrategy === 'string' && ['sliding_window', 'sticky_facts', 'branching'].includes(parsed.contextStrategy)) {
+        contextStrategy = parsed.contextStrategy;
+      }
+      if (typeof parsed.slidingWindowKeepLast === 'number') {
+        slidingWindowKeepLast = parsed.slidingWindowKeepLast;
+      }
+      if (typeof parsed.factsKeepLast === 'number') {
+        factsKeepLast = parsed.factsKeepLast;
+      }
+    }
+
     return {
       model: typeof parsed.model === 'string' && (AVAILABLE_MODELS as readonly string[]).includes(parsed.model) ? parsed.model : DEFAULT_AI_PARAMS.model,
       temperature: typeof parsed.temperature === 'number' ? parsed.temperature : DEFAULT_AI_PARAMS.temperature,
@@ -18,8 +40,9 @@ function loadFromStorage(): AIParams | null {
       repetitionPenalty: typeof parsed.repetitionPenalty === 'number' ? parsed.repetitionPenalty : DEFAULT_AI_PARAMS.repetitionPenalty,
       systemPrompt: typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : DEFAULT_AI_PARAMS.systemPrompt,
       contextLimit: typeof parsed.contextLimit === 'number' ? parsed.contextLimit : DEFAULT_AI_PARAMS.contextLimit,
-      summaryMode: typeof parsed.summaryMode === 'boolean' ? parsed.summaryMode : DEFAULT_AI_PARAMS.summaryMode,
-      summaryKeepLast: typeof parsed.summaryKeepLast === 'number' ? parsed.summaryKeepLast : DEFAULT_AI_PARAMS.summaryKeepLast,
+      contextStrategy,
+      slidingWindowKeepLast,
+      factsKeepLast,
     };
   } catch {
     return null;
@@ -67,8 +90,9 @@ export function useAIParams() {
     params.repetitionPenalty !== DEFAULT_AI_PARAMS.repetitionPenalty ||
     params.systemPrompt !== '' ||
     params.contextLimit !== DEFAULT_AI_PARAMS.contextLimit ||
-    params.summaryMode !== DEFAULT_AI_PARAMS.summaryMode ||
-    params.summaryKeepLast !== DEFAULT_AI_PARAMS.summaryKeepLast;
+    params.contextStrategy !== DEFAULT_AI_PARAMS.contextStrategy ||
+    params.slidingWindowKeepLast !== DEFAULT_AI_PARAMS.slidingWindowKeepLast ||
+    params.factsKeepLast !== DEFAULT_AI_PARAMS.factsKeepLast;
 
   return { params, setParam, resetParams, hasNonDefaults };
 }

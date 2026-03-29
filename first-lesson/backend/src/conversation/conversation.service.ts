@@ -18,6 +18,7 @@ interface AddMessageMetadata {
   contextMaxTokens?: number;
   truncatedMessages?: number;
   truncatedTokens?: number;
+  branchId?: string;
 }
 
 interface ExpertOpinionInput {
@@ -35,11 +36,12 @@ export class ConversationService {
     title?: string,
     model?: string,
     systemPrompt?: string,
+    contextStrategy?: string,
   ) {
     const id = crypto.randomUUID();
     const { rows } = await this.db.query(
-      `INSERT INTO conversations (id, username, title, model, system_prompt)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO conversations (id, username, title, model, system_prompt, context_strategy)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
       [
         id,
@@ -47,6 +49,7 @@ export class ConversationService {
         title || 'New dialog',
         model || 'gpt-4o-mini',
         systemPrompt || null,
+        contextStrategy || 'sliding_window',
       ],
     );
     return rows[0];
@@ -186,8 +189,8 @@ export class ConversationService {
   ) {
     const id = crypto.randomUUID();
     const { rows } = await this.db.query(
-      `INSERT INTO messages (id, conversation_id, role, content, model, token_count, prompt_tokens, completion_tokens, cost, is_consilium, duration_ms, current_message_tokens, history_tokens, applied_model, applied_temperature, applied_max_tokens, context_used_tokens, context_max_tokens, truncated_messages, truncated_tokens)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+      `INSERT INTO messages (id, conversation_id, role, content, model, token_count, prompt_tokens, completion_tokens, cost, is_consilium, duration_ms, current_message_tokens, history_tokens, applied_model, applied_temperature, applied_max_tokens, context_used_tokens, context_max_tokens, truncated_messages, truncated_tokens, branch_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
        RETURNING *`,
       [
         id,
@@ -210,6 +213,7 @@ export class ConversationService {
         metadata?.contextMaxTokens || 0,
         metadata?.truncatedMessages || 0,
         metadata?.truncatedTokens || 0,
+        metadata?.branchId || null,
       ],
     );
 

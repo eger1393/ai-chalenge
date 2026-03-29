@@ -1,8 +1,9 @@
 'use client';
 
 import { X, RotateCcw } from 'lucide-react';
-import { AIParams, AVAILABLE_MODELS, MODEL_LABELS, MODEL_CONTEXT_SIZES, ConsiliumParams, Role } from '@/types/ai-params';
+import { AIParams, AVAILABLE_MODELS, MODEL_LABELS, MODEL_CONTEXT_SIZES, ConsiliumParams, Role, STRATEGY_LABELS, ContextStrategyType } from '@/types/ai-params';
 import { ConsiliumPanel } from './consilium-panel';
+import { StrategySelector } from './strategy-selector';
 
 interface AIParamsPanelProps {
   params: AIParams;
@@ -17,9 +18,10 @@ interface AIParamsPanelProps {
   setExpertRole: (index: number, roleId: string, roleName: string) => void;
   addExpert: () => void;
   removeExpert: (index: number) => void;
+  conversationStrategy?: string;
 }
 
-export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, onClose, consilium, roles, toggleConsilium, setExpert, setExpertRole, addExpert, removeExpert }: AIParamsPanelProps) {
+export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, onClose, consilium, roles, toggleConsilium, setExpert, setExpertRole, addExpert, removeExpert, conversationStrategy }: AIParamsPanelProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -125,32 +127,29 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
           </div>
         </div>
 
-        {/* Summary Mode */}
+        {/* Context Strategy */}
         <div className="border-t border-gray-200 pt-4">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <label className="text-xs font-medium text-gray-700">Режим суммаризации</label>
-              <p className="text-[10px] text-gray-400">Старые сообщения заменяются краткой сводкой</p>
+          <label className="text-xs font-medium text-gray-700 block mb-2">Стратегия контекста</label>
+          {conversationStrategy ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] px-2 py-1 rounded bg-gray-100 text-gray-500 font-medium">
+                {STRATEGY_LABELS[conversationStrategy as ContextStrategyType] || conversationStrategy}
+              </span>
+              <span className="text-[10px] text-gray-400">Зафиксирована для этого диалога</span>
             </div>
-            <button
-              type="button"
-              onClick={() => setParam('summaryMode', !params.summaryMode)}
-              className={`relative w-10 h-5 rounded-full transition-colors ${
-                params.summaryMode ? 'bg-indigo-600' : 'bg-gray-300'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                  params.summaryMode ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-          {params.summaryMode && (
+          ) : (
+            <StrategySelector
+              value={params.contextStrategy}
+              onChange={(v) => setParam('contextStrategy', v)}
+            />
+          )}
+
+          {/* sliding_window settings */}
+          {params.contextStrategy === 'sliding_window' && (
             <div className="mt-3">
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-gray-700">Хранить последних</label>
-                <span className="text-xs font-mono text-gray-500">{params.summaryKeepLast} сообщ.</span>
+                <span className="text-xs font-mono text-gray-500">{params.slidingWindowKeepLast} сообщ.</span>
               </div>
               <p className="text-[10px] text-gray-400 mb-1.5">Сколько последних сообщений хранить дословно. Остальные заменяются сводкой.</p>
               <input
@@ -158,8 +157,8 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
                 min={2}
                 max={50}
                 step={2}
-                value={params.summaryKeepLast}
-                onChange={(e) => setParam('summaryKeepLast', parseInt(e.target.value, 10))}
+                value={params.slidingWindowKeepLast}
+                onChange={(e) => setParam('slidingWindowKeepLast', parseInt(e.target.value, 10))}
                 className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
               />
               <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
@@ -168,6 +167,38 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
                 <span>50</span>
               </div>
             </div>
+          )}
+
+          {/* sticky_facts settings */}
+          {params.contextStrategy === 'sticky_facts' && (
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-medium text-gray-700">Последних сообщений</label>
+                <span className="text-xs font-mono text-gray-500">{params.factsKeepLast} сообщ.</span>
+              </div>
+              <p className="text-[10px] text-gray-400 mb-1.5">Сколько последних сообщений отправлять вместе с фактами.</p>
+              <input
+                type="range"
+                min={2}
+                max={50}
+                step={2}
+                value={params.factsKeepLast}
+                onChange={(e) => setParam('factsKeepLast', parseInt(e.target.value, 10))}
+                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+              />
+              <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                <span>2</span>
+                <span>26</span>
+                <span>50</span>
+              </div>
+            </div>
+          )}
+
+          {/* branching info */}
+          {params.contextStrategy === 'branching' && (
+            <p className="text-[10px] text-gray-400 mt-2">
+              Создавайте ветки через кнопку на сообщениях ассистента
+            </p>
           )}
         </div>
 

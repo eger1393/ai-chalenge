@@ -117,6 +117,7 @@ export function useChat() {
           const conv = await createConversation({
             model: params?.model,
             systemPrompt: params?.systemPrompt || undefined,
+            contextStrategy: params?.contextStrategy,
           });
           currentConvId = conv.id;
           setConversationId(conv.id);

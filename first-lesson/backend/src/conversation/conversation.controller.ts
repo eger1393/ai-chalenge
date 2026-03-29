@@ -29,6 +29,7 @@ export class ConversationController {
       dto.title,
       dto.model,
       dto.systemPrompt,
+      dto.contextStrategy,
     );
   }
 

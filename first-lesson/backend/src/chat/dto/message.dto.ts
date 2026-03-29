@@ -32,4 +32,8 @@ export class MessageDto {
   @ValidateNested()
   @Type(() => AIParamsDto)
   params?: AIParamsDto;
+
+  @IsOptional()
+  @IsString()
+  branchId?: string;
 }

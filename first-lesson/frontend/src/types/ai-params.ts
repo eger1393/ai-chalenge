@@ -1,3 +1,5 @@
+export type ContextStrategyType = 'sliding_window' | 'sticky_facts' | 'branching';
+
 export interface AIParams {
   model: string;
   temperature: number;
@@ -5,8 +7,9 @@ export interface AIParams {
   repetitionPenalty: number;
   systemPrompt: string;
   contextLimit: number;
-  summaryMode: boolean;
-  summaryKeepLast: number;
+  contextStrategy: ContextStrategyType;
+  slidingWindowKeepLast: number;
+  factsKeepLast: number;
 }
 
 export interface AppliedParams {
@@ -46,8 +49,15 @@ export const DEFAULT_AI_PARAMS: AIParams = {
   repetitionPenalty: 0,
   systemPrompt: '',
   contextLimit: 0,
-  summaryMode: false,
-  summaryKeepLast: 10,
+  contextStrategy: 'sliding_window',
+  slidingWindowKeepLast: 10,
+  factsKeepLast: 10,
+};
+
+export const STRATEGY_LABELS: Record<ContextStrategyType, string> = {
+  sliding_window: 'Окно',
+  sticky_facts: 'Факты',
+  branching: 'Ветки',
 };
 
 export interface Expert {

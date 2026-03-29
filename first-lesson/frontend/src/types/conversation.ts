@@ -5,6 +5,7 @@ export interface Conversation {
   title: string;
   model: string;
   systemPrompt?: string;
+  contextStrategy?: string;
   createdAt: string;
   updatedAt: string;
   messageCount: number;
@@ -15,6 +16,22 @@ export interface Conversation {
   };
 }
 
+export interface ConversationFact {
+  key: string;
+  value: string;
+  updatedAt?: string;
+}
+
+export interface ConversationBranch {
+  id: string;
+  name: string;
+  parentBranchId?: string;
+  checkpointMessageId?: string;
+  isActive: boolean;
+  messageCount?: number;
+  createdAt: string;
+}
+
 export interface ConversationMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -22,6 +39,7 @@ export interface ConversationMessage {
   model?: string;
   cost?: number;
   isConsilium?: boolean;
+  branchId?: string;
   createdAt: string;
   expertOpinions?: Array<{ expert: string; reply: string; error?: boolean }>;
   usage?: Usage;
@@ -51,6 +69,8 @@ export interface ConversationTotals {
 export interface ConversationDetail extends Conversation {
   messages: ConversationMessage[];
   conversationTotals?: ConversationTotals;
+  facts?: ConversationFact[];
+  branches?: ConversationBranch[];
 }
 
 export interface ContextWindow {

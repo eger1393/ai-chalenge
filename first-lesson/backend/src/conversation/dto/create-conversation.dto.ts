@@ -16,4 +16,9 @@ export class CreateConversationDto {
   @IsString()
   @MaxLength(4000)
   systemPrompt?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['sliding_window', 'sticky_facts', 'branching'])
+  contextStrategy?: string;
 }

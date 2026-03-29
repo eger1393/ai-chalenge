@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, GitBranch } from 'lucide-react';
 import { AppliedParams, ExpertOpinion, Usage } from '@/types/ai-params';
 import { AppliedParamsDisplay } from './applied-params-display';
 
@@ -18,9 +18,12 @@ interface MessageBubbleProps {
   truncation?: { droppedMessages: number; droppedTokens: number };
   contextUsedTokens?: number;
   contextMaxTokens?: number;
+  onCreateBranch?: (messageId: string) => void;
+  showBranchButton?: boolean;
+  messageId?: string;
 }
 
-export function MessageBubble({ role, content, error, appliedParams, expertOpinions, isConsilium, cost, usage, durationMs, truncation, contextUsedTokens, contextMaxTokens }: MessageBubbleProps) {
+export function MessageBubble({ role, content, error, appliedParams, expertOpinions, isConsilium, cost, usage, durationMs, truncation, contextUsedTokens, contextMaxTokens, onCreateBranch, showBranchButton, messageId }: MessageBubbleProps) {
   if (role === 'user') {
     return (
       <div className="flex justify-end mb-4">
@@ -32,7 +35,7 @@ export function MessageBubble({ role, content, error, appliedParams, expertOpini
   }
 
   return (
-    <div className="mb-4">
+    <div className="group/msg mb-4">
       {truncation && truncation.droppedMessages > 0 && (
         <div className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded px-2 py-0.5 mb-1 ml-11">
           Контекст обрезан: удалено {truncation.droppedMessages} сообщ. (~{truncation.droppedTokens} tok)
@@ -61,6 +64,17 @@ export function MessageBubble({ role, content, error, appliedParams, expertOpini
         >
           {content}
         </div>
+        {showBranchButton && onCreateBranch && messageId && (
+          <button
+            type="button"
+            onClick={() => onCreateBranch(messageId)}
+            className="mt-1 flex items-center gap-1 text-[10px] text-gray-400 hover:text-indigo-600 opacity-0 group-hover/msg:opacity-100 transition-all"
+            title="Создать ветку от этого сообщения"
+          >
+            <GitBranch className="w-3 h-3" />
+            Создать ветку
+          </button>
+        )}
       </div>
       </div>
     </div>

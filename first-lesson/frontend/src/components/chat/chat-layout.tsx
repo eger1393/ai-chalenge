@@ -8,8 +8,12 @@ import { useAIParams } from '@/hooks/use-ai-params';
 import { useConsilium } from '@/hooks/use-consilium';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { useConversations } from '@/hooks/use-conversations';
+import { useFacts } from '@/hooks/use-facts';
+import { useBranches } from '@/hooks/use-branches';
 import { ConversationSidebar } from './conversation-sidebar';
 import { ContextIndicator } from './context-indicator';
+import { BranchSelector } from './branch-selector';
+import { FactsPanel } from './facts-panel';
 import { MessageBubble } from './message-bubble';
 import { TypingIndicator } from './typing-indicator';
 import { ChatInput } from './chat-input';
@@ -30,12 +34,18 @@ export function ChatLayout() {
     addExpert,
     removeExpert,
   } = useConsilium();
+  const facts = useFacts(chat.conversationId);
+  const branches = useBranches(chat.conversationId);
   const [showParams, setShowParams] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [conversationStrategy, setConversationStrategy] = useState<string | undefined>(undefined);
   const scrollRef = useAutoScroll(chat.messages);
 
   // Track previous activeId to avoid re-loading the same conversation
   const prevActiveIdRef = useRef<string | null | undefined>(undefined);
+
+  // Determine current strategy: conversation's fixed strategy or params strategy
+  const currentStrategy = conversationStrategy || params.contextStrategy;
 
   useEffect(() => {
     const activeId = conversations.activeId;
@@ -43,30 +53,41 @@ export function ChatLayout() {
     prevActiveIdRef.current = activeId;
 
     if (activeId) {
-      chat.loadConversation(activeId);
+      chat.loadConversation(activeId).then(() => {
+        // Load strategy-specific data after conversation is loaded
+        const conv = conversations.conversations.find((c) => c.id === activeId);
+        const strategy = conv?.contextStrategy;
+        setConversationStrategy(strategy);
+        if (strategy === 'sticky_facts') {
+          facts.loadFacts(activeId);
+        } else if (strategy === 'branching') {
+          branches.loadBranches(activeId);
+        }
+      });
     } else {
       chat.startNew();
+      setConversationStrategy(undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations.activeId]);
 
   const handleNewChat = useCallback(() => {
     conversations.select(null);
+    setConversationStrategy(undefined);
     setSidebarOpen(false);
   }, [conversations]);
 
   const handleSend = useCallback(
     async (text: string) => {
       await chat.send(text, params, consilium);
-      // After sending, sync the conversationId to conversations hook
-      // and refresh the list
-      if (chat.conversationId && !conversations.activeId) {
-        // The chat hook auto-created a conversation; select it
-        // We need to get the id after send completes
-      }
       conversations.refresh();
+
+      // After send, refresh facts if strategy is sticky_facts
+      if (currentStrategy === 'sticky_facts' && chat.conversationId) {
+        facts.loadFacts(chat.conversationId);
+      }
     },
-    [chat, params, consilium, conversations],
+    [chat, params, consilium, conversations, currentStrategy, facts],
   );
 
   // Sync auto-created conversationId back to conversations
@@ -74,6 +95,10 @@ export function ChatLayout() {
     if (chat.conversationId && !conversations.activeId) {
       conversations.select(chat.conversationId);
       prevActiveIdRef.current = chat.conversationId; // prevent re-load
+      // Set the strategy for the newly created conversation
+      if (!conversationStrategy) {
+        setConversationStrategy(params.contextStrategy);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.conversationId]);
@@ -91,6 +116,15 @@ export function ChatLayout() {
       await conversations.remove(id);
     },
     [conversations],
+  );
+
+  const handleCreateBranch = useCallback(
+    (messageId?: string) => {
+      if (!messageId) return;
+      const name = `Branch ${branches.branches.length + 1}`;
+      branches.createNewBranch(name, messageId);
+    },
+    [branches],
   );
 
   return (
@@ -150,6 +184,20 @@ export function ChatLayout() {
           {/* Context indicator */}
           <ContextIndicator contextWindow={chat.contextWindow} conversationTotals={chat.conversationTotals} />
 
+          {/* Branch selector */}
+          {currentStrategy === 'branching' && branches.branches.length > 0 && (
+            <BranchSelector
+              branches={branches.branches}
+              activeBranchId={branches.activeBranchId}
+              onSwitch={branches.switchBranch}
+              onCreate={() => {
+                // Create branch from last assistant message
+                const lastAssistant = [...chat.messages].reverse().find((m) => m.role === 'assistant');
+                if (lastAssistant) handleCreateBranch(lastAssistant.id);
+              }}
+            />
+          )}
+
           {/* Messages */}
           <div
             ref={scrollRef}
@@ -181,12 +229,25 @@ export function ChatLayout() {
                     truncation={msg.truncation}
                     contextUsedTokens={msg.contextUsedTokens}
                     contextMaxTokens={msg.contextMaxTokens}
+                    showBranchButton={currentStrategy === 'branching' && msg.role === 'assistant'}
+                    onCreateBranch={currentStrategy === 'branching' ? handleCreateBranch : undefined}
+                    messageId={msg.id}
                   />
                 ))}
                 {chat.isLoading && <TypingIndicator />}
               </div>
             )}
           </div>
+
+          {/* Facts panel */}
+          {currentStrategy === 'sticky_facts' && chat.conversationId && (
+            <FactsPanel
+              facts={facts.facts}
+              onAdd={facts.addFact}
+              onRemove={facts.removeFact}
+              isLoading={facts.isLoading}
+            />
+          )}
 
           {/* Input */}
           <ChatInput
@@ -226,6 +287,7 @@ export function ChatLayout() {
           setExpertRole={setExpertRole}
           addExpert={addExpert}
           removeExpert={removeExpert}
+          conversationStrategy={conversationStrategy}
         />
       </div>
     </>

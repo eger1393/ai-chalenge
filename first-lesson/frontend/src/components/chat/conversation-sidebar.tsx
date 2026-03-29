@@ -99,6 +99,11 @@ export function ConversationSidebar({
                       <span className="text-xs px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded font-mono">
                         {conv.model}
                       </span>
+                      {conv.contextStrategy && (
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-500">
+                          {conv.contextStrategy === 'sliding_window' ? 'SW' : conv.contextStrategy === 'sticky_facts' ? 'SF' : conv.contextStrategy === 'branching' ? 'BR' : ''}
+                        </span>
+                      )}
                       <span className="text-xs text-gray-400">
                         {formatRelativeDate(conv.updatedAt)}
                       </span>

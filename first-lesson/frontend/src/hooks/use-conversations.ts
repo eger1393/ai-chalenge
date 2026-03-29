@@ -30,8 +30,8 @@ export function useConversations() {
   }, [load]);
 
   const create = useCallback(
-    async (model?: string, systemPrompt?: string) => {
-      const conv = await createConversation({ model, systemPrompt });
+    async (model?: string, systemPrompt?: string, contextStrategy?: string) => {
+      const conv = await createConversation({ model, systemPrompt, contextStrategy });
       setConversations((prev) => [conv, ...prev].slice(0, 10));
       setActiveId(conv.id);
       return conv;

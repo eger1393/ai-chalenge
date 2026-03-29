@@ -129,6 +129,45 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           ALTER TABLE conversations ADD COLUMN IF NOT EXISTS summary_up_to_index INTEGER DEFAULT 0;
         `,
       },
+      {
+        name: '005_add_context_strategy',
+        sql: `
+          ALTER TABLE conversations ADD COLUMN IF NOT EXISTS context_strategy VARCHAR(30) NOT NULL DEFAULT 'sliding_window';
+        `,
+      },
+      {
+        name: '006_create_conversation_facts',
+        sql: `
+          CREATE TABLE IF NOT EXISTS conversation_facts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            fact_key VARCHAR(200) NOT NULL,
+            fact_value TEXT NOT NULL,
+            source_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE(conversation_id, fact_key)
+          );
+          CREATE INDEX IF NOT EXISTS idx_conversation_facts_conv ON conversation_facts(conversation_id);
+        `,
+      },
+      {
+        name: '007_create_branches',
+        sql: `
+          CREATE TABLE IF NOT EXISTS conversation_branches (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            name VARCHAR(200) NOT NULL DEFAULT 'main',
+            parent_branch_id UUID REFERENCES conversation_branches(id) ON DELETE SET NULL,
+            checkpoint_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_branches_conv ON conversation_branches(conversation_id);
+          ALTER TABLE messages ADD COLUMN IF NOT EXISTS branch_id UUID;
+          CREATE INDEX IF NOT EXISTS idx_messages_branch ON messages(branch_id);
+          ALTER TABLE conversations ADD COLUMN IF NOT EXISTS active_branch_id UUID;
+        `,
+      },
     ];
   }
 }
