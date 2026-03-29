@@ -1,8 +1,10 @@
-import { Controller, Post, Get, Put, Delete, Body, Param, UseGuards, Request } from '@nestjs/common';
+import { Controller, Post, Get, Put, Delete, Body, Param, UseGuards, Request, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ChatService } from './chat.service';
 import { MessageDto } from './dto/message.dto';
+import { TestDialogueDto } from './dto/test-dialogue.dto';
 import { ConsiliumMessageDto } from './dto/consilium.dto';
 import { EXPERT_ROLES } from './constants/expert-roles';
 import { FactsService } from './services/facts.service';
@@ -34,6 +36,29 @@ export class ChatController {
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   consilium(@Request() req, @Body() dto: ConsiliumMessageDto) {
     return this.chatService.sendConsilium(dto, req.user.username);
+  }
+
+  @Post('test-dialogue')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async testDialogue(@Request() req, @Body() dto: TestDialogueDto, @Res() res: Response) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const onEvent = (event: Record<string, unknown>) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    try {
+      await this.chatService.generateTestDialogue(dto, req.user.username, onEvent);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.write(`data: ${JSON.stringify({ type: 'error', message })}\n\n`);
+    } finally {
+      res.end();
+    }
   }
 
   // --- Facts endpoints ---

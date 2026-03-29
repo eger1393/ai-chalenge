@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { sendMessage, sendConsilium, createConversation, getConversation } from '@/lib/api';
 import { AIParams, AppliedParams, ConsiliumParams, DEFAULT_AI_PARAMS, ExpertOpinion, Usage } from '@/types/ai-params';
-import { ContextWindow, ConversationTotals } from '@/types/conversation';
+import { ContextWindow, ConversationTotals, MessageDebugData } from '@/types/conversation';
 
 export interface Message {
   id: string;
@@ -19,6 +19,8 @@ export interface Message {
   truncation?: { droppedMessages: number; droppedTokens: number };
   contextUsedTokens?: number;
   contextMaxTokens?: number;
+  debugData?: MessageDebugData;
+  isTestGenerated?: boolean;
 }
 
 export function useChat() {
@@ -63,6 +65,7 @@ export function useChat() {
           } : undefined,
           contextUsedTokens: m.contextUsedTokens || undefined,
           contextMaxTokens: m.contextMaxTokens || undefined,
+          debugData: m.debugData || undefined,
         })),
       );
       const lastAssistantWithContext = [...detail.messages].reverse().find(

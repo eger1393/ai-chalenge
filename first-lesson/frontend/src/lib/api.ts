@@ -1,5 +1,5 @@
 import { setTokens, getAccessToken, getRefreshToken, clearTokens } from './tokens';
-import { AIParams, AppliedParams, DEFAULT_AI_PARAMS, Expert, Role, Usage } from '@/types/ai-params';
+import { AIParams, AppliedParams, DEFAULT_AI_PARAMS, Expert, Role, TestDialogueEvent, TestDialogueParams, Usage } from '@/types/ai-params';
 import { Conversation, ConversationBranch, ConversationDetail, ConversationFact, ConversationTotals, ContextWindow } from '@/types/conversation';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
@@ -266,6 +266,82 @@ export async function deleteBranch(convId: string, branchId: string): Promise<vo
 
 export async function getBranchMessages(convId: string, branchId: string): Promise<ConversationFact[]> {
   return apiRequest<ConversationFact[]>(`/conversations/${convId}/branches/${branchId}/messages`);
+}
+
+export function startTestDialogue(
+  params: TestDialogueParams,
+  aiParams?: Partial<AIParams>,
+  onEvent?: (event: TestDialogueEvent) => void,
+): AbortController {
+  const controller = new AbortController();
+  const token = getAccessToken();
+
+  const body: Record<string, unknown> = {
+    topic: params.topic,
+    pairsCount: params.pairsCount,
+  };
+  if (params.simulatorModel) body.simulatorModel = params.simulatorModel;
+
+  if (aiParams) {
+    const filtered: Record<string, unknown> = {};
+    if (aiParams.model) filtered.model = aiParams.model;
+    if (aiParams.temperature !== undefined) filtered.temperature = aiParams.temperature;
+    if (aiParams.maxTokens !== undefined) filtered.maxTokens = aiParams.maxTokens;
+    if (aiParams.contextLimit) filtered.contextLimit = aiParams.contextLimit;
+    if (aiParams.systemPrompt) filtered.systemPrompt = aiParams.systemPrompt;
+    if (aiParams.contextStrategy) filtered.contextStrategy = aiParams.contextStrategy;
+    if (aiParams.contextStrategy === 'sliding_window') {
+      filtered.summaryMode = 1;
+      filtered.summaryKeepLast = aiParams.slidingWindowKeepLast;
+    }
+    if (aiParams.contextStrategy === 'sticky_facts') {
+      filtered.factsKeepLast = aiParams.factsKeepLast;
+    }
+    if (Object.keys(filtered).length > 0) body.params = filtered;
+  }
+
+  fetch(`${API_BASE}/chat/test-dialogue`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  }).then(async (res) => {
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      onEvent?.({ type: 'error', message: err.message || 'Request failed' });
+      return;
+    }
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const event = JSON.parse(line.slice(6));
+            onEvent?.(event);
+          } catch {
+            // ignore malformed SSE lines
+          }
+        }
+      }
+    }
+  }).catch((err) => {
+    if (err.name !== 'AbortError') {
+      onEvent?.({ type: 'error', message: err.message });
+    }
+  });
+
+  return controller;
 }
 
 export function logout() {

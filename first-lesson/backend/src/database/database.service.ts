@@ -168,6 +168,35 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           ALTER TABLE conversations ADD COLUMN IF NOT EXISTS active_branch_id UUID;
         `,
       },
+      {
+        name: '008_add_test_mode',
+        sql: `
+          ALTER TABLE conversations ADD COLUMN IF NOT EXISTS is_test BOOLEAN NOT NULL DEFAULT FALSE;
+          ALTER TABLE conversations ADD COLUMN IF NOT EXISTS test_topic TEXT;
+          ALTER TABLE conversations ADD COLUMN IF NOT EXISTS test_pairs_target INTEGER DEFAULT 0;
+          CREATE INDEX IF NOT EXISTS idx_conversations_is_test ON conversations(is_test);
+        `,
+      },
+      {
+        name: '009_create_message_debug_data',
+        sql: `
+          CREATE TABLE IF NOT EXISTS message_debug_data (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+            strategy_type VARCHAR(30),
+            context_messages_count INTEGER DEFAULT 0,
+            context_messages_after_truncation INTEGER DEFAULT 0,
+            facts_snapshot JSONB,
+            branch_info JSONB,
+            summary_info JSONB,
+            token_breakdown JSONB,
+            strategy_metadata JSONB,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE(message_id)
+          );
+          CREATE INDEX IF NOT EXISTS idx_message_debug_data_message ON message_debug_data(message_id);
+        `,
+      },
     ];
   }
 }

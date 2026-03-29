@@ -77,12 +77,23 @@ export class StickyFactsStrategy implements IContextStrategy {
     totalOriginalTokens += currentMessageTokens;
     const truncatedTokens = Math.max(0, totalOriginalTokens - budgetUsed);
 
+    const verbose = params.strategyParams?.verbose === true;
+
+    const metadata: Record<string, unknown> = { factsCount: facts.length };
+
+    if (verbose) {
+      metadata.factsSnapshot = facts.map(f => ({ key: f.fact_key, value: f.fact_value }));
+      metadata.factsTokens = factsBlock ? this.tokenService.countTokens(factsBlock, model) : 0;
+      metadata.originalMessagesCount = historyMessages.length + 1; // +1 for current message
+      metadata.keptMessagesCount = resultMessages.length;
+    }
+
     return {
       messages: resultMessages,
       usedTokens: budgetUsed,
       truncatedCount,
       truncatedTokens,
-      metadata: { factsCount: facts.length },
+      metadata,
     };
   }
 }

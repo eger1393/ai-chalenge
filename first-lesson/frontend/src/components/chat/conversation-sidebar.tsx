@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, MessageSquare, Trash2, X } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, X, FlaskConical } from 'lucide-react';
 import { Conversation } from '@/types/conversation';
 import { formatRelativeDate } from '@/lib/format-date';
 
@@ -81,19 +81,35 @@ export function ConversationSidebar({
                       : 'hover:bg-gray-100 border-l-2 border-transparent'
                   }`}
                 >
-                  <MessageSquare
-                    size={16}
-                    className={`mt-0.5 flex-shrink-0 ${
-                      isActive ? 'text-indigo-600' : 'text-gray-400'
-                    }`}
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div
-                      className={`text-sm font-medium truncate ${
-                        isActive ? 'text-indigo-900' : 'text-gray-900'
+                  {conv.isTest ? (
+                    <FlaskConical
+                      size={16}
+                      className={`mt-0.5 flex-shrink-0 ${
+                        isActive ? 'text-amber-600' : 'text-amber-400'
                       }`}
-                    >
-                      {truncate(conv.title || 'Новый диалог', 30)}
+                    />
+                  ) : (
+                    <MessageSquare
+                      size={16}
+                      className={`mt-0.5 flex-shrink-0 ${
+                        isActive ? 'text-indigo-600' : 'text-gray-400'
+                      }`}
+                    />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className={`text-sm font-medium truncate ${
+                          isActive ? 'text-indigo-900' : 'text-gray-900'
+                        }`}
+                      >
+                        {truncate(conv.title || 'Новый диалог', 30)}
+                      </div>
+                      {conv.isTest && (
+                        <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 font-medium flex-shrink-0">
+                          TEST
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-xs px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded font-mono">
@@ -108,11 +124,15 @@ export function ConversationSidebar({
                         {formatRelativeDate(conv.updatedAt)}
                       </span>
                     </div>
-                    {conv.lastMessage && (
+                    {conv.isTest && conv.testTopic ? (
+                      <div className="text-xs text-amber-600 mt-0.5 truncate">
+                        {truncate(conv.testTopic, 40)}
+                      </div>
+                    ) : conv.lastMessage ? (
                       <div className="text-xs text-gray-400 mt-0.5 truncate">
                         {truncate(conv.lastMessage.content, 40)}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                   {/* Delete button */}
                   <button

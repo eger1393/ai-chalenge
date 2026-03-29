@@ -56,7 +56,32 @@ export class SlidingWindowStrategy implements IContextStrategy {
     }
 
     const allMessages = [...historyMessages, { role: 'user', content: currentMessage }];
-    return this.truncateMessages(allMessages, model, systemPrompt, contextLimit);
+    const verbose = strategyParams?.verbose === true;
+
+    // Determine if summary was used
+    const summaryUsed = summaryMode && historyMessages.length > 0 &&
+      historyMessages[0]?.content?.startsWith('[Краткое содержание предыдущей части диалога]');
+    const summaryText = summaryUsed ? historyMessages[0].content : null;
+
+    const result = this.truncateMessages(allMessages, model, systemPrompt, contextLimit);
+
+    if (verbose) {
+      const modelWindow = MODEL_CONTEXT_WINDOWS[model] || 128000;
+      const contextWindow = contextLimit && contextLimit > 0 ? Math.min(contextLimit, modelWindow) : modelWindow;
+      const maxBudget = Math.floor(contextWindow * 0.80);
+
+      result.metadata = {
+        ...result.metadata,
+        originalMessagesCount: allMessages.length,
+        keptMessagesCount: result.messages.length,
+        budgetMax: maxBudget,
+        budgetUsed: result.usedTokens,
+        summaryUsed: !!summaryUsed,
+        summaryText: summaryText,
+      };
+    }
+
+    return result;
   }
 
   private truncateMessages(

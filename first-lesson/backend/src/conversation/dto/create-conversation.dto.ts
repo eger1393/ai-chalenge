@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength, IsIn } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, MaxLength, IsIn } from 'class-validator';
 import { ALLOWED_MODELS } from '../../chat/dto/ai-params.dto';
 
 export class CreateConversationDto {
@@ -21,4 +21,13 @@ export class CreateConversationDto {
   @IsString()
   @IsIn(['sliding_window', 'sticky_facts', 'branching'])
   contextStrategy?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isTest?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  testTopic?: string;
 }

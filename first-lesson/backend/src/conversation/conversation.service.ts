@@ -37,11 +37,14 @@ export class ConversationService {
     model?: string,
     systemPrompt?: string,
     contextStrategy?: string,
+    isTest?: boolean,
+    testTopic?: string,
+    testPairsTarget?: number,
   ) {
     const id = crypto.randomUUID();
     const { rows } = await this.db.query(
-      `INSERT INTO conversations (id, username, title, model, system_prompt, context_strategy)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO conversations (id, username, title, model, system_prompt, context_strategy, is_test, test_topic, test_pairs_target)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         id,
@@ -50,6 +53,9 @@ export class ConversationService {
         model || 'gpt-4o-mini',
         systemPrompt || null,
         contextStrategy || 'sliding_window',
+        isTest || false,
+        testTopic || null,
+        testPairsTarget || 0,
       ],
     );
     return rows[0];
@@ -108,6 +114,12 @@ export class ConversationService {
       }
     }
 
+    // Load debug data for test conversations
+    let debugDataMap = new Map<string, Record<string, unknown>>();
+    if (conversation.is_test) {
+      debugDataMap = await this.getDebugDataForConversation(id);
+    }
+
     const messages = messageRows.map((m) => ({
       id: m.id,
       role: m.role,
@@ -136,6 +148,7 @@ export class ConversationService {
             error: o.is_error,
           }))
         : undefined,
+      debugData: debugDataMap.has(m.id) ? debugDataMap.get(m.id) : undefined,
     }));
 
     const totals = await this.getConversationTotals(id);
@@ -307,6 +320,62 @@ export class ConversationService {
       [conversationId],
     );
     return rows;
+  }
+
+  async saveDebugData(messageId: string, data: Record<string, unknown>): Promise<void> {
+    await this.db.query(
+      `INSERT INTO message_debug_data (
+        message_id, strategy_type, context_messages_count, context_messages_after_truncation,
+        facts_snapshot, branch_info, summary_info, token_breakdown, strategy_metadata
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (message_id) DO UPDATE SET
+        strategy_type = EXCLUDED.strategy_type,
+        context_messages_count = EXCLUDED.context_messages_count,
+        context_messages_after_truncation = EXCLUDED.context_messages_after_truncation,
+        facts_snapshot = EXCLUDED.facts_snapshot,
+        branch_info = EXCLUDED.branch_info,
+        summary_info = EXCLUDED.summary_info,
+        token_breakdown = EXCLUDED.token_breakdown,
+        strategy_metadata = EXCLUDED.strategy_metadata`,
+      [
+        messageId,
+        data.strategyType ?? null,
+        data.contextMessagesCount ?? 0,
+        data.contextMessagesAfterTruncation ?? 0,
+        data.factsSnapshot ? JSON.stringify(data.factsSnapshot) : null,
+        data.branchInfo ? JSON.stringify(data.branchInfo) : null,
+        data.summaryInfo ? JSON.stringify(data.summaryInfo) : null,
+        data.tokenBreakdown ? JSON.stringify(data.tokenBreakdown) : null,
+        data.strategyMetadata ? JSON.stringify(data.strategyMetadata) : null,
+      ],
+    );
+  }
+
+  async getDebugDataForConversation(conversationId: string): Promise<Map<string, Record<string, unknown>>> {
+    const { rows } = await this.db.query(
+      `SELECT mdd.* FROM message_debug_data mdd
+       JOIN messages m ON mdd.message_id = m.id
+       WHERE m.conversation_id = $1
+       ORDER BY m.created_at ASC`,
+      [conversationId],
+    );
+
+    const map = new Map<string, Record<string, unknown>>();
+    for (const row of rows) {
+      map.set(row.message_id, {
+        id: row.id,
+        strategyType: row.strategy_type,
+        contextMessagesCount: row.context_messages_count,
+        contextMessagesAfterTruncation: row.context_messages_after_truncation,
+        factsSnapshot: row.facts_snapshot,
+        branchInfo: row.branch_info,
+        summaryInfo: row.summary_info,
+        tokenBreakdown: row.token_breakdown,
+        strategyMetadata: row.strategy_metadata,
+        createdAt: row.created_at,
+      });
+    }
+    return map;
   }
 
   async getConversationTotals(conversationId: string) {

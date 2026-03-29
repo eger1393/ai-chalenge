@@ -30,6 +30,8 @@ export class ConversationController {
       dto.model,
       dto.systemPrompt,
       dto.contextStrategy,
+      dto.isTest,
+      dto.testTopic,
     );
   }
 

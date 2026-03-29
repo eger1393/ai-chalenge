@@ -104,3 +104,16 @@ export interface Usage {
   historyTokens?: number;
   systemPromptTokens?: number;
 }
+
+export interface TestDialogueParams {
+  topic: string;
+  pairsCount: number;
+  simulatorModel?: string;
+}
+
+export type TestDialogueEvent =
+  | { type: 'started'; conversationId: string; totalPairs: number }
+  | { type: 'user_message'; pair: number; content: string; messageId?: string }
+  | { type: 'assistant_message'; pair: number; content: string; debug?: Record<string, unknown>; usage?: Usage; cost?: number; durationMs?: number; contextWindow?: Record<string, unknown>; truncation?: Record<string, unknown>; messageId?: string }
+  | { type: 'complete'; conversationId: string; totalPairs: number; totals?: Record<string, unknown> }
+  | { type: 'error'; message: string };

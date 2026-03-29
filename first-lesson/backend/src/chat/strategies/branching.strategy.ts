@@ -40,9 +40,22 @@ export class BranchingStrategy implements IContextStrategy {
     }
 
     const allMessages = [...branchMessages, { role: 'user', content: currentMessage }];
+    const verbose = params.strategyParams?.verbose === true;
 
     // Truncate by token budget (same logic as sliding window)
-    return this.truncateByTokens(allMessages, model, systemPrompt, contextLimit, branchId);
+    const result = this.truncateByTokens(allMessages, model, systemPrompt, contextLimit, branchId);
+
+    if (verbose) {
+      result.metadata = {
+        ...result.metadata,
+        branchName: activeBranch?.name || 'main',
+        branchMessagesCount: branchMessages.length,
+        originalMessagesCount: allMessages.length,
+        keptMessagesCount: result.messages.length,
+      };
+    }
+
+    return result;
   }
 
   private truncateByTokens(

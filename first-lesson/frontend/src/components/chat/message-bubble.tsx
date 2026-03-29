@@ -3,7 +3,9 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, GitBranch } from 'lucide-react';
 import { AppliedParams, ExpertOpinion, Usage } from '@/types/ai-params';
+import { MessageDebugData } from '@/types/conversation';
 import { AppliedParamsDisplay } from './applied-params-display';
+import { DebugPanel } from './debug-panel';
 
 interface MessageBubbleProps {
   role: 'user' | 'assistant';
@@ -21,13 +23,15 @@ interface MessageBubbleProps {
   onCreateBranch?: (messageId: string) => void;
   showBranchButton?: boolean;
   messageId?: string;
+  debugData?: MessageDebugData;
+  isTestGenerated?: boolean;
 }
 
-export function MessageBubble({ role, content, error, appliedParams, expertOpinions, isConsilium, cost, usage, durationMs, truncation, contextUsedTokens, contextMaxTokens, onCreateBranch, showBranchButton, messageId }: MessageBubbleProps) {
+export function MessageBubble({ role, content, error, appliedParams, expertOpinions, isConsilium, cost, usage, durationMs, truncation, contextUsedTokens, contextMaxTokens, onCreateBranch, showBranchButton, messageId, debugData, isTestGenerated }: MessageBubbleProps) {
   if (role === 'user') {
     return (
       <div className="flex justify-end mb-4">
-        <div className="max-w-[70%] px-4 py-3 bg-indigo-600 text-white rounded-2xl rounded-tr-sm text-sm leading-relaxed">
+        <div className={`max-w-[70%] px-4 py-3 text-white rounded-2xl rounded-tr-sm text-sm leading-relaxed ${isTestGenerated ? 'bg-indigo-400' : 'bg-indigo-600'}`}>
           {content}
         </div>
       </div>
@@ -77,6 +81,7 @@ export function MessageBubble({ role, content, error, appliedParams, expertOpini
         )}
       </div>
       </div>
+      {debugData && <DebugPanel debugData={debugData} />}
     </div>
   );
 }

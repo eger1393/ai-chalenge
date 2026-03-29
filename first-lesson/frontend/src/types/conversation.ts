@@ -6,6 +6,9 @@ export interface Conversation {
   model: string;
   systemPrompt?: string;
   contextStrategy?: string;
+  isTest?: boolean;
+  testTopic?: string;
+  testPairsTarget?: number;
   createdAt: string;
   updatedAt: string;
   messageCount: number;
@@ -14,6 +17,17 @@ export interface Conversation {
     content: string;
     createdAt: string;
   };
+}
+
+export interface MessageDebugData {
+  strategyType: string;
+  contextMessagesCount: number;
+  contextMessagesAfterTruncation: number;
+  factsSnapshot?: Array<{ key: string; value: string }>;
+  branchInfo?: Record<string, unknown>;
+  summaryInfo?: Record<string, unknown>;
+  tokenBreakdown?: Record<string, number>;
+  strategyMetadata?: Record<string, unknown>;
 }
 
 export interface ConversationFact {
@@ -56,6 +70,7 @@ export interface ConversationMessage {
   contextMaxTokens?: number;
   truncatedMessages?: number;
   truncatedTokens?: number;
+  debugData?: MessageDebugData;
 }
 
 export interface ConversationTotals {

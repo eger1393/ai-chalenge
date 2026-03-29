@@ -40,10 +40,9 @@ src/
 │   └── dto/                    # login.dto, refresh.dto
 │
 ├── chat/                       # Основная логика OpenAI
-│   ├── chat.controller.ts      # POST /chat/message, GET /chat/roles, POST /chat/consilium
-│   │                           #   + CRUD /chat/conversations/:id/facts
-│   │                           #   + CRUD /chat/conversations/:id/branches
-│   ├── chat.service.ts         # sendMessage (делегирует стратегиям), sendConsilium
+│   ├── chat.controller.ts      # POST /chat/message, /consilium, /test-dialogue (SSE)
+│   │                           #   + CRUD facts, branches
+│   ├── chat.service.ts         # sendMessage, sendConsilium, generateTestDialogue
 │   ├── services/
 │   │   ├── token.service.ts    # TokenService: countTokens, encoding cache
 │   │   ├── openai.service.ts   # OpenAIService: callOpenAI, calculateCost
@@ -58,14 +57,15 @@ src/
 │   ├── dto/
 │   │   ├── ai-params.dto.ts    # ALLOWED_MODELS, MODEL_PRICING, MODEL_CONTEXT_WINDOWS, DEFAULT_MODEL
 │   │   ├── message.dto.ts      # message, conversationId?, branchId?, params?
-│   │   └── consilium.dto.ts    # message, experts[2-3], conversationId?, model?, temperature?
+│   │   ├── consilium.dto.ts    # message, experts[2-3], conversationId?, model?, temperature?
+│   │   └── test-dialogue.dto.ts # topic, pairsCount, params?, simulatorModel?
 │   └── constants/
 │       └── expert-roles.ts     # 15 предустановленных ролей экспертов
 │
 └── conversation/               # CRUD диалогов
     ├── conversation.controller.ts  # POST/GET /conversations, GET/PATCH/DELETE /conversations/:id
-    ├── conversation.service.ts     # create, findAll, findOne (+messages+opinions), update, remove,
-    │                               #   addMessage, addExpertOpinions, getMessagesForContext, updateTitle
+    ├── conversation.service.ts     # create (isTest), findAll, findOne (+debug), addMessage,
+    │                               #   saveDebugData, getDebugDataForConversation
     └── dto/                    # create-conversation.dto, update-conversation.dto
 ```
 
@@ -89,6 +89,7 @@ messages (id UUID PK, conversation_id FK, role, content, model, token_count, ...
 expert_opinions (id UUID PK, message_id FK→messages, expert_name, content, is_error)
 conversation_facts (id UUID PK, conversation_id FK, fact_key, fact_value, source_message_id, UNIQUE(conv+key))
 conversation_branches (id UUID PK, conversation_id FK, name, parent_branch_id, checkpoint_message_id, created_at)
+message_debug_data (id UUID PK, message_id FK UNIQUE, strategy_type, token_breakdown JSONB, facts_snapshot JSONB, strategy_metadata JSONB)
 ```
 
 ---
@@ -115,6 +116,9 @@ src/
 │       ├── strategy-selector.tsx    # Сегментированный переключатель стратегий контекста
 │       ├── facts-panel.tsx          # Панель фактов (inline CRUD для sticky_facts)
 │       ├── branch-selector.tsx      # Навигатор веток (для branching)
+│       ├── test-setup-form.tsx      # Форма запуска тестового диалога (тема + длина)
+│       ├── test-progress-bar.tsx    # Прогресс генерации тестового диалога
+│       ├── debug-panel.tsx          # Collapsible debug-панель на сообщении
 │       ├── chat-input.tsx      # Ввод: Enter=отправить, Shift+Enter=перенос, тоггл параметров
 │       ├── message-bubble.tsx  # Пузырь: user/assistant, consilium accordion, cost, params
 │       ├── conversation-sidebar.tsx  # Левый sidebar: история диалогов, new/delete
@@ -132,6 +136,7 @@ src/
 │   ├── use-consilium.ts        # ConsiliumParams в localStorage + fetch roles
 │   ├── use-facts.ts            # Facts CRUD для sticky_facts стратегии
 │   ├── use-branches.ts         # Branches CRUD для branching стратегии
+│   ├── use-test-dialogue.ts    # SSE-стриминг тестового диалога (progress, abort)
 │   └── use-auto-scroll.ts
 │
 ├── lib/

@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Menu } from 'lucide-react';
+import { Menu, MessageSquare, FlaskConical } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useChat } from '@/hooks/use-chat';
 import { useAIParams } from '@/hooks/use-ai-params';
 import { useConsilium } from '@/hooks/use-consilium';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { useConversations } from '@/hooks/use-conversations';
+import { useTestDialogue } from '@/hooks/use-test-dialogue';
 import { useFacts } from '@/hooks/use-facts';
 import { useBranches } from '@/hooks/use-branches';
 import { ConversationSidebar } from './conversation-sidebar';
@@ -18,6 +19,8 @@ import { MessageBubble } from './message-bubble';
 import { TypingIndicator } from './typing-indicator';
 import { ChatInput } from './chat-input';
 import { EmptyState } from './empty-state';
+import { TestSetupForm } from './test-setup-form';
+import { TestProgressBar } from './test-progress-bar';
 import { AIParamsPanel } from './ai-params-panel';
 
 export function ChatLayout() {
@@ -34,8 +37,10 @@ export function ChatLayout() {
     addExpert,
     removeExpert,
   } = useConsilium();
+  const testDialogue = useTestDialogue();
   const facts = useFacts(chat.conversationId);
   const branches = useBranches(chat.conversationId);
+  const [mode, setMode] = useState<'chat' | 'test'>('chat');
   const [showParams, setShowParams] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [conversationStrategy, setConversationStrategy] = useState<string | undefined>(undefined);
@@ -127,6 +132,32 @@ export function ChatLayout() {
     [branches],
   );
 
+  const handleStartTest = useCallback((topic: string, pairsCount: number) => {
+    testDialogue.start(topic, pairsCount, params);
+  }, [testDialogue, params]);
+
+  // After test generation completes, switch to the created conversation
+  const prevTestConvIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      testDialogue.conversationId &&
+      !testDialogue.isGenerating &&
+      testDialogue.conversationId !== prevTestConvIdRef.current
+    ) {
+      prevTestConvIdRef.current = testDialogue.conversationId;
+      conversations.select(testDialogue.conversationId);
+      chat.loadConversation(testDialogue.conversationId);
+      conversations.refresh();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testDialogue.conversationId, testDialogue.isGenerating]);
+
+  // Determine which messages to show
+  const isTestMode = mode === 'test';
+  const testInProgress = isTestMode && testDialogue.isGenerating;
+  const testDone = isTestMode && !testDialogue.isGenerating && testDialogue.messages.length > 0;
+  const displayMessages = testInProgress ? testDialogue.messages : chat.messages;
+
   return (
     <>
       <div className="flex h-screen bg-white">
@@ -169,6 +200,20 @@ export function ChatLayout() {
                 </svg>
               </div>
               <span className="font-semibold text-gray-900">ChatGPT App</span>
+              <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5 ml-3">
+                <button
+                  onClick={() => { setMode('chat'); testDialogue.reset(); }}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === 'chat' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <MessageSquare className="w-3.5 h-3.5 inline mr-1" />Чат
+                </button>
+                <button
+                  onClick={() => setMode('test')}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === 'test' ? 'bg-white shadow-sm text-amber-700' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  <FlaskConical className="w-3.5 h-3.5 inline mr-1" />Тест
+                </button>
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-500">{user?.username}</span>
@@ -210,11 +255,13 @@ export function ChatLayout() {
               <div className="flex items-center justify-center h-full">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
               </div>
-            ) : chat.messages.length === 0 ? (
+            ) : isTestMode && displayMessages.length === 0 && !testDialogue.isGenerating ? (
+              <TestSetupForm onStart={handleStartTest} isGenerating={testDialogue.isGenerating} />
+            ) : displayMessages.length === 0 ? (
               <EmptyState />
             ) : (
               <div className="max-w-3xl mx-auto px-4 py-6">
-                {chat.messages.map((msg) => (
+                {displayMessages.map((msg) => (
                   <MessageBubble
                     key={msg.id}
                     role={msg.role}
@@ -232,6 +279,8 @@ export function ChatLayout() {
                     showBranchButton={currentStrategy === 'branching' && msg.role === 'assistant'}
                     onCreateBranch={currentStrategy === 'branching' ? handleCreateBranch : undefined}
                     messageId={msg.id}
+                    debugData={msg.debugData}
+                    isTestGenerated={msg.isTestGenerated}
                   />
                 ))}
                 {chat.isLoading && <TypingIndicator />}
@@ -249,10 +298,28 @@ export function ChatLayout() {
             />
           )}
 
+          {/* Test progress bar */}
+          {testDialogue.isGenerating && (
+            <TestProgressBar
+              current={testDialogue.progress.current}
+              total={testDialogue.progress.total}
+              onAbort={testDialogue.abort}
+            />
+          )}
+
+          {/* Test error */}
+          {testDialogue.error && (
+            <div className="max-w-3xl mx-auto px-4 py-2">
+              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {testDialogue.error}
+              </div>
+            </div>
+          )}
+
           {/* Input */}
           <ChatInput
             onSend={handleSend}
-            disabled={chat.isLoading}
+            disabled={chat.isLoading || testDialogue.isGenerating}
             showParams={showParams}
             onToggleParams={() => setShowParams((v) => !v)}
             hasNonDefaults={hasNonDefaults}

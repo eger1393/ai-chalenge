@@ -78,4 +78,12 @@ export class AIParamsDto {
   @Min(2)
   @Max(100)
   summaryKeepLast?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['sliding_window', 'sticky_facts', 'branching'])
+  contextStrategy?: string;
+
+  @IsOptional()
+  strategyParams?: Record<string, unknown>;
 }

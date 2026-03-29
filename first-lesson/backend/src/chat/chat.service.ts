@@ -1,5 +1,6 @@
 import { Injectable, BadGatewayException, BadRequestException, GatewayTimeoutException, Logger } from '@nestjs/common';
 import { MessageDto } from './dto/message.dto';
+import { TestDialogueDto } from './dto/test-dialogue.dto';
 import { ALLOWED_MODELS, DEFAULT_MODEL, MODEL_CONTEXT_WINDOWS } from './dto/ai-params.dto';
 import { ConsiliumMessageDto } from './dto/consilium.dto';
 import { EXPERT_ROLES } from './constants/expert-roles';
@@ -91,6 +92,8 @@ export class ChatService {
     let truncatedTokensCount = 0;
     let strategyMetadata: Record<string, unknown> | undefined;
 
+    const verbose = params?.strategyParams?.verbose === true;
+
     if (conversationId) {
       const result = await this.contextStrategyService.prepareContext(
         contextStrategy,
@@ -104,6 +107,7 @@ export class ChatService {
           strategyParams: {
             summaryMode: summaryMode ? 1 : 0,
             summaryKeepLast,
+            ...(verbose ? { verbose: true } : {}),
           },
         },
       );
@@ -173,12 +177,14 @@ export class ChatService {
       }
     }
 
+    let assistantMsg: { id: string } | undefined;
+
     if (conversationId) {
       const userMsg = await this.conversationService.addMessage(conversationId, 'user', dto.message, {
         tokenCount: tokenBreakdown.currentMessageTokens,
         branchId,
       });
-      await this.conversationService.addMessage(conversationId, 'assistant', reply, {
+      assistantMsg = await this.conversationService.addMessage(conversationId, 'assistant', reply, {
         model,
         tokenCount: totalTokens,
         promptTokens,
@@ -246,6 +252,7 @@ export class ChatService {
 
     if (conversationId) {
       result.conversationId = conversationId;
+      result.assistantMessageId = assistantMsg?.id;
       const totals = await this.conversationService.getConversationTotals(conversationId);
       result.conversationTotals = totals;
     }
@@ -263,6 +270,139 @@ export class ChatService {
     }
 
     return result;
+  }
+
+  async generateTestDialogue(
+    dto: TestDialogueDto,
+    username: string,
+    onEvent: (event: Record<string, unknown>) => void,
+  ) {
+    const params = dto.params;
+    const envMaxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || '16384');
+
+    const model =
+      params?.model && ALLOWED_MODELS.includes(params.model as any)
+        ? params.model
+        : DEFAULT_MODEL;
+
+    const temperature =
+      params?.temperature != null
+        ? Math.max(0, Math.min(2, params.temperature))
+        : 1.0;
+
+    const maxTokens =
+      params?.maxTokens != null
+        ? Math.max(1, Math.min(params.maxTokens, envMaxTokens))
+        : envMaxTokens;
+
+    const systemPrompt = params?.systemPrompt?.trim()?.slice(0, 4000) || undefined;
+    const contextStrategy: ContextStrategyType =
+      (params?.contextStrategy as ContextStrategyType) || 'sliding_window';
+
+    const conv = await this.conversationService.create(
+      username,
+      dto.topic.slice(0, 50),
+      model,
+      systemPrompt,
+      contextStrategy,
+      true,
+      dto.topic,
+      dto.pairsCount,
+    );
+
+    onEvent({ type: 'started', conversationId: conv.id, totalPairs: dto.pairsCount });
+
+    const simulatorModel = dto.simulatorModel || 'gpt-4.1-nano';
+    const dialogHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+
+    for (let i = 0; i < dto.pairsCount; i++) {
+      // Generate user message via simulator
+      const simulatorMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+        {
+          role: 'system',
+          content: `Ты играешь роль реального пользователя в диалоге на тему: ${dto.topic}. Генерируй естественные сообщения: вопросы, уточнения, комментарии. Не раскрывай что ты AI. Варьируй длину сообщений. Отвечай ТОЛЬКО текстом сообщения пользователя, без метаданных.`,
+        },
+        ...dialogHistory.map(m => ({
+          role: m.role as 'system' | 'user' | 'assistant',
+          content: m.content,
+        })),
+        { role: 'user', content: 'Сгенерируй следующее сообщение пользователя.' },
+      ];
+
+      const simResponse = await this.openaiService.callOpenAI(simulatorModel, simulatorMessages, 0.9, 1024);
+      const userMsg = simResponse.choices?.[0]?.message?.content?.trim() || `Расскажи подробнее о ${dto.topic}`;
+
+      onEvent({ type: 'user_message', pair: i, content: userMsg });
+
+      // Send the user message via sendMessage with verbose
+      const messageDto: MessageDto = {
+        message: userMsg,
+        conversationId: conv.id,
+        params: {
+          model: params?.model,
+          temperature: params?.temperature,
+          maxTokens: params?.maxTokens,
+          repetitionPenalty: params?.repetitionPenalty,
+          systemPrompt: params?.systemPrompt,
+          contextLimit: params?.contextLimit,
+          summaryMode: params?.summaryMode,
+          summaryKeepLast: params?.summaryKeepLast,
+          strategyParams: { verbose: true },
+        },
+      };
+
+      const sendResult = await this.sendMessage(messageDto, username);
+
+      // Save debug data
+      const assistantMessageId = sendResult.assistantMessageId as string | undefined;
+      if (assistantMessageId) {
+        const debugData: Record<string, unknown> = {
+          strategyType: contextStrategy,
+          contextMessagesCount: (sendResult.strategyMetadata as Record<string, unknown>)?.originalMessagesCount ?? 0,
+          contextMessagesAfterTruncation: (sendResult.strategyMetadata as Record<string, unknown>)?.keptMessagesCount ?? 0,
+          tokenBreakdown: sendResult.usage,
+          strategyMetadata: sendResult.strategyMetadata ?? null,
+        };
+
+        // Strategy-specific debug
+        const meta = sendResult.strategyMetadata as Record<string, unknown> | undefined;
+        if (contextStrategy === 'sticky_facts' && meta) {
+          debugData.factsSnapshot = meta.factsSnapshot ?? null;
+        }
+        if (contextStrategy === 'branching' && meta) {
+          debugData.branchInfo = {
+            branchName: meta.branchName,
+            branchMessagesCount: meta.branchMessagesCount,
+          };
+        }
+        if (contextStrategy === 'sliding_window' && meta) {
+          debugData.summaryInfo = {
+            summaryUsed: meta.summaryUsed,
+            summaryText: meta.summaryText,
+          };
+        }
+
+        await this.conversationService.saveDebugData(assistantMessageId, debugData);
+      }
+
+      dialogHistory.push({ role: 'user', content: userMsg });
+      dialogHistory.push({ role: 'assistant', content: sendResult.reply as string });
+
+      onEvent({
+        type: 'assistant_message',
+        pair: i,
+        content: sendResult.reply,
+        debug: sendResult.strategyMetadata ?? {},
+        usage: sendResult.usage,
+        cost: sendResult.cost,
+        durationMs: sendResult.durationMs,
+        contextWindow: sendResult.contextWindow,
+        truncation: sendResult.truncation,
+      });
+    }
+
+    const totals = await this.conversationService.getConversationTotals(conv.id);
+    onEvent({ type: 'complete', conversationId: conv.id, totalPairs: dto.pairsCount, totals });
   }
 
   async sendConsilium(dto: ConsiliumMessageDto, username?: string) {
