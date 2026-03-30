@@ -45,7 +45,8 @@ export class ConversationService {
     const { rows } = await this.db.query(
       `INSERT INTO conversations (id, username, title, model, system_prompt, context_strategy, is_test, test_topic, test_pairs_target)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-       RETURNING *`,
+       RETURNING *, context_strategy AS "contextStrategy", is_test AS "isTest",
+       created_at AS "createdAt", updated_at AS "updatedAt"`,
       [
         id,
         username,
@@ -65,6 +66,13 @@ export class ConversationService {
     const { rows } = await this.db.query(
       `SELECT
          c.*,
+         c.context_strategy AS "contextStrategy",
+         c.is_test AS "isTest",
+         c.test_topic AS "testTopic",
+         c.active_branch_id AS "activeBranchId",
+         c.created_at AS "createdAt",
+         c.updated_at AS "updatedAt",
+         c.system_prompt AS "systemPrompt",
          (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message,
          (SELECT COUNT(*)::int FROM messages WHERE conversation_id = c.id) AS message_count
        FROM conversations c
@@ -78,7 +86,10 @@ export class ConversationService {
 
   async findOne(username: string, id: string) {
     const { rows: convRows } = await this.db.query(
-      'SELECT * FROM conversations WHERE id = $1 AND username = $2',
+      `SELECT *, context_strategy AS "contextStrategy", is_test AS "isTest", test_topic AS "testTopic",
+       active_branch_id AS "activeBranchId", created_at AS "createdAt", updated_at AS "updatedAt",
+       system_prompt AS "systemPrompt"
+       FROM conversations WHERE id = $1 AND username = $2`,
       [id, username],
     );
 
@@ -284,7 +295,9 @@ export class ConversationService {
 
   async getConversation(id: string) {
     const { rows } = await this.db.query(
-      'SELECT * FROM conversations WHERE id = $1',
+      `SELECT *, context_strategy AS "contextStrategy", is_test AS "isTest",
+       active_branch_id AS "activeBranchId"
+       FROM conversations WHERE id = $1`,
       [id],
     );
     return rows[0] || null;
