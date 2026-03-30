@@ -68,8 +68,8 @@ export class ChatService {
         throw new BadRequestException('Conversation not found');
       }
 
-      // Determine context strategy from conversation
-      contextStrategy = (conversation.context_strategy as ContextStrategyType) || 'sliding_window';
+      // Determine context strategy from conversation (supports both camelCase alias and snake_case)
+      contextStrategy = (conversation.contextStrategy || conversation.context_strategy || 'sliding_window') as ContextStrategyType;
 
       const dbMessages = await this.conversationService.getMessagesForContext(conversationId);
       historyMessages = dbMessages;
