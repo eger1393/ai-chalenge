@@ -88,6 +88,23 @@ export class ChatController {
     return { deleted };
   }
 
+  // --- Checkpoint endpoints ---
+
+  @Post('conversations/:id/checkpoints')
+  @UseGuards(JwtAuthGuard)
+  async createCheckpoint(
+    @Param('id') id: string,
+    @Body() body: { messageId: string; label?: string },
+  ) {
+    return this.branchService.createCheckpoint(id, body.messageId, body.label);
+  }
+
+  @Get('conversations/:id/checkpoints')
+  @UseGuards(JwtAuthGuard)
+  async getCheckpoints(@Param('id') id: string) {
+    return this.branchService.getCheckpoints(id);
+  }
+
   // --- Branch endpoints ---
 
   @Get('conversations/:id/branches')
@@ -100,9 +117,9 @@ export class ChatController {
   @UseGuards(JwtAuthGuard)
   async createBranch(
     @Param('id') id: string,
-    @Body() body: { name: string; checkpointMessageId: string },
+    @Body() body: { checkpointId: string; name: string },
   ) {
-    return this.branchService.createBranch(id, body.name, body.checkpointMessageId);
+    return this.branchService.createBranch(id, body.checkpointId, body.name);
   }
 
   @Post('conversations/:id/branches/:branchId/activate')
@@ -128,6 +145,30 @@ export class ChatController {
     @Param('id') id: string,
     @Param('branchId') branchId: string,
   ) {
-    return this.branchService.getMessagesForBranch(id, branchId);
+    const messages = await this.branchService.getMessagesForBranch(id, branchId);
+    // Return in the same format as conversation detail messages
+    return messages.map((m: Record<string, unknown>) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      model: m.model || undefined,
+      cost: m.cost || undefined,
+      isConsilium: m.is_consilium || false,
+      branchId: m.branch_id || undefined,
+      createdAt: m.created_at,
+      durationMs: m.duration_ms || undefined,
+      currentMessageTokens: m.current_message_tokens || undefined,
+      historyTokens: m.history_tokens || undefined,
+      appliedModel: m.applied_model || undefined,
+      appliedTemperature: m.applied_temperature != null ? parseFloat(String(m.applied_temperature)) : undefined,
+      appliedMaxTokens: m.applied_max_tokens || undefined,
+      contextUsedTokens: m.context_used_tokens || undefined,
+      contextMaxTokens: m.context_max_tokens || undefined,
+      truncatedMessages: m.truncated_messages || undefined,
+      truncatedTokens: m.truncated_tokens || undefined,
+      promptTokens: m.prompt_tokens || undefined,
+      completionTokens: m.completion_tokens || undefined,
+      tokenCount: m.token_count || undefined,
+    }));
   }
 }

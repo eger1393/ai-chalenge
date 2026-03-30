@@ -24,18 +24,15 @@ export class BranchingStrategy implements IContextStrategy {
   }): Promise<ContextStrategyResult> {
     const { conversationId, currentMessage, model, systemPrompt, contextLimit } = params;
 
-    // Ensure main branch exists
-    await this.branchService.ensureMainBranch(conversationId);
-
     // Get active branch and its messages
     const activeBranch = await this.branchService.getActiveBranch(conversationId);
     const branchId = activeBranch?.id;
 
     let branchMessages: Array<{ role: string; content: string }>;
     if (branchId) {
-      branchMessages = await this.branchService.getMessagesForBranch(conversationId, branchId);
+      branchMessages = await this.branchService.getMessagesForBranchContext(conversationId, branchId);
     } else {
-      // Fallback to provided history
+      // No active branch — fallback to provided history
       branchMessages = params.historyMessages;
     }
 
@@ -48,7 +45,7 @@ export class BranchingStrategy implements IContextStrategy {
     if (verbose) {
       result.metadata = {
         ...result.metadata,
-        branchName: activeBranch?.name || 'main',
+        branchName: activeBranch?.name || 'none',
         branchMessagesCount: branchMessages.length,
         originalMessagesCount: allMessages.length,
         keptMessagesCount: result.messages.length,

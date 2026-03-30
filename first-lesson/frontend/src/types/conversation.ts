@@ -41,8 +41,17 @@ export interface ConversationBranch {
   name: string;
   parentBranchId?: string;
   checkpointMessageId?: string;
+  checkpointId?: string;
   isActive: boolean;
   messageCount?: number;
+  createdAt: string;
+}
+
+export interface Checkpoint {
+  id: string;
+  conversationId: string;
+  messageId: string;
+  label?: string;
   createdAt: string;
 }
 

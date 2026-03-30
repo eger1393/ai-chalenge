@@ -265,5 +265,6 @@ export function useChat() {
     conversationTotals,
     loadConversation,
     startNew,
+    setMessages,
   };
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, GitBranch } from 'lucide-react';
+import { ChevronDown, ChevronRight, Flag } from 'lucide-react';
 import { AppliedParams, ExpertOpinion, Usage } from '@/types/ai-params';
 import { MessageDebugData } from '@/types/conversation';
 import { AppliedParamsDisplay } from './applied-params-display';
@@ -20,14 +20,14 @@ interface MessageBubbleProps {
   truncation?: { droppedMessages: number; droppedTokens: number };
   contextUsedTokens?: number;
   contextMaxTokens?: number;
-  onCreateBranch?: (messageId: string) => void;
-  showBranchButton?: boolean;
+  onCreateCheckpoint?: (messageId: string) => void;
+  showCheckpointButton?: boolean;
   messageId?: string;
   debugData?: MessageDebugData;
   isTestGenerated?: boolean;
 }
 
-export function MessageBubble({ role, content, error, appliedParams, expertOpinions, isConsilium, cost, usage, durationMs, truncation, contextUsedTokens, contextMaxTokens, onCreateBranch, showBranchButton, messageId, debugData, isTestGenerated }: MessageBubbleProps) {
+export function MessageBubble({ role, content, error, appliedParams, expertOpinions, isConsilium, cost, usage, durationMs, truncation, contextUsedTokens, contextMaxTokens, onCreateCheckpoint, showCheckpointButton, messageId, debugData, isTestGenerated }: MessageBubbleProps) {
   if (role === 'user') {
     return (
       <div className="flex justify-end mb-4">
@@ -68,15 +68,15 @@ export function MessageBubble({ role, content, error, appliedParams, expertOpini
         >
           {content}
         </div>
-        {showBranchButton && onCreateBranch && messageId && (
+        {showCheckpointButton && onCreateCheckpoint && messageId && (
           <button
             type="button"
-            onClick={() => onCreateBranch(messageId)}
+            onClick={() => onCreateCheckpoint(messageId)}
             className="mt-1 flex items-center gap-1 text-[10px] text-gray-400 hover:text-indigo-600 opacity-0 group-hover/msg:opacity-100 transition-all"
-            title="Создать ветку от этого сообщения"
+            title="Создать checkpoint от этого сообщения"
           >
-            <GitBranch className="w-3 h-3" />
-            Создать ветку
+            <Flag className="w-3 h-3" />
+            Checkpoint
           </button>
         )}
       </div>

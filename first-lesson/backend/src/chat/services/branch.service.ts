@@ -8,6 +8,15 @@ export interface ConversationBranch {
   parent_branch_id: string | null;
   checkpoint_message_id: string | null;
   created_at: string;
+  message_count?: number;
+}
+
+export interface Checkpoint {
+  id: string;
+  conversation_id: string;
+  message_id: string;
+  label: string | null;
+  created_at: string;
 }
 
 @Injectable()
@@ -16,70 +25,106 @@ export class BranchService {
 
   constructor(private readonly db: DatabaseService) {}
 
-  async ensureMainBranch(conversationId: string): Promise<ConversationBranch> {
-    // Check if main branch exists
-    const { rows: existing } = await this.db.query(
-      `SELECT * FROM conversation_branches WHERE conversation_id = $1 AND name = 'main' LIMIT 1`,
-      [conversationId],
-    );
+  // ── Checkpoint operations ──
 
-    if (existing.length > 0) {
-      return existing[0];
-    }
-
-    // Create main branch
-    const { rows } = await this.db.query(
-      `INSERT INTO conversation_branches (id, conversation_id, name)
-       VALUES (gen_random_uuid(), $1, 'main')
-       RETURNING *`,
-      [conversationId],
-    );
-
-    const mainBranch = rows[0];
-
-    // Assign existing messages (with NULL branch_id) to the main branch
-    await this.db.query(
-      `UPDATE messages SET branch_id = $1 WHERE conversation_id = $2 AND branch_id IS NULL`,
-      [mainBranch.id, conversationId],
-    );
-
-    // Set as active branch
-    await this.db.query(
-      `UPDATE conversations SET active_branch_id = $1 WHERE id = $2`,
-      [mainBranch.id, conversationId],
-    );
-
-    this.logger.log(`Created main branch ${mainBranch.id} for conversation ${conversationId}`);
-    return mainBranch;
-  }
-
-  async createBranch(
+  async createCheckpoint(
     conversationId: string,
-    name: string,
-    checkpointMessageId: string,
-  ): Promise<ConversationBranch> {
-    // Ensure main branch exists first
-    const mainBranch = await this.ensureMainBranch(conversationId);
-
-    // Verify checkpoint message exists and belongs to this conversation
+    messageId: string,
+    label?: string,
+  ): Promise<Checkpoint> {
+    // Verify message exists and belongs to conversation
     const { rows: msgRows } = await this.db.query(
-      `SELECT id FROM messages WHERE id = $1 AND conversation_id = $2`,
-      [checkpointMessageId, conversationId],
+      `SELECT id, created_at FROM messages WHERE id = $1 AND conversation_id = $2`,
+      [messageId, conversationId],
     );
 
     if (msgRows.length === 0) {
-      throw new BadRequestException('Checkpoint message not found in this conversation');
+      throw new BadRequestException('Message not found in this conversation');
     }
 
-    // Get current active branch as parent
-    const activeBranch = await this.getActiveBranch(conversationId);
-    const parentBranchId = activeBranch?.id || mainBranch.id;
-
-    const { rows } = await this.db.query(
-      `INSERT INTO conversation_branches (id, conversation_id, name, parent_branch_id, checkpoint_message_id)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4)
+    // Create checkpoint
+    const { rows: cpRows } = await this.db.query(
+      `INSERT INTO checkpoints (conversation_id, message_id, label)
+       VALUES ($1, $2, $3)
        RETURNING *`,
-      [conversationId, name, parentBranchId, checkpointMessageId],
+      [conversationId, messageId, label || null],
+    );
+
+    const checkpoint = cpRows[0];
+
+    // Check if this is the first checkpoint in the conversation
+    const { rows: existingCheckpoints } = await this.db.query(
+      `SELECT id FROM checkpoints WHERE conversation_id = $1`,
+      [conversationId],
+    );
+
+    if (existingCheckpoints.length === 1) {
+      // First checkpoint: create "main" branch and assign post-checkpoint messages to it
+      const { rows: branchRows } = await this.db.query(
+        `INSERT INTO conversation_branches (conversation_id, name, checkpoint_message_id)
+         VALUES ($1, 'main', $2)
+         RETURNING *`,
+        [conversationId, messageId],
+      );
+
+      const mainBranch = branchRows[0];
+
+      // Messages AFTER the checkpoint message go to "main" branch
+      await this.db.query(
+        `UPDATE messages SET branch_id = $1
+         WHERE conversation_id = $2
+           AND branch_id IS NULL
+           AND created_at > (SELECT created_at FROM messages WHERE id = $3)`,
+        [mainBranch.id, conversationId, messageId],
+      );
+
+      // Set active branch
+      await this.db.query(
+        `UPDATE conversations SET active_branch_id = $1 WHERE id = $2`,
+        [mainBranch.id, conversationId],
+      );
+
+      this.logger.log(`Created first checkpoint ${checkpoint.id} and main branch ${mainBranch.id} for conversation ${conversationId}`);
+    } else {
+      this.logger.log(`Created checkpoint ${checkpoint.id} for conversation ${conversationId}`);
+    }
+
+    return checkpoint;
+  }
+
+  async getCheckpoints(conversationId: string): Promise<Checkpoint[]> {
+    const { rows } = await this.db.query(
+      `SELECT * FROM checkpoints WHERE conversation_id = $1 ORDER BY created_at ASC`,
+      [conversationId],
+    );
+    return rows;
+  }
+
+  // ── Branch operations ──
+
+  async createBranch(
+    conversationId: string,
+    checkpointId: string,
+    name: string,
+  ): Promise<ConversationBranch> {
+    // Verify checkpoint exists and belongs to conversation
+    const { rows: cpRows } = await this.db.query(
+      `SELECT * FROM checkpoints WHERE id = $1 AND conversation_id = $2`,
+      [checkpointId, conversationId],
+    );
+
+    if (cpRows.length === 0) {
+      throw new BadRequestException('Checkpoint not found in this conversation');
+    }
+
+    const checkpoint = cpRows[0];
+
+    // Create new branch
+    const { rows } = await this.db.query(
+      `INSERT INTO conversation_branches (conversation_id, name, checkpoint_message_id)
+       VALUES ($1, $2, $3)
+       RETURNING *`,
+      [conversationId, name, checkpoint.message_id],
     );
 
     const newBranch = rows[0];
@@ -87,13 +132,14 @@ export class BranchService {
     // Activate the new branch
     await this.activateBranch(conversationId, newBranch.id);
 
-    this.logger.log(`Created branch "${name}" (${newBranch.id}) at checkpoint ${checkpointMessageId}`);
+    this.logger.log(`Created branch "${name}" (${newBranch.id}) from checkpoint ${checkpointId}`);
     return newBranch;
   }
 
   async getBranches(conversationId: string): Promise<ConversationBranch[]> {
     const { rows } = await this.db.query(
-      `SELECT cb.*, (SELECT COUNT(*)::int FROM messages WHERE branch_id = cb.id) AS message_count
+      `SELECT cb.*,
+              (SELECT COUNT(*)::int FROM messages WHERE branch_id = cb.id) AS message_count
        FROM conversation_branches cb
        WHERE cb.conversation_id = $1
        ORDER BY cb.created_at ASC`,
@@ -130,7 +176,6 @@ export class BranchService {
   }
 
   async deleteBranch(branchId: string): Promise<void> {
-    // Cannot delete main branch
     const { rows } = await this.db.query(
       `SELECT id, name, conversation_id FROM conversation_branches WHERE id = $1`,
       [branchId],
@@ -181,7 +226,7 @@ export class BranchService {
   async getMessagesForBranch(
     conversationId: string,
     branchId: string,
-  ): Promise<Array<{ role: string; content: string }>> {
+  ): Promise<Array<{ id: string; role: string; content: string; created_at: string; branch_id: string | null; model?: string; token_count?: number; prompt_tokens?: number; completion_tokens?: number; cost?: number; is_consilium?: boolean; duration_ms?: number; current_message_tokens?: number; history_tokens?: number; applied_model?: string; applied_temperature?: number; applied_max_tokens?: number; context_used_tokens?: number; context_max_tokens?: number; truncated_messages?: number; truncated_tokens?: number }>> {
     // Get the branch info
     const { rows: branchRows } = await this.db.query(
       `SELECT * FROM conversation_branches WHERE id = $1 AND conversation_id = $2`,
@@ -194,10 +239,10 @@ export class BranchService {
 
     const branch = branchRows[0];
 
-    if (branch.name === 'main' || !branch.checkpoint_message_id) {
-      // Main branch: return all messages with this branch_id (or NULL for legacy)
+    if (!branch.checkpoint_message_id) {
+      // No checkpoint — return all messages (legacy/fallback)
       const { rows } = await this.db.query(
-        `SELECT role, content FROM messages
+        `SELECT * FROM messages
          WHERE conversation_id = $1 AND (branch_id = $2 OR branch_id IS NULL)
          ORDER BY created_at ASC`,
         [conversationId, branchId],
@@ -205,25 +250,32 @@ export class BranchService {
       return rows;
     }
 
-    // Non-main branch: shared messages up to checkpoint + branch-specific messages
-    // Shared messages: messages from parent branch up to and including checkpoint
+    // Shared messages: up to and including checkpoint message (branch_id IS NULL)
     const { rows: sharedMessages } = await this.db.query(
-      `SELECT role, content FROM messages
+      `SELECT * FROM messages
        WHERE conversation_id = $1
+         AND branch_id IS NULL
          AND created_at <= (SELECT created_at FROM messages WHERE id = $2)
-         AND (branch_id = $3 OR branch_id IS NULL)
        ORDER BY created_at ASC`,
-      [conversationId, branch.checkpoint_message_id, branch.parent_branch_id],
+      [conversationId, branch.checkpoint_message_id],
     );
 
     // Branch-specific messages
     const { rows: branchMessages } = await this.db.query(
-      `SELECT role, content FROM messages
+      `SELECT * FROM messages
        WHERE conversation_id = $1 AND branch_id = $2
        ORDER BY created_at ASC`,
       [conversationId, branchId],
     );
 
     return [...sharedMessages, ...branchMessages];
+  }
+
+  async getMessagesForBranchContext(
+    conversationId: string,
+    branchId: string,
+  ): Promise<Array<{ role: string; content: string }>> {
+    const messages = await this.getMessagesForBranch(conversationId, branchId);
+    return messages.map(m => ({ role: m.role, content: m.content }));
   }
 }

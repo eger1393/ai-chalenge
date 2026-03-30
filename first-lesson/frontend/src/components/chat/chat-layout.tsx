@@ -3,7 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Menu, MessageSquare, FlaskConical } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
-import { useChat } from '@/hooks/use-chat';
+import { useChat, Message } from '@/hooks/use-chat';
 import { useAIParams } from '@/hooks/use-ai-params';
 import { useConsilium } from '@/hooks/use-consilium';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
@@ -14,6 +14,7 @@ import { useBranches } from '@/hooks/use-branches';
 import { ConversationSidebar } from './conversation-sidebar';
 import { ContextIndicator } from './context-indicator';
 import { BranchSelector } from './branch-selector';
+import { CheckpointDivider } from './checkpoint-divider';
 import { FactsPanel } from './facts-panel';
 import { MessageBubble } from './message-bubble';
 import { TypingIndicator } from './typing-indicator';
@@ -123,13 +124,110 @@ export function ChatLayout() {
     [conversations],
   );
 
-  const handleCreateBranch = useCallback(
-    (messageId?: string) => {
-      if (!messageId) return;
-      const name = `Branch ${branches.branches.length + 1}`;
-      branches.createNewBranch(name, messageId);
+  const handleCreateCheckpoint = useCallback(
+    async (messageId: string) => {
+      const checkpoint = await branches.createCheckpoint(messageId);
+      if (checkpoint) {
+        // Reload conversation to see updated branch_ids on messages
+        if (chat.conversationId) {
+          await chat.loadConversation(chat.conversationId);
+        }
+      }
     },
-    [branches],
+    [branches, chat],
+  );
+
+  const handleCreateBranchFromCheckpoint = useCallback(
+    async (checkpointId: string) => {
+      const name = `Branch ${branches.branches.length + 1}`;
+      const branch = await branches.createNewBranch(checkpointId, name);
+      if (branch && chat.conversationId) {
+        // Switch to the new branch (which is empty) - reload messages
+        const messages = await branches.switchBranch(branch.id);
+        if (messages) {
+          chat.setMessages(
+            messages.map((m) => ({
+              id: m.id,
+              role: m.role as 'user' | 'assistant',
+              content: m.content,
+              cost: m.cost,
+              isConsilium: m.isConsilium,
+              durationMs: m.durationMs,
+              usage: m.promptTokens || m.completionTokens ? {
+                promptTokens: m.promptTokens || 0,
+                completionTokens: m.completionTokens || 0,
+                totalTokens: (m.promptTokens || 0) + (m.completionTokens || 0),
+                currentMessageTokens: m.currentMessageTokens || undefined,
+                historyTokens: m.historyTokens || undefined,
+              } : undefined,
+              appliedParams: m.appliedModel ? {
+                model: m.appliedModel,
+                temperature: m.appliedTemperature ?? 1.0,
+                maxTokens: m.appliedMaxTokens ?? 16384,
+              } : undefined,
+              truncation: m.truncatedMessages ? {
+                droppedMessages: m.truncatedMessages,
+                droppedTokens: m.truncatedTokens || 0,
+              } : undefined,
+              contextUsedTokens: m.contextUsedTokens || undefined,
+              contextMaxTokens: m.contextMaxTokens || undefined,
+            })),
+          );
+        }
+      }
+    },
+    [branches, chat],
+  );
+
+  const handleSwitchBranch = useCallback(
+    async (branchId: string) => {
+      const messages = await branches.switchBranch(branchId);
+      if (messages) {
+        chat.setMessages(
+          messages.map((m) => ({
+            id: m.id,
+            role: m.role as 'user' | 'assistant',
+            content: m.content,
+            cost: m.cost,
+            isConsilium: m.isConsilium,
+            durationMs: m.durationMs,
+            usage: m.promptTokens || m.completionTokens ? {
+              promptTokens: m.promptTokens || 0,
+              completionTokens: m.completionTokens || 0,
+              totalTokens: (m.promptTokens || 0) + (m.completionTokens || 0),
+              currentMessageTokens: m.currentMessageTokens || undefined,
+              historyTokens: m.historyTokens || undefined,
+            } : undefined,
+            appliedParams: m.appliedModel ? {
+              model: m.appliedModel,
+              temperature: m.appliedTemperature ?? 1.0,
+              maxTokens: m.appliedMaxTokens ?? 16384,
+            } : undefined,
+            truncation: m.truncatedMessages ? {
+              droppedMessages: m.truncatedMessages,
+              droppedTokens: m.truncatedTokens || 0,
+            } : undefined,
+            contextUsedTokens: m.contextUsedTokens || undefined,
+            contextMaxTokens: m.contextMaxTokens || undefined,
+          })),
+        );
+      }
+    },
+    [branches, chat],
+  );
+
+  const handleDeleteBranch = useCallback(
+    async (branchId: string) => {
+      await branches.removeBranch(branchId);
+      // After deleting, reload main branch messages
+      if (chat.conversationId) {
+        const mainBranch = branches.branches.find((b) => b.name === 'main');
+        if (mainBranch) {
+          await handleSwitchBranch(mainBranch.id);
+        }
+      }
+    },
+    [branches, chat.conversationId, handleSwitchBranch],
   );
 
   const handleStartTest = useCallback((topic: string, pairsCount: number) => {
@@ -155,8 +253,12 @@ export function ChatLayout() {
   // Determine which messages to show
   const isTestMode = mode === 'test';
   const testInProgress = isTestMode && testDialogue.isGenerating;
-  const testDone = isTestMode && !testDialogue.isGenerating && testDialogue.messages.length > 0;
   const displayMessages = testInProgress ? testDialogue.messages : chat.messages;
+
+  // Build checkpoint map: messageId -> checkpoint
+  const checkpointByMessageId = new Map(
+    branches.checkpoints.map((cp) => [cp.messageId, cp])
+  );
 
   return (
     <>
@@ -233,13 +335,11 @@ export function ChatLayout() {
           {currentStrategy === 'branching' && branches.branches.length > 0 && (
             <BranchSelector
               branches={branches.branches}
+              checkpoints={branches.checkpoints}
               activeBranchId={branches.activeBranchId}
-              onSwitch={branches.switchBranch}
-              onCreate={() => {
-                // Create branch from last assistant message
-                const lastAssistant = [...chat.messages].reverse().find((m) => m.role === 'assistant');
-                if (lastAssistant) handleCreateBranch(lastAssistant.id);
-              }}
+              onSwitch={handleSwitchBranch}
+              onCreateBranch={handleCreateBranchFromCheckpoint}
+              onDeleteBranch={handleDeleteBranch}
             />
           )}
 
@@ -261,28 +361,38 @@ export function ChatLayout() {
               <EmptyState />
             ) : (
               <div className="max-w-3xl mx-auto px-4 py-6">
-                {displayMessages.map((msg) => (
-                  <MessageBubble
-                    key={msg.id}
-                    role={msg.role}
-                    content={msg.content}
-                    error={msg.error}
-                    appliedParams={msg.appliedParams}
-                    expertOpinions={msg.expertOpinions}
-                    isConsilium={msg.isConsilium}
-                    cost={msg.cost}
-                    usage={msg.usage}
-                    durationMs={msg.durationMs}
-                    truncation={msg.truncation}
-                    contextUsedTokens={msg.contextUsedTokens}
-                    contextMaxTokens={msg.contextMaxTokens}
-                    showBranchButton={currentStrategy === 'branching' && msg.role === 'assistant'}
-                    onCreateBranch={currentStrategy === 'branching' ? handleCreateBranch : undefined}
-                    messageId={msg.id}
-                    debugData={msg.debugData}
-                    isTestGenerated={msg.isTestGenerated}
-                  />
-                ))}
+                {displayMessages.map((msg) => {
+                  const checkpoint = checkpointByMessageId.get(msg.id);
+                  return (
+                    <div key={msg.id}>
+                      <MessageBubble
+                        role={msg.role}
+                        content={msg.content}
+                        error={msg.error}
+                        appliedParams={msg.appliedParams}
+                        expertOpinions={msg.expertOpinions}
+                        isConsilium={msg.isConsilium}
+                        cost={msg.cost}
+                        usage={msg.usage}
+                        durationMs={msg.durationMs}
+                        truncation={msg.truncation}
+                        contextUsedTokens={msg.contextUsedTokens}
+                        contextMaxTokens={msg.contextMaxTokens}
+                        showCheckpointButton={currentStrategy === 'branching' && msg.role === 'assistant'}
+                        onCreateCheckpoint={currentStrategy === 'branching' ? handleCreateCheckpoint : undefined}
+                        messageId={msg.id}
+                        debugData={msg.debugData}
+                        isTestGenerated={msg.isTestGenerated}
+                      />
+                      {checkpoint && (
+                        <CheckpointDivider
+                          checkpoint={checkpoint}
+                          onCreateBranch={handleCreateBranchFromCheckpoint}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
                 {chat.isLoading && <TypingIndicator />}
               </div>
             )}

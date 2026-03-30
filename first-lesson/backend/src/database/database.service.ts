@@ -197,6 +197,19 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           CREATE INDEX IF NOT EXISTS idx_message_debug_data_message ON message_debug_data(message_id);
         `,
       },
+      {
+        name: '010_create_checkpoints',
+        sql: `
+          CREATE TABLE IF NOT EXISTS checkpoints (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+            label VARCHAR(200),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_checkpoints_conv ON checkpoints(conversation_id);
+        `,
+      },
     ];
   }
 }
