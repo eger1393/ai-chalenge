@@ -24,6 +24,7 @@ export interface MessageDebugData {
   contextMessagesCount: number;
   contextMessagesAfterTruncation: number;
   factsSnapshot?: Array<{ key: string; value: string }>;
+  factsAfter?: Array<{ key: string; value: string }>;
   branchInfo?: Record<string, unknown>;
   summaryInfo?: Record<string, unknown>;
   tokenBreakdown?: Record<string, number>;

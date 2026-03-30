@@ -347,32 +347,34 @@ export class ChatService {
 
       const sendResult = await this.sendMessage(messageDto, username);
 
-      // Save debug data
+      // Save debug data — for sticky_facts, load facts AFTER extraction (sendMessage already extracted them)
       const assistantMessageId = sendResult.assistantMessageId as string | undefined;
+      const meta = sendResult.strategyMetadata as Record<string, unknown> | undefined;
+
+      // For sticky_facts: get current facts (after extraction happened inside sendMessage)
+      let factsAfter: Array<{ key: string; value: string }> | null = null;
+      if (contextStrategy === 'sticky_facts') {
+        const currentFacts = await this.factsService.getFacts(conv.id);
+        factsAfter = currentFacts.map(f => ({ key: f.fact_key, value: f.fact_value }));
+      }
+
       if (assistantMessageId) {
         const debugData: Record<string, unknown> = {
           strategyType: contextStrategy,
-          contextMessagesCount: (sendResult.strategyMetadata as Record<string, unknown>)?.originalMessagesCount ?? 0,
-          contextMessagesAfterTruncation: (sendResult.strategyMetadata as Record<string, unknown>)?.keptMessagesCount ?? 0,
+          contextMessagesCount: meta?.originalMessagesCount ?? 0,
+          contextMessagesAfterTruncation: meta?.keptMessagesCount ?? 0,
           tokenBreakdown: sendResult.usage,
           strategyMetadata: sendResult.strategyMetadata ?? null,
         };
 
-        // Strategy-specific debug
-        const meta = sendResult.strategyMetadata as Record<string, unknown> | undefined;
-        if (contextStrategy === 'sticky_facts' && meta) {
-          debugData.factsSnapshot = meta.factsSnapshot ?? null;
+        if (contextStrategy === 'sticky_facts') {
+          debugData.factsSnapshot = meta?.factsSnapshot ?? null; // facts BEFORE this message
+          debugData.factsAfter = factsAfter; // facts AFTER extraction
         }
         if (contextStrategy === 'branching' && meta) {
           debugData.branchInfo = {
             branchName: meta.branchName,
             branchMessagesCount: meta.branchMessagesCount,
-          };
-        }
-        if (contextStrategy === 'sliding_window' && meta) {
-          debugData.summaryInfo = {
-            summaryUsed: meta.summaryUsed,
-            summaryText: meta.summaryText,
           };
         }
 
@@ -386,7 +388,10 @@ export class ChatService {
         type: 'assistant_message',
         pair: i,
         content: sendResult.reply,
-        debug: sendResult.strategyMetadata ?? {},
+        debug: {
+          ...((sendResult.strategyMetadata as Record<string, unknown>) ?? {}),
+          factsAfter: factsAfter,
+        },
         usage: sendResult.usage,
         cost: sendResult.cost,
         durationMs: sendResult.durationMs,
