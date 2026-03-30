@@ -129,19 +129,13 @@ export async function sendMessage(
     if (params.contextStrategy && params.contextStrategy !== 'sliding_window') {
       filtered.contextStrategy = params.contextStrategy;
     }
-    if (params.contextStrategy === 'sliding_window') {
-      filtered.summaryMode = 1;
-      filtered.summaryKeepLast = params.slidingWindowKeepLast;
-    }
-    if (params.contextStrategy === 'sticky_facts') {
-      filtered.factsKeepLast = params.factsKeepLast;
-    }
+    filtered.strategyParams = { verbose: true };
     if (Object.keys(filtered).length > 0) {
       body.params = filtered;
     }
   }
 
-  return apiRequest<{ reply: string; usage: Usage; appliedParams?: AppliedParams; cost?: number; durationMs?: number; contextWindow?: ContextWindow; conversationId?: string; conversationTotals?: ConversationTotals; truncation?: { droppedMessages: number; droppedTokens: number } }>('/chat/message', {
+  return apiRequest<{ reply: string; usage: Usage; appliedParams?: AppliedParams; cost?: number; durationMs?: number; contextWindow?: ContextWindow; conversationId?: string; conversationTotals?: ConversationTotals; truncation?: { droppedMessages: number; droppedTokens: number }; strategyMetadata?: Record<string, unknown>; assistantMessageId?: string }>('/chat/message', {
     method: 'POST',
     body: JSON.stringify(body),
   });
@@ -290,13 +284,7 @@ export function startTestDialogue(
     if (aiParams.contextLimit) filtered.contextLimit = aiParams.contextLimit;
     if (aiParams.systemPrompt) filtered.systemPrompt = aiParams.systemPrompt;
     if (aiParams.contextStrategy) filtered.contextStrategy = aiParams.contextStrategy;
-    if (aiParams.contextStrategy === 'sliding_window') {
-      filtered.summaryMode = 1;
-      filtered.summaryKeepLast = aiParams.slidingWindowKeepLast;
-    }
-    if (aiParams.contextStrategy === 'sticky_facts') {
-      filtered.factsKeepLast = aiParams.factsKeepLast;
-    }
+    filtered.strategyParams = { verbose: true };
     if (Object.keys(filtered).length > 0) body.params = filtered;
   }
 

@@ -151,7 +151,7 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
                 <label className="text-xs font-medium text-gray-700">Хранить последних</label>
                 <span className="text-xs font-mono text-gray-500">{params.slidingWindowKeepLast} сообщ.</span>
               </div>
-              <p className="text-[10px] text-gray-400 mb-1.5">Сколько последних сообщений хранить дословно. Остальные заменяются сводкой.</p>
+              <p className="text-[10px] text-gray-400 mb-1.5">Сколько последних сообщений хранить. Остальные отбрасываются.</p>
               <input
                 type="range"
                 min={2}
@@ -169,29 +169,11 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
             </div>
           )}
 
-          {/* sticky_facts settings */}
+          {/* sticky_facts info */}
           {params.contextStrategy === 'sticky_facts' && (
-            <div className="mt-3">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-medium text-gray-700">Последних сообщений</label>
-                <span className="text-xs font-mono text-gray-500">{params.factsKeepLast} сообщ.</span>
-              </div>
-              <p className="text-[10px] text-gray-400 mb-1.5">Сколько последних сообщений отправлять вместе с фактами.</p>
-              <input
-                type="range"
-                min={2}
-                max={50}
-                step={2}
-                value={params.factsKeepLast}
-                onChange={(e) => setParam('factsKeepLast', parseInt(e.target.value, 10))}
-                className="w-full h-1.5 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-              />
-              <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
-                <span>2</span>
-                <span>26</span>
-                <span>50</span>
-              </div>
-            </div>
+            <p className="text-[10px] text-gray-400 mt-2">
+              AI извлекает ключевые факты из диалога и отправляет их вместе с последними сообщениями
+            </p>
           )}
 
           {/* branching info */}

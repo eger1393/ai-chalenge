@@ -82,10 +82,6 @@ export class ChatService {
       historyMessages = [];
     }
 
-    // summaryMode backward compatibility: if summaryMode=1, use sliding_window with summary params
-    const summaryMode = params?.summaryMode === 1;
-    const summaryKeepLast = params?.summaryKeepLast ?? 10;
-
     let truncatedMessages: Array<{ role: string; content: string }>;
     let usedTokens: number;
     let truncatedCount = 0;
@@ -105,8 +101,6 @@ export class ChatService {
           systemPrompt,
           contextLimit,
           strategyParams: {
-            summaryMode: summaryMode ? 1 : 0,
-            summaryKeepLast,
             ...(verbose ? { verbose: true } : {}),
           },
         },

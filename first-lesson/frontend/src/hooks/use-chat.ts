@@ -211,7 +211,7 @@ export function useChat() {
           }
 
           const assistantMessage: Message = {
-            id: (Date.now() + 1).toString(),
+            id: response.assistantMessageId || (Date.now() + 1).toString(),
             role: 'assistant',
             content: response.reply,
             appliedParams: response.appliedParams,
@@ -221,6 +221,12 @@ export function useChat() {
             truncation: response.truncation,
             contextUsedTokens: response.contextWindow?.usedTokens,
             contextMaxTokens: response.contextWindow?.maxTokens,
+            debugData: response.strategyMetadata ? {
+              strategyType: 'unknown',
+              contextMessagesCount: 0,
+              contextMessagesAfterTruncation: 0,
+              strategyMetadata: response.strategyMetadata,
+            } : undefined,
           };
 
           setMessages((prev) => [...prev, assistantMessage]);

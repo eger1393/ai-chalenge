@@ -15,10 +15,8 @@ function loadFromStorage(): AIParams | null {
     // Migration: old summaryMode/summaryKeepLast -> new contextStrategy/slidingWindowKeepLast
     let contextStrategy = DEFAULT_AI_PARAMS.contextStrategy;
     let slidingWindowKeepLast = DEFAULT_AI_PARAMS.slidingWindowKeepLast;
-    let factsKeepLast = DEFAULT_AI_PARAMS.factsKeepLast;
 
     if ('summaryMode' in parsed) {
-      // Legacy format
       contextStrategy = 'sliding_window';
       slidingWindowKeepLast = typeof parsed.summaryKeepLast === 'number' ? parsed.summaryKeepLast : 10;
     } else {
@@ -27,9 +25,6 @@ function loadFromStorage(): AIParams | null {
       }
       if (typeof parsed.slidingWindowKeepLast === 'number') {
         slidingWindowKeepLast = parsed.slidingWindowKeepLast;
-      }
-      if (typeof parsed.factsKeepLast === 'number') {
-        factsKeepLast = parsed.factsKeepLast;
       }
     }
 
@@ -42,7 +37,6 @@ function loadFromStorage(): AIParams | null {
       contextLimit: typeof parsed.contextLimit === 'number' ? parsed.contextLimit : DEFAULT_AI_PARAMS.contextLimit,
       contextStrategy,
       slidingWindowKeepLast,
-      factsKeepLast,
     };
   } catch {
     return null;
@@ -91,8 +85,7 @@ export function useAIParams() {
     params.systemPrompt !== '' ||
     params.contextLimit !== DEFAULT_AI_PARAMS.contextLimit ||
     params.contextStrategy !== DEFAULT_AI_PARAMS.contextStrategy ||
-    params.slidingWindowKeepLast !== DEFAULT_AI_PARAMS.slidingWindowKeepLast ||
-    params.factsKeepLast !== DEFAULT_AI_PARAMS.factsKeepLast;
+    params.slidingWindowKeepLast !== DEFAULT_AI_PARAMS.slidingWindowKeepLast;
 
   return { params, setParam, resetParams, hasNonDefaults };
 }

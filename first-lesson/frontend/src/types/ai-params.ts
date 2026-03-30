@@ -9,7 +9,6 @@ export interface AIParams {
   contextLimit: number;
   contextStrategy: ContextStrategyType;
   slidingWindowKeepLast: number;
-  factsKeepLast: number;
 }
 
 export interface AppliedParams {
@@ -51,7 +50,6 @@ export const DEFAULT_AI_PARAMS: AIParams = {
   contextLimit: 0,
   contextStrategy: 'sliding_window',
   slidingWindowKeepLast: 10,
-  factsKeepLast: 10,
 };
 
 export const STRATEGY_LABELS: Record<ContextStrategyType, string> = {
