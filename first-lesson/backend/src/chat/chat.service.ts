@@ -11,6 +11,7 @@ import { ContextStrategyService } from './services/context-strategy.service';
 import { FactsService } from './services/facts.service';
 import { BranchService } from './services/branch.service';
 import { ContextStrategyType } from './strategies/context-strategy.interface';
+import { MemoryAssemblerService } from './services/memory-assembler.service';
 
 @Injectable()
 export class ChatService {
@@ -23,6 +24,7 @@ export class ChatService {
     private readonly contextStrategyService: ContextStrategyService,
     private readonly factsService: FactsService,
     private readonly branchService: BranchService,
+    private readonly memoryAssemblerService: MemoryAssemblerService,
   ) {}
 
   async sendMessage(dto: MessageDto, username?: string) {
@@ -50,7 +52,7 @@ export class ChatService {
         : 1.0;
     const frequencyPenalty = Math.max(-2, Math.min(2, (repetitionPenalty - 1.0) * 2));
 
-    const systemPrompt = params?.systemPrompt?.trim()?.slice(0, 4000) || undefined;
+    const userSystemPrompt = params?.systemPrompt?.trim()?.slice(0, 4000) || undefined;
     const contextLimit = params?.contextLimit != null && params.contextLimit > 0 ? params.contextLimit : undefined;
 
     let conversationId = dto.conversationId;
@@ -82,6 +84,15 @@ export class ChatService {
       historyMessages = [];
     }
 
+    // Assemble 3-layer memory: long-term (profile) + working (task) + short-term (user system prompt)
+    const memoryResult = await this.memoryAssemblerService.assembleMemory({
+      username: username || 'anonymous',
+      conversationId,
+      userSystemPrompt,
+      model,
+    });
+    const assembledSystemPrompt = memoryResult.systemPrompt || undefined;
+
     let truncatedMessages: Array<{ role: string; content: string }>;
     let usedTokens: number;
     let truncatedCount = 0;
@@ -98,7 +109,7 @@ export class ChatService {
           historyMessages,
           currentMessage: dto.message,
           model,
-          systemPrompt,
+          systemPrompt: assembledSystemPrompt,
           contextLimit,
           strategyParams: {
             ...(verbose ? { verbose: true } : {}),
@@ -126,7 +137,7 @@ export class ChatService {
     }
 
     const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-      ...(systemPrompt ? [{ role: 'system' as const, content: systemPrompt }] : []),
+      ...(assembledSystemPrompt ? [{ role: 'system' as const, content: assembledSystemPrompt }] : []),
       ...truncatedMessages.map((m) => ({
         role: m.role as 'user' | 'assistant',
         content: m.content,
@@ -136,7 +147,7 @@ export class ChatService {
     const tokenBreakdown = this.tokenService.countTokensBreakdown(
       historyMessages,
       dto.message,
-      systemPrompt,
+      assembledSystemPrompt,
       model,
     );
 
@@ -227,7 +238,7 @@ export class ChatService {
     };
     if (repetitionPenalty !== 1.0) appliedParams.repetitionPenalty = repetitionPenalty;
     if (frequencyPenalty !== 0) appliedParams.frequencyPenalty = frequencyPenalty;
-    if (systemPrompt) appliedParams.systemPrompt = systemPrompt;
+    if (assembledSystemPrompt) appliedParams.systemPrompt = assembledSystemPrompt;
 
     const result: Record<string, unknown> = {
       reply,
@@ -261,6 +272,9 @@ export class ChatService {
     }
     if (strategyMetadata) {
       result.strategyMetadata = strategyMetadata;
+    }
+    if (memoryResult.layers.length > 0) {
+      result.memoryLayers = memoryResult.layers;
     }
 
     return result;
@@ -378,6 +392,11 @@ export class ChatService {
           };
         }
 
+        // Memory layers from 3-level memory assembly
+        if (sendResult.memoryLayers) {
+          debugData.memoryLayers = sendResult.memoryLayers;
+        }
+
         await this.conversationService.saveDebugData(assistantMessageId, debugData);
       }
 
@@ -462,6 +481,15 @@ export class ChatService {
       })
       .filter((e): e is { name: string; systemPrompt: string } => e !== null);
 
+    // Assemble memory for consilium: long-term + working layers as prefix for each expert
+    // No userSystemPrompt passed — only long-term (profile) and working (task) layers
+    const consiliumMemory = await this.memoryAssemblerService.assembleMemory({
+      username: username || 'anonymous',
+      conversationId,
+      model,
+    });
+    const memoryPrefix = consiliumMemory.systemPrompt || '';
+
     this.logger.log(`sendConsilium: model=${model} experts=${resolvedExperts.length}`);
 
     const consiliumStart = Date.now();
@@ -471,8 +499,11 @@ export class ChatService {
     for (let i = 0; i < resolvedExperts.length; i++) {
       const expert = resolvedExperts[i];
       this.logger.log(`  Expert [${i + 1}/${resolvedExperts.length}]: ${expert.name}`);
+      const expertSystemPrompt = memoryPrefix
+        ? `${memoryPrefix}\n\n---\n\n${expert.systemPrompt}`
+        : expert.systemPrompt;
       const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-        { role: 'system' as const, content: expert.systemPrompt },
+        { role: 'system' as const, content: expertSystemPrompt },
         ...history,
         { role: 'user' as const, content: dto.message },
       ];

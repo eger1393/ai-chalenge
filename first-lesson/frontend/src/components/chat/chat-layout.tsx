@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Menu, MessageSquare, FlaskConical } from 'lucide-react';
+import { Menu, MessageSquare, FlaskConical, FolderOpen } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useChat, Message } from '@/hooks/use-chat';
 import { useAIParams } from '@/hooks/use-ai-params';
@@ -11,6 +11,8 @@ import { useConversations } from '@/hooks/use-conversations';
 import { useTestDialogue } from '@/hooks/use-test-dialogue';
 import { useFacts } from '@/hooks/use-facts';
 import { useBranches } from '@/hooks/use-branches';
+import { useTasks } from '@/hooks/use-tasks';
+import { usePersonalization } from '@/hooks/use-personalization';
 import { ConversationSidebar } from './conversation-sidebar';
 import { ContextIndicator } from './context-indicator';
 import { BranchSelector } from './branch-selector';
@@ -41,6 +43,8 @@ export function ChatLayout() {
   const testDialogue = useTestDialogue();
   const facts = useFacts(chat.conversationId);
   const branches = useBranches(chat.conversationId);
+  const { tasks, addTask, removeTask } = useTasks();
+  const { profile, isSaving: profileSaving, updateField: updateProfileField } = usePersonalization();
   const [mode, setMode] = useState<'chat' | 'test'>('chat');
   const [showParams, setShowParams] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -52,6 +56,10 @@ export function ChatLayout() {
 
   // Determine current strategy: conversation's fixed strategy or params strategy
   const currentStrategy = conversationStrategy || params.contextStrategy;
+
+  // Active conversation & task for header badge
+  const activeConversation = conversations.conversations.find(c => c.id === conversations.activeId);
+  const activeTask = tasks.find(t => t.id === activeConversation?.taskId);
 
   useEffect(() => {
     const activeId = conversations.activeId;
@@ -272,6 +280,9 @@ export function ChatLayout() {
           onDelete={handleDeleteConversation}
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
+          tasks={tasks}
+          onCreateTask={addTask}
+          onDeleteTask={removeTask}
         />
 
         {/* Main chat area */}
@@ -316,6 +327,12 @@ export function ChatLayout() {
                   <FlaskConical className="w-3.5 h-3.5 inline mr-1" />Тест
                 </button>
               </div>
+              {activeTask && (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-md">
+                  <FolderOpen size={12} className="text-amber-500" />
+                  <span className="text-[11px] font-medium text-amber-700 max-w-[160px] truncate">{activeTask.title}</span>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-500">{user?.username}</span>
@@ -465,6 +482,9 @@ export function ChatLayout() {
           addExpert={addExpert}
           removeExpert={removeExpert}
           conversationStrategy={conversationStrategy}
+          profile={profile}
+          onUpdateProfileField={updateProfileField}
+          isProfileSaving={profileSaving}
         />
       </div>
     </>

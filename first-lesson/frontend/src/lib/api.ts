@@ -1,6 +1,8 @@
 import { setTokens, getAccessToken, getRefreshToken, clearTokens } from './tokens';
 import { AIParams, AppliedParams, DEFAULT_AI_PARAMS, Expert, Role, TestDialogueEvent, TestDialogueParams, Usage } from '@/types/ai-params';
 import { Checkpoint, Conversation, ConversationBranch, ConversationDetail, ConversationFact, ConversationMessage, ConversationTotals, ContextWindow } from '@/types/conversation';
+import { Task } from '@/types/task';
+import { UserProfile } from '@/types/personalization';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
@@ -349,4 +351,47 @@ export function logout() {
   if (typeof window !== 'undefined') {
     window.location.href = '/login';
   }
+}
+
+// ===== Tasks API =====
+export async function listTasks(status?: string): Promise<Task[]> {
+  const query = status ? `?status=${status}` : '';
+  return apiRequest<Task[]>(`/tasks${query}`);
+}
+
+export async function createTask(data: { title: string; description?: string }): Promise<Task> {
+  return apiRequest<Task>('/tasks', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateTask(id: string, data: { title?: string; description?: string; status?: string }): Promise<Task> {
+  return apiRequest<Task>(`/tasks/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  return apiRequest<void>(`/tasks/${id}`, { method: 'DELETE' });
+}
+
+export async function setConversationTask(convId: string, taskId: string | null): Promise<void> {
+  return apiRequest<void>(`/conversations/${convId}/task`, {
+    method: 'PATCH',
+    body: JSON.stringify({ taskId }),
+  });
+}
+
+// ===== Profile API =====
+export async function getProfile(): Promise<UserProfile> {
+  return apiRequest<UserProfile>('/profile');
+}
+
+export async function updateProfile(data: Partial<UserProfile>): Promise<UserProfile> {
+  return apiRequest<UserProfile>('/profile', {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
 }

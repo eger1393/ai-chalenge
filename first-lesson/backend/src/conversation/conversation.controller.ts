@@ -11,6 +11,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ConversationService } from './conversation.service';
@@ -59,5 +60,17 @@ export class ConversationController {
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Request() req, @Param('id') id: string) {
     return this.conversationService.remove(req.user.username, id);
+  }
+
+  @Patch(':id/task')
+  async setTask(
+    @Request() req,
+    @Param('id') id: string,
+    @Body() body: { taskId: string | null },
+  ) {
+    const conversation = await this.conversationService.findOne(req.user.username, id);
+    if (!conversation) throw new NotFoundException('Conversation not found');
+    await this.conversationService.setTaskId(id, body.taskId ?? null);
+    return { success: true };
   }
 }

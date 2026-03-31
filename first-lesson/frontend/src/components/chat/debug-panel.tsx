@@ -31,6 +31,31 @@ export function DebugPanel({ debugData }: DebugPanelProps) {
 
       {open && (
         <div className="border border-gray-200 rounded-lg bg-gray-50 p-3 text-[10px] mt-1 space-y-0">
+          {/* Memory Layers */}
+          {debugData.memoryLayers && debugData.memoryLayers.length > 0 && (
+            <div className="mb-2 pb-2 border-b border-gray-200">
+              <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Слои памяти</div>
+              <div className="space-y-1">
+                {debugData.memoryLayers.map((layer, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                      layer.type === 'long_term'
+                        ? 'bg-purple-100 text-purple-700'
+                        : layer.type === 'working'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-sky-100 text-sky-700'
+                    }`}>
+                      {layer.type === 'long_term' ? '\uD83E\uDDE0' : layer.type === 'working' ? '\uD83D\uDCCB' : '\uD83D\uDCAC'}
+                      {layer.type === 'long_term' ? 'long-term' : layer.type === 'working' ? 'working' : 'short-term'}
+                    </span>
+                    <span className="text-[10px] text-gray-500 font-mono">{layer.tokenCount} tok</span>
+                    <span className="text-[10px] text-gray-500 truncate">{layer.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Strategy badge */}
           <div className="flex items-center gap-2">
             <span className="text-gray-500">Стратегия:</span>

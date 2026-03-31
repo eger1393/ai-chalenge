@@ -40,13 +40,14 @@ export class ConversationService {
     isTest?: boolean,
     testTopic?: string,
     testPairsTarget?: number,
+    taskId?: string,
   ) {
     const id = crypto.randomUUID();
     const { rows } = await this.db.query(
-      `INSERT INTO conversations (id, username, title, model, system_prompt, context_strategy, is_test, test_topic, test_pairs_target)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO conversations (id, username, title, model, system_prompt, context_strategy, is_test, test_topic, test_pairs_target, task_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *, context_strategy AS "contextStrategy", is_test AS "isTest",
-       created_at AS "createdAt", updated_at AS "updatedAt"`,
+       task_id AS "taskId", created_at AS "createdAt", updated_at AS "updatedAt"`,
       [
         id,
         username,
@@ -57,6 +58,7 @@ export class ConversationService {
         isTest || false,
         testTopic || null,
         testPairsTarget || 0,
+        taskId || null,
       ],
     );
     return rows[0];
@@ -74,7 +76,8 @@ export class ConversationService {
          c.updated_at AS "updatedAt",
          c.system_prompt AS "systemPrompt",
          (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message,
-         (SELECT COUNT(*)::int FROM messages WHERE conversation_id = c.id) AS message_count
+         (SELECT COUNT(*)::int FROM messages WHERE conversation_id = c.id) AS message_count,
+         c.task_id AS "taskId"
        FROM conversations c
        WHERE c.username = $1
        ORDER BY c.updated_at DESC
@@ -87,7 +90,7 @@ export class ConversationService {
   async findOne(username: string, id: string) {
     const { rows: convRows } = await this.db.query(
       `SELECT *, context_strategy AS "contextStrategy", is_test AS "isTest", test_topic AS "testTopic",
-       active_branch_id AS "activeBranchId", created_at AS "createdAt", updated_at AS "updatedAt",
+       active_branch_id AS "activeBranchId", task_id AS "taskId", created_at AS "createdAt", updated_at AS "updatedAt",
        system_prompt AS "systemPrompt"
        FROM conversations WHERE id = $1 AND username = $2`,
       [id, username],
@@ -278,6 +281,13 @@ export class ConversationService {
     );
   }
 
+  async setTaskId(conversationId: string, taskId: string | null): Promise<void> {
+    await this.db.query(
+      'UPDATE conversations SET task_id = $1, updated_at = NOW() WHERE id = $2',
+      [taskId, conversationId],
+    );
+  }
+
   async getMessagesForContext(conversationId: string): Promise<Array<{ role: string; content: string }>> {
     const { rows } = await this.db.query(
       'SELECT role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC',
@@ -296,7 +306,7 @@ export class ConversationService {
   async getConversation(id: string) {
     const { rows } = await this.db.query(
       `SELECT *, context_strategy AS "contextStrategy", is_test AS "isTest",
-       active_branch_id AS "activeBranchId"
+       active_branch_id AS "activeBranchId", task_id AS "taskId"
        FROM conversations WHERE id = $1`,
       [id],
     );
@@ -339,8 +349,8 @@ export class ConversationService {
     await this.db.query(
       `INSERT INTO message_debug_data (
         message_id, strategy_type, context_messages_count, context_messages_after_truncation,
-        facts_snapshot, branch_info, summary_info, token_breakdown, strategy_metadata
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        facts_snapshot, branch_info, summary_info, token_breakdown, strategy_metadata, memory_layers
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       ON CONFLICT (message_id) DO UPDATE SET
         strategy_type = EXCLUDED.strategy_type,
         context_messages_count = EXCLUDED.context_messages_count,
@@ -349,7 +359,8 @@ export class ConversationService {
         branch_info = EXCLUDED.branch_info,
         summary_info = EXCLUDED.summary_info,
         token_breakdown = EXCLUDED.token_breakdown,
-        strategy_metadata = EXCLUDED.strategy_metadata`,
+        strategy_metadata = EXCLUDED.strategy_metadata,
+        memory_layers = EXCLUDED.memory_layers`,
       [
         messageId,
         data.strategyType ?? null,
@@ -360,6 +371,7 @@ export class ConversationService {
         data.summaryInfo ? JSON.stringify(data.summaryInfo) : null,
         data.tokenBreakdown ? JSON.stringify(data.tokenBreakdown) : null,
         data.strategyMetadata ? JSON.stringify(data.strategyMetadata) : null,
+        data.memoryLayers ? JSON.stringify(data.memoryLayers) : null,
       ],
     );
   }
@@ -385,6 +397,7 @@ export class ConversationService {
         summaryInfo: row.summary_info,
         tokenBreakdown: row.token_breakdown,
         strategyMetadata: row.strategy_metadata,
+        memoryLayers: row.memory_layers,
         createdAt: row.created_at,
       });
     }

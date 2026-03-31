@@ -6,6 +6,7 @@ export interface Conversation {
   model: string;
   systemPrompt?: string;
   contextStrategy?: string;
+  taskId?: string;
   isTest?: boolean;
   testTopic?: string;
   testPairsTarget?: number;
@@ -19,6 +20,12 @@ export interface Conversation {
   };
 }
 
+export interface MemoryLayerInfo {
+  type: 'long_term' | 'working' | 'short_term';
+  label: string;
+  tokenCount: number;
+}
+
 export interface MessageDebugData {
   strategyType: string;
   contextMessagesCount: number;
@@ -29,6 +36,7 @@ export interface MessageDebugData {
   summaryInfo?: Record<string, unknown>;
   tokenBreakdown?: Record<string, number>;
   strategyMetadata?: Record<string, unknown>;
+  memoryLayers?: MemoryLayerInfo[];
 }
 
 export interface ConversationFact {

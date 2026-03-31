@@ -210,6 +210,51 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           CREATE INDEX IF NOT EXISTS idx_checkpoints_conv ON checkpoints(conversation_id);
         `,
       },
+      {
+        name: '011_create_tasks',
+        sql: `
+          CREATE TABLE IF NOT EXISTS tasks (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            username VARCHAR(100) NOT NULL,
+            title VARCHAR(200) NOT NULL,
+            description TEXT,
+            status VARCHAR(20) NOT NULL DEFAULT 'active',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_tasks_username ON tasks(username);
+          CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(username, status);
+        `,
+      },
+      {
+        name: '012_create_user_profiles',
+        sql: `
+          CREATE TABLE IF NOT EXISTS user_profiles (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            username VARCHAR(100) NOT NULL UNIQUE,
+            response_language VARCHAR(10) NOT NULL DEFAULT 'auto',
+            dialogue_style VARCHAR(30) NOT NULL DEFAULT 'friendly',
+            response_brevity VARCHAR(20) NOT NULL DEFAULT 'unset',
+            custom_prompt TEXT NOT NULL DEFAULT '',
+            preferences JSONB NOT NULL DEFAULT '{}',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+        `,
+      },
+      {
+        name: '013_add_task_id_to_conversations',
+        sql: `
+          ALTER TABLE conversations ADD COLUMN IF NOT EXISTS task_id UUID REFERENCES tasks(id) ON DELETE SET NULL;
+          CREATE INDEX IF NOT EXISTS idx_conversations_task_id ON conversations(task_id);
+        `,
+      },
+      {
+        name: '014_add_memory_layers_to_debug_data',
+        sql: `
+          ALTER TABLE message_debug_data ADD COLUMN IF NOT EXISTS memory_layers JSONB;
+        `,
+      },
     ];
   }
 }

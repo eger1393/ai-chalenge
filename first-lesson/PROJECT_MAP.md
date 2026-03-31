@@ -48,7 +48,8 @@ src/
 │   │   ├── openai.service.ts   # OpenAIService: callOpenAI, calculateCost
 │   │   ├── context-strategy.service.ts  # Фабрика/диспетчер стратегий контекста
 │   │   ├── facts.service.ts    # FactsService: CRUD facts + AI extraction (gpt-4.1-nano)
-│   │   └── branch.service.ts   # BranchService: ветки, checkpoints, ensureMainBranch
+│   │   ├── branch.service.ts   # BranchService: ветки, checkpoints, ensureMainBranch
+│   │   └── memory-assembler.service.ts  # MemoryAssemblerService: сборка 3-уровневого системного промпта
 │   ├── strategies/
 │   │   ├── context-strategy.interface.ts  # IContextStrategy, ContextStrategyType
 │   │   ├── sliding-window.strategy.ts     # SlidingWindowStrategy (truncation + summary)
@@ -62,11 +63,22 @@ src/
 │   └── constants/
 │       └── expert-roles.ts     # 15 предустановленных ролей экспертов
 │
-└── conversation/               # CRUD диалогов
-    ├── conversation.controller.ts  # POST/GET /conversations, GET/PATCH/DELETE /conversations/:id
-    ├── conversation.service.ts     # create (isTest), findAll, findOne (+debug), addMessage,
-    │                               #   saveDebugData, getDebugDataForConversation
-    └── dto/                    # create-conversation.dto, update-conversation.dto
+├── conversation/               # CRUD диалогов
+│   ├── conversation.controller.ts  # POST/GET /conversations, GET/PATCH/DELETE /conversations/:id
+│   │                               #   + PATCH /conversations/:id/task (привязка к задаче)
+│   ├── conversation.service.ts     # create (isTest, taskId?), findAll, findOne (+debug), addMessage,
+│   │                               #   saveDebugData, getDebugDataForConversation, setTaskId
+│   └── dto/                    # create-conversation.dto, update-conversation.dto
+│
+├── task/                       # Рабочая память (Working Memory)
+│   ├── task.controller.ts      # POST/GET /tasks, GET/PATCH/DELETE /tasks/:id, GET /tasks/:id/conversations
+│   ├── task.service.ts         # CRUD задач + findById для MemoryAssembler
+│   └── dto/                    # create-task.dto, update-task.dto
+│
+└── user-profile/               # Долговременная память (Long-term Memory)
+    ├── user-profile.controller.ts  # GET/PUT /profile
+    ├── user-profile.service.ts     # getProfile, upsertProfile (UPSERT ON CONFLICT)
+    └── dto/                    # update-profile.dto
 ```
 
 ### Ключевые модели
@@ -84,12 +96,14 @@ src/
 ### БД — PostgreSQL (raw SQL, без ORM)
 
 ```sql
-conversations (id UUID PK, username, title, model, system_prompt, context_strategy, active_branch_id, summary, summary_up_to_index, created_at, updated_at)
+conversations (id UUID PK, username, title, model, system_prompt, context_strategy, active_branch_id, summary, summary_up_to_index, task_id FK→tasks, created_at, updated_at)
 messages (id UUID PK, conversation_id FK, role, content, model, token_count, ..., branch_id FK→branches, created_at)
 expert_opinions (id UUID PK, message_id FK→messages, expert_name, content, is_error)
 conversation_facts (id UUID PK, conversation_id FK, fact_key, fact_value, source_message_id, UNIQUE(conv+key))
 conversation_branches (id UUID PK, conversation_id FK, name, parent_branch_id, checkpoint_message_id, created_at)
-message_debug_data (id UUID PK, message_id FK UNIQUE, strategy_type, token_breakdown JSONB, facts_snapshot JSONB, strategy_metadata JSONB)
+message_debug_data (id UUID PK, message_id FK UNIQUE, strategy_type, token_breakdown JSONB, facts_snapshot JSONB, strategy_metadata JSONB, memory_layers JSONB)
+tasks (id UUID PK, username, title, description TEXT, status, created_at, updated_at)               -- рабочая память
+user_profiles (id UUID PK, username UNIQUE, response_language, dialogue_style, response_brevity, custom_prompt, preferences JSONB, created_at, updated_at)  -- долговременная память
 ```
 
 ---
@@ -118,11 +132,12 @@ src/
 │       ├── branch-selector.tsx      # Навигатор веток (для branching)
 │       ├── test-setup-form.tsx      # Форма запуска тестового диалога (тема + длина)
 │       ├── test-progress-bar.tsx    # Прогресс генерации тестового диалога
-│       ├── debug-panel.tsx          # Collapsible debug-панель на сообщении
+│       ├── debug-panel.tsx          # Collapsible debug-панель: токены, стратегия, слои памяти
 │       ├── chat-input.tsx      # Ввод: Enter=отправить, Shift+Enter=перенос, тоггл параметров
 │       ├── message-bubble.tsx  # Пузырь: user/assistant, consilium accordion, cost, params
-│       ├── conversation-sidebar.tsx  # Левый sidebar: история диалогов, new/delete
-│       ├── ai-params-panel.tsx      # Правый drawer: модель, temperature, tokens, systemPrompt
+│       ├── conversation-sidebar.tsx  # Левый sidebar: задачи (accordion) + диалоги, new task/dialog
+│       ├── ai-params-panel.tsx      # Правый drawer: вкладки Параметры / Персонализация
+│       ├── personalization-panel.tsx  # Вкладка персонализации: язык, стиль, краткость, кастомный промпт
 │       ├── consilium-panel.tsx      # Настройка экспертов (2-3, role/custom)
 │       ├── context-indicator.tsx    # Полоска % контекста (green→yellow→red)
 │       ├── applied-params-display.tsx  # Мета-строка под ответом
@@ -137,6 +152,8 @@ src/
 │   ├── use-facts.ts            # Facts CRUD для sticky_facts стратегии
 │   ├── use-branches.ts         # Branches CRUD для branching стратегии
 │   ├── use-test-dialogue.ts    # SSE-стриминг тестового диалога (progress, abort)
+│   ├── use-tasks.ts            # Tasks CRUD (рабочая память): load, addTask, removeTask, archiveTask
+│   ├── use-personalization.ts  # UserProfile (долговременная память): load, updateField (debounced PUT)
 │   └── use-auto-scroll.ts
 │
 ├── lib/
@@ -146,7 +163,9 @@ src/
 │
 ├── types/
 │   ├── ai-params.ts            # AIParams, Expert, Role, ConsiliumParams, Usage, AVAILABLE_MODELS
-│   └── conversation.ts         # Conversation, ConversationMessage, ConversationDetail, ContextWindow
+│   ├── conversation.ts         # Conversation (+ taskId?), ConversationMessage, MessageDebugData (+ memoryLayers), ContextWindow
+│   ├── task.ts                 # Task (рабочая память)
+│   └── personalization.ts      # UserProfile, ResponseLanguage, DialogueStyle, ResponseBrevity, лейблы
 │
 └── context/
     └── auth-context.tsx        # AuthProvider + useAuth(): user, login, logout, isAuthenticated
