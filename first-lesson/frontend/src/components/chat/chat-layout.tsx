@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Menu, MessageSquare, FlaskConical, FolderOpen } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Menu, MessageSquare, FlaskConical, FolderOpen, Brain } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useChat, Message } from '@/hooks/use-chat';
 import { useAIParams } from '@/hooks/use-ai-params';
@@ -12,7 +13,6 @@ import { useTestDialogue } from '@/hooks/use-test-dialogue';
 import { useFacts } from '@/hooks/use-facts';
 import { useBranches } from '@/hooks/use-branches';
 import { useTasks } from '@/hooks/use-tasks';
-import { usePersonalization } from '@/hooks/use-personalization';
 import { ConversationSidebar } from './conversation-sidebar';
 import { ContextIndicator } from './context-indicator';
 import { BranchSelector } from './branch-selector';
@@ -28,6 +28,7 @@ import { AIParamsPanel } from './ai-params-panel';
 
 export function ChatLayout() {
   const { user, logout } = useAuth();
+  const router = useRouter();
   const conversations = useConversations();
   const chat = useChat();
   const { params, setParam, resetParams, hasNonDefaults } = useAIParams();
@@ -44,7 +45,6 @@ export function ChatLayout() {
   const facts = useFacts(chat.conversationId);
   const branches = useBranches(chat.conversationId);
   const { tasks, addTask, removeTask } = useTasks();
-  const { profile, isSaving: profileSaving, updateField: updateProfileField } = usePersonalization();
   const [mode, setMode] = useState<'chat' | 'test'>('chat');
   const [showParams, setShowParams] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -334,8 +334,15 @@ export function ChatLayout() {
                 </div>
               )}
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-500">{user?.username}</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => router.push('/personalization')}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
+                title="Персонализация"
+              >
+                <Brain size={15} className="text-purple-500" />
+                <span className="text-sm">{user?.username}</span>
+              </button>
               <button
                 onClick={logout}
                 className="text-sm text-gray-500 hover:text-gray-900 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
@@ -482,9 +489,6 @@ export function ChatLayout() {
           addExpert={addExpert}
           removeExpert={removeExpert}
           conversationStrategy={conversationStrategy}
-          profile={profile}
-          onUpdateProfileField={updateProfileField}
-          isProfileSaving={profileSaving}
         />
       </div>
     </>

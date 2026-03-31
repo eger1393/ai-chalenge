@@ -1,12 +1,9 @@
 'use client';
 
-import { useState } from 'react';
 import { X, RotateCcw } from 'lucide-react';
 import { AIParams, AVAILABLE_MODELS, MODEL_LABELS, MODEL_CONTEXT_SIZES, ConsiliumParams, Role, STRATEGY_LABELS, ContextStrategyType } from '@/types/ai-params';
-import { UserProfile } from '@/types/personalization';
 import { ConsiliumPanel } from './consilium-panel';
 import { StrategySelector } from './strategy-selector';
-import { PersonalizationPanel } from './personalization-panel';
 
 interface AIParamsPanelProps {
   params: AIParams;
@@ -22,14 +19,9 @@ interface AIParamsPanelProps {
   addExpert: () => void;
   removeExpert: (index: number) => void;
   conversationStrategy?: string;
-  profile?: UserProfile;
-  onUpdateProfileField?: <K extends keyof UserProfile>(key: K, value: UserProfile[K]) => void;
-  isProfileSaving?: boolean;
 }
 
-export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, onClose, consilium, roles, toggleConsilium, setExpert, setExpertRole, addExpert, removeExpert, conversationStrategy, profile, onUpdateProfileField, isProfileSaving = false }: AIParamsPanelProps) {
-  const [activeTab, setActiveTab] = useState<'params' | 'personalization'>('params');
-
+export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, onClose, consilium, roles, toggleConsilium, setExpert, setExpertRole, addExpert, removeExpert, conversationStrategy }: AIParamsPanelProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -47,42 +39,7 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200 px-4">
-        <button
-          onClick={() => setActiveTab('params')}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors -mb-px ${
-            activeTab === 'params'
-              ? 'border-indigo-600 text-indigo-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Параметры
-        </button>
-        <button
-          onClick={() => setActiveTab('personalization')}
-          className={`px-3 py-2 text-xs font-medium border-b-2 transition-colors -mb-px ${
-            activeTab === 'personalization'
-              ? 'border-indigo-600 text-indigo-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          Персонализация
-        </button>
-      </div>
-
-      {activeTab === 'personalization' ? (
-        <div className="flex-1 overflow-y-auto">
-          {profile && onUpdateProfileField && (
-            <PersonalizationPanel
-              profile={profile}
-              onUpdateField={onUpdateProfileField}
-              isSaving={isProfileSaving}
-            />
-          )}
-        </div>
-      ) : (
-      /* Content */
+      {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {/* Model */}
         <div>
@@ -294,7 +251,6 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
           Сбросить к значениям по умолчанию
         </button>
       </div>
-      )}
     </div>
   );
 }
