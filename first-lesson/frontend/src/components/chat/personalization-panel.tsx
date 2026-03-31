@@ -18,7 +18,7 @@ interface PersonalizationPanelProps {
 }
 
 const LANGUAGES: ResponseLanguage[] = ['auto', 'ru', 'en'];
-const STYLES: DialogueStyle[] = ['formal', 'friendly', 'technical', 'creative'];
+const STYLES: DialogueStyle[] = ['formal', 'friendly', 'technical', 'creative', 'yoda'];
 const BREVITIES: ResponseBrevity[] = ['brief', 'detailed', 'unset'];
 
 export function PersonalizationPanel({ profile, onUpdateField, isSaving }: PersonalizationPanelProps) {
@@ -49,12 +49,14 @@ export function PersonalizationPanel({ profile, onUpdateField, isSaving }: Perso
       <div>
         <label className="text-xs font-medium text-gray-700 mb-1.5 block">Стиль диалога</label>
         <div className="grid grid-cols-2 gap-2">
-          {STYLES.map((style) => (
+          {STYLES.map((style, index) => (
             <button
               key={style}
               type="button"
               onClick={() => onUpdateField('dialogueStyle', style)}
               className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                index === STYLES.length - 1 && STYLES.length % 2 !== 0 ? 'col-span-2' : ''
+              } ${
                 profile.dialogueStyle === style
                   ? 'bg-indigo-50 border-indigo-300 text-indigo-700'
                   : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'

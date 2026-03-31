@@ -102,6 +102,7 @@ export class MemoryAssemblerService {
       friendly: 'Use a warm, friendly, and conversational tone. Feel free to use casual language and be approachable.',
       technical: 'Use a precise, technical tone. Prioritize accuracy and specificity. Use domain-specific terminology where appropriate and provide structured explanations.',
       creative: 'Use a creative, expressive tone. Feel free to use metaphors, analogies, and vivid language. Be imaginative in your responses.',
+      yoda: 'Speak in the style of Master Yoda from Star Wars. Invert sentence structure by placing the object or predicate before the subject (e.g., "Strong with the Force, you are"). Convey deep wisdom and philosophical insight. Be calm, reflective, and occasionally cryptic. Use short, memorable phrases.',
     };
     if (profile.dialogueStyle && styleMap[profile.dialogueStyle as string]) {
       lines.push(styleMap[profile.dialogueStyle as string]);

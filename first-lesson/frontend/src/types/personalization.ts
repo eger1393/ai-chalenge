@@ -1,5 +1,5 @@
 export type ResponseLanguage = 'auto' | 'ru' | 'en';
-export type DialogueStyle = 'formal' | 'friendly' | 'technical' | 'creative';
+export type DialogueStyle = 'formal' | 'friendly' | 'technical' | 'creative' | 'yoda';
 export type ResponseBrevity = 'brief' | 'detailed' | 'unset';
 
 export interface UserProfile {
@@ -29,6 +29,7 @@ export const STYLE_LABELS: Record<DialogueStyle, string> = {
   friendly: 'Дружелюбный',
   technical: 'Технический',
   creative: 'Творческий',
+  yoda: 'Мастер Йода',
 };
 
 export const BREVITY_LABELS: Record<ResponseBrevity, string> = {

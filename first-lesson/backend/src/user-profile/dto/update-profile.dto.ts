@@ -6,8 +6,8 @@ export class UpdateProfileDto {
   responseLanguage?: 'auto' | 'ru' | 'en';
 
   @IsOptional()
-  @IsIn(['formal', 'friendly', 'technical', 'creative'])
-  dialogueStyle?: 'formal' | 'friendly' | 'technical' | 'creative';
+  @IsIn(['formal', 'friendly', 'technical', 'creative', 'yoda'])
+  dialogueStyle?: 'formal' | 'friendly' | 'technical' | 'creative' | 'yoda';
 
   @IsOptional()
   @IsIn(['brief', 'detailed', 'unset'])
