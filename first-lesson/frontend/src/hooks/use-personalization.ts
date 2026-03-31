@@ -27,7 +27,8 @@ export function usePersonalization() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
         setIsSaving(true);
-        updateProfile(next)
+        const { preferences, ...profileData } = next;
+        updateProfile(profileData)
           .finally(() => setIsSaving(false));
       }, 800);
       return next;
