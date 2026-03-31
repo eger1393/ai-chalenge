@@ -190,14 +190,14 @@ export async function sendConsilium(
   });
 }
 
-export async function createConversation(data?: { title?: string; model?: string; systemPrompt?: string; contextStrategy?: string }) {
+export async function createConversation(data?: { title?: string; model?: string; systemPrompt?: string; contextStrategy?: string; taskId?: string }) {
   return apiRequest<Conversation>('/conversations', {
     method: 'POST',
     body: JSON.stringify(data || {}),
   });
 }
 
-export async function listConversations(limit = 10) {
+export async function listConversations(limit = 100) {
   return apiRequest<Conversation[]>(`/conversations?limit=${limit}`);
 }
 

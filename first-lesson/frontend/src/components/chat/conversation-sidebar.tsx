@@ -17,6 +17,7 @@ interface ConversationSidebarProps {
   tasks?: Task[];
   onCreateTask?: (title: string, description?: string) => void;
   onDeleteTask?: (id: string) => void;
+  onNewConversationInTask?: (taskId: string) => void;
 }
 
 function truncate(text: string, maxLen: number): string {
@@ -35,6 +36,7 @@ export function ConversationSidebar({
   tasks = [],
   onCreateTask,
   onDeleteTask,
+  onNewConversationInTask,
 }: ConversationSidebarProps) {
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [taskTitle, setTaskTitle] = useState('');
@@ -227,7 +229,7 @@ export function ConversationSidebar({
 
       {/* Conversation list grouped by tasks */}
       <div className="flex-1 overflow-y-auto px-2 pb-2">
-        {conversations.length === 0 ? (
+        {tasks.length === 0 && conversations.length === 0 ? (
           <div className="px-3 py-8 text-center text-sm text-gray-400">
             Нет диалогов
           </div>
@@ -253,8 +255,17 @@ export function ConversationSidebar({
                     <span className="text-[10px] text-gray-400 flex-shrink-0">{taskConvs.length}</span>
                   </button>
                   {isExpanded && (
-                    <div className="pl-4">
+                    <div className="pl-4 space-y-0.5">
                       {taskConvs.map(conv => renderConversationItem(conv))}
+                      {onNewConversationInTask && (
+                        <button
+                          onClick={() => onNewConversationInTask(task.id)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                        >
+                          <Plus size={12} />
+                          Новый диалог в задаче
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

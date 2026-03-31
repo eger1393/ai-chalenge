@@ -13,6 +13,7 @@ import { useTestDialogue } from '@/hooks/use-test-dialogue';
 import { useFacts } from '@/hooks/use-facts';
 import { useBranches } from '@/hooks/use-branches';
 import { useTasks } from '@/hooks/use-tasks';
+import { setConversationTask } from '@/lib/api';
 import { ConversationSidebar } from './conversation-sidebar';
 import { ContextIndicator } from './context-indicator';
 import { BranchSelector } from './branch-selector';
@@ -130,6 +131,19 @@ export function ChatLayout() {
       await conversations.remove(id);
     },
     [conversations],
+  );
+
+  const handleNewConversationInTask = useCallback(
+    async (taskId: string) => {
+      // Create a new conversation, then link it to the task
+      const conv = await conversations.create(params.model, params.systemPrompt, params.contextStrategy);
+      await setConversationTask(conv.id, taskId);
+      // Update local state so taskId shows immediately
+      await conversations.refresh();
+      conversations.select(conv.id);
+      setSidebarOpen(false);
+    },
+    [conversations, params],
   );
 
   const handleCreateCheckpoint = useCallback(
@@ -283,6 +297,7 @@ export function ChatLayout() {
           tasks={tasks}
           onCreateTask={addTask}
           onDeleteTask={removeTask}
+          onNewConversationInTask={handleNewConversationInTask}
         />
 
         {/* Main chat area */}
