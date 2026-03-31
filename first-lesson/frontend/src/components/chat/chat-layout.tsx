@@ -136,7 +136,7 @@ export function ChatLayout() {
   const handleNewConversationInTask = useCallback(
     async (taskId: string) => {
       // Create a new conversation, then link it to the task
-      const conv = await conversations.create(params.model, params.systemPrompt, params.contextStrategy);
+      const conv = await conversations.create(params.model, params.systemPrompt);
       await setConversationTask(conv.id, taskId);
       // Update local state so taskId shows immediately
       await conversations.refresh();
