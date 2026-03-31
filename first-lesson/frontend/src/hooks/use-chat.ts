@@ -84,8 +84,10 @@ export function useChat() {
       if (detail.conversationTotals) {
         setConversationTotals(detail.conversationTotals);
       }
+      return detail;
     } catch (e) {
       console.error('Failed to load conversation', e);
+      return null;
     } finally {
       setIsLoadingHistory(false);
     }
@@ -210,6 +212,7 @@ export function useChat() {
             setConversationTotals(response.conversationTotals);
           }
 
+          const hasDebugData = response.strategyMetadata || response.memoryLayers;
           const assistantMessage: Message = {
             id: response.assistantMessageId || (Date.now() + 1).toString(),
             role: 'assistant',
@@ -221,11 +224,18 @@ export function useChat() {
             truncation: response.truncation,
             contextUsedTokens: response.contextWindow?.usedTokens,
             contextMaxTokens: response.contextWindow?.maxTokens,
-            debugData: response.strategyMetadata ? {
-              strategyType: 'unknown',
-              contextMessagesCount: 0,
-              contextMessagesAfterTruncation: 0,
+            debugData: hasDebugData ? {
+              strategyType: (response.strategyMetadata as Record<string, unknown>)?.strategy as string || 'sliding_window',
+              contextMessagesCount: (response.strategyMetadata as Record<string, unknown>)?.originalMessagesCount as number || 0,
+              contextMessagesAfterTruncation: (response.strategyMetadata as Record<string, unknown>)?.keptMessagesCount as number || 0,
+              tokenBreakdown: response.usage ? {
+                system: response.usage.systemPromptTokens || 0,
+                history: response.usage.historyTokens || 0,
+                current: response.usage.currentMessageTokens || 0,
+                total: response.usage.totalTokens || 0,
+              } : undefined,
               strategyMetadata: response.strategyMetadata,
+              memoryLayers: response.memoryLayers,
             } : undefined,
           };
 

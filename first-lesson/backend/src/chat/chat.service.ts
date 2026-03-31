@@ -73,6 +73,15 @@ export class ChatService {
       // Determine context strategy from conversation (supports both camelCase alias and snake_case)
       contextStrategy = (conversation.contextStrategy || conversation.context_strategy || 'sliding_window') as ContextStrategyType;
 
+      // Update strategy on first message if user chose differently
+      if (params?.contextStrategy && params.contextStrategy !== contextStrategy) {
+        const messageCount = await this.conversationService.getMessageCount(conversationId);
+        if (messageCount === 0) {
+          contextStrategy = params.contextStrategy as ContextStrategyType;
+          await this.conversationService.updateStrategy(conversationId, contextStrategy);
+        }
+      }
+
       const dbMessages = await this.conversationService.getMessagesForContext(conversationId);
       historyMessages = dbMessages;
     } else if (dto.conversationHistory) {
@@ -209,6 +218,7 @@ export class ChatService {
       });
 
       // Sticky facts: extract facts after getting reply
+      let factsAfterForDebug: Array<{ key: string; value: string }> | undefined;
       if (contextStrategy === 'sticky_facts') {
         try {
           const existingFacts = await this.factsService.getFacts(conversationId);
@@ -219,9 +229,34 @@ export class ChatService {
             existingFacts,
           );
           await this.factsService.applyFactsDiff(conversationId, diff, userMsg.id);
+          const currentFacts = await this.factsService.getFacts(conversationId);
+          factsAfterForDebug = currentFacts.map(f => ({ key: f.fact_key, value: f.fact_value }));
         } catch (err) {
           this.logger.warn(`Facts extraction failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
+      }
+
+      // Save debug data for all conversations
+      if (assistantMsg) {
+        const debugData: Record<string, unknown> = {
+          strategyType: contextStrategy,
+          contextMessagesCount: strategyMetadata?.originalMessagesCount ?? historyMessages.length,
+          contextMessagesAfterTruncation: strategyMetadata?.keptMessagesCount ?? truncatedMessages.length,
+          tokenBreakdown: tokenBreakdown,
+          strategyMetadata: strategyMetadata ?? null,
+          memoryLayers: memoryResult.layers.length > 0 ? memoryResult.layers : null,
+        };
+        if (contextStrategy === 'sticky_facts') {
+          debugData.factsSnapshot = strategyMetadata?.factsSnapshot ?? null;
+          debugData.factsAfter = factsAfterForDebug ?? null;
+        }
+        if (contextStrategy === 'branching' && strategyMetadata) {
+          debugData.branchInfo = {
+            branchName: strategyMetadata.branchName,
+            branchMessagesCount: strategyMetadata.branchMessagesCount,
+          };
+        }
+        await this.conversationService.saveDebugData(assistantMsg.id, debugData);
       }
 
       const messageCount = await this.conversationService.getMessageCount(conversationId);

@@ -128,11 +128,8 @@ export class ConversationService {
       }
     }
 
-    // Load debug data for test conversations
-    let debugDataMap = new Map<string, Record<string, unknown>>();
-    if (conversation.is_test) {
-      debugDataMap = await this.getDebugDataForConversation(id);
-    }
+    // Load debug data for all conversations
+    const debugDataMap = await this.getDebugDataForConversation(id);
 
     const messages = messageRows.map((m) => ({
       id: m.id,
@@ -402,6 +399,13 @@ export class ConversationService {
       });
     }
     return map;
+  }
+
+  async updateStrategy(conversationId: string, strategy: string): Promise<void> {
+    await this.db.query(
+      'UPDATE conversations SET context_strategy = $1 WHERE id = $2',
+      [strategy, conversationId],
+    );
   }
 
   async getConversationTotals(conversationId: string) {

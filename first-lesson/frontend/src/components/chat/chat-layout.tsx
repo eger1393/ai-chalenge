@@ -68,11 +68,11 @@ export function ChatLayout() {
     prevActiveIdRef.current = activeId;
 
     if (activeId) {
-      chat.loadConversation(activeId).then(() => {
-        // Load strategy-specific data after conversation is loaded
+      chat.loadConversation(activeId).then((detail) => {
         const conv = conversations.conversations.find((c) => c.id === activeId);
         const strategy = conv?.contextStrategy;
-        setConversationStrategy(strategy);
+        const hasMessages = detail && detail.messages && detail.messages.length > 0;
+        setConversationStrategy(hasMessages ? strategy : undefined);
         if (strategy === 'sticky_facts') {
           facts.loadFacts(activeId);
         } else if (strategy === 'branching') {
@@ -96,13 +96,14 @@ export function ChatLayout() {
     async (text: string) => {
       await chat.send(text, params, consilium);
       conversations.refresh();
-
-      // After send, refresh facts if strategy is sticky_facts
+      if (!conversationStrategy) {
+        setConversationStrategy(params.contextStrategy);
+      }
       if (currentStrategy === 'sticky_facts' && chat.conversationId) {
         facts.loadFacts(chat.conversationId);
       }
     },
-    [chat, params, consilium, conversations, currentStrategy, facts],
+    [chat, params, consilium, conversations, currentStrategy, facts, conversationStrategy],
   );
 
   // Sync auto-created conversationId back to conversations
@@ -135,10 +136,8 @@ export function ChatLayout() {
 
   const handleNewConversationInTask = useCallback(
     async (taskId: string) => {
-      // Create a new conversation, then link it to the task
-      const conv = await conversations.create(params.model, params.systemPrompt);
+      const conv = await conversations.create(params.model, params.systemPrompt, params.contextStrategy);
       await setConversationTask(conv.id, taskId);
-      // Update local state so taskId shows immediately
       await conversations.refresh();
       conversations.select(conv.id);
       setSidebarOpen(false);

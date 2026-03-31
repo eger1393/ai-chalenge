@@ -24,6 +24,7 @@ export interface MemoryLayerInfo {
   type: 'long_term' | 'working' | 'short_term';
   label: string;
   tokenCount: number;
+  content?: string;
 }
 
 export interface MessageDebugData {

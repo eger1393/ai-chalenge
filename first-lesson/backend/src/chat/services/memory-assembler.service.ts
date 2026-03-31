@@ -8,6 +8,7 @@ export interface MemoryLayer {
   type: 'long_term' | 'working' | 'short_term';
   label: string;
   tokenCount: number;
+  content?: string;
 }
 
 export interface AssembledMemory {
@@ -43,6 +44,7 @@ export class MemoryAssemblerService {
         type: 'long_term',
         label: 'User Profile',
         tokenCount: this.tokenService.countTokens(section, params.model),
+        content: longTermContent,
       });
     }
 
@@ -59,6 +61,7 @@ export class MemoryAssemblerService {
             type: 'working',
             label: `Task: ${task.title}`,
             tokenCount: this.tokenService.countTokens(section, params.model),
+            content: workingContent,
           });
         }
       }
@@ -72,6 +75,7 @@ export class MemoryAssemblerService {
         type: 'short_term',
         label: 'Custom System Prompt',
         tokenCount: this.tokenService.countTokens(section, params.model),
+        content: section,
       });
     }
 

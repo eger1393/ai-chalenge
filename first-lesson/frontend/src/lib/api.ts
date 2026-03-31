@@ -137,7 +137,7 @@ export async function sendMessage(
     }
   }
 
-  return apiRequest<{ reply: string; usage: Usage; appliedParams?: AppliedParams; cost?: number; durationMs?: number; contextWindow?: ContextWindow; conversationId?: string; conversationTotals?: ConversationTotals; truncation?: { droppedMessages: number; droppedTokens: number }; strategyMetadata?: Record<string, unknown>; assistantMessageId?: string }>('/chat/message', {
+  return apiRequest<{ reply: string; usage: Usage; appliedParams?: AppliedParams; cost?: number; durationMs?: number; contextWindow?: ContextWindow; conversationId?: string; conversationTotals?: ConversationTotals; truncation?: { droppedMessages: number; droppedTokens: number }; strategyMetadata?: Record<string, unknown>; assistantMessageId?: string; memoryLayers?: Array<{ type: 'long_term' | 'working' | 'short_term'; label: string; tokenCount: number; content?: string }> }>('/chat/message', {
     method: 'POST',
     body: JSON.stringify(body),
   });
