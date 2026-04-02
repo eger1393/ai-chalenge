@@ -25,6 +25,7 @@ export interface PipelineRunState {
   totalCost: number;
   totalTokens: number;
   error?: string;
+  finalContent?: string;
 }
 
 export type PipelineSSEEvent =

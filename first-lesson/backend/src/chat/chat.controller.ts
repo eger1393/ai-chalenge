@@ -184,6 +184,12 @@ export class ChatController {
     }
   }
 
+  @Get('pipeline/by-conversation/:conversationId')
+  @UseGuards(JwtAuthGuard)
+  async getPipelineByConversation(@Param('conversationId') conversationId: string) {
+    return this.pipelineService.getActivePipelineByConversation(conversationId);
+  }
+
   @Get('pipeline/:id')
   @UseGuards(JwtAuthGuard)
   async getPipeline(@Param('id') id: string) {

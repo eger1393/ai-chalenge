@@ -466,3 +466,11 @@ export async function cancelPipeline(pipelineId: string): Promise<void> {
 export async function getPipelineRun(pipelineId: string) {
   return apiRequest<Record<string, unknown>>(`/chat/pipeline/${pipelineId}`);
 }
+
+export async function getActivePipeline(conversationId: string): Promise<any | null> {
+  try {
+    return await apiRequest<any>(`/chat/pipeline/by-conversation/${conversationId}`);
+  } catch {
+    return null;
+  }
+}

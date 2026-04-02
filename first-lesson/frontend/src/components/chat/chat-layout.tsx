@@ -71,10 +71,14 @@ export function ChatLayout() {
         } else if (strategy === 'branching') {
           branches.loadBranches(activeId);
         }
+
+        // Check for active pipeline
+        pipeline.restoreFromServer(activeId);
       });
     } else {
       chat.startNew();
       setConversationStrategy(undefined);
+      pipeline.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations.activeId]);
@@ -280,14 +284,20 @@ export function ChatLayout() {
   // Handle pipeline completion
   useEffect(() => {
     if (pipeline.pipelineState?.status === 'completed') {
-      const execStep = [...(pipeline.pipelineState.steps || [])].reverse().find(
-        (s) => s.stepType === 'execution' && s.status === 'completed',
-      );
-      if (execStep) {
+      const finalContent = pipeline.pipelineState.finalContent;
+      // Use finalContent from done event, fallback to last execution step
+      const content = finalContent || (() => {
+        const execStep = [...(pipeline.pipelineState!.steps || [])].reverse().find(
+          (s) => s.stepType === 'execution' && s.status === 'completed',
+        );
+        return execStep?.content;
+      })();
+
+      if (content) {
         const assistantMsg: Message = {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
-          content: execStep.content,
+          content,
           cost: pipeline.pipelineState.totalCost,
         };
         chat.setMessages((prev: Message[]) => [...prev, assistantMsg]);
@@ -298,7 +308,7 @@ export function ChatLayout() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipeline.pipelineState?.status]);
+  }, [pipeline.pipelineState?.status, pipeline.pipelineState?.finalContent]);
 
   // Determine which messages to show
   const isTestMode = mode === 'test';

@@ -6,9 +6,10 @@ import {
   resumePipeline as apiResumePipeline,
   pausePipeline as apiPausePipeline,
   cancelPipeline as apiCancelPipeline,
+  getActivePipeline,
 } from '@/lib/api';
 import { AIParams } from '@/types/ai-params';
-import { PipelineRunState, PipelineSSEEvent } from '@/types/pipeline';
+import { PipelineRunState, PipelineSSEEvent, PipelineStepData, PipelineStepType, PipelineStatus } from '@/types/pipeline';
 
 const INITIAL_STATE: PipelineRunState = {
   pipelineId: null,
@@ -105,6 +106,7 @@ export function usePipeline() {
             currentStep: 'done',
             totalCost: event.totalCost,
             totalTokens: event.totalTokens,
+            finalContent: event.content,
           };
 
         case 'paused':
@@ -162,6 +164,42 @@ export function usePipeline() {
     setPipelineState(null);
   }, []);
 
+  const restoreFromServer = useCallback(async (conversationId: string) => {
+    const data = await getActivePipeline(conversationId);
+    if (!data) return false;
+
+    const steps: PipelineStepData[] = (data.steps || []).map((s: any) => ({
+      stepType: s.stepType as PipelineStepType,
+      status: s.status as 'running' | 'completed' | 'failed',
+      content: s.outputResult?.text || '',
+      attempt: s.attemptNumber,
+      model: s.model,
+      promptTokens: s.promptTokens,
+      completionTokens: s.completionTokens,
+      cost: s.cost,
+      durationMs: s.durationMs,
+      validationPassed: s.validationPassed,
+      validationReason: s.validationReason,
+    }));
+
+    const restoredStatus: PipelineStatus =
+      data.status === 'running' ? 'paused' : (data.status as PipelineStatus);
+
+    setPipelineState({
+      pipelineId: data.id,
+      status: restoredStatus,
+      currentStep: data.currentStep as PipelineStepType,
+      attempt: data.attemptNumber,
+      maxAttempts: data.maxAttempts,
+      steps,
+      totalCost: data.totalCost || 0,
+      totalTokens: data.totalTokens || 0,
+      error: data.errorMessage || undefined,
+    });
+
+    return true;
+  }, []);
+
   return {
     pipelineState,
     isRunning: pipelineState?.status === 'running',
@@ -170,5 +208,6 @@ export function usePipeline() {
     resume,
     cancel,
     reset,
+    restoreFromServer,
   };
 }

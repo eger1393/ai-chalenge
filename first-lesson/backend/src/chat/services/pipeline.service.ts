@@ -199,6 +199,7 @@ export class PipelineService {
 
         // Check pause
         if (await this.isPaused(pipelineId)) {
+          onEvent({ type: 'paused', step: 'planning' });
           this.logger.log(`Pipeline ${pipelineId}: paused before planning`);
           break;
         }
@@ -218,6 +219,7 @@ export class PipelineService {
         );
 
         if (await this.isPaused(pipelineId)) {
+          onEvent({ type: 'paused', step: 'execution' });
           this.logger.log(`Pipeline ${pipelineId}: paused after planning`);
           break;
         }
@@ -235,6 +237,7 @@ export class PipelineService {
         );
 
         if (await this.isPaused(pipelineId)) {
+          onEvent({ type: 'paused', step: 'validation' });
           this.logger.log(`Pipeline ${pipelineId}: paused after execution`);
           break;
         }
@@ -274,12 +277,19 @@ export class PipelineService {
             [pipelineId],
           );
 
+          const { rows: totalsRows } = await this.db.query(
+            'SELECT total_cost, total_tokens FROM pipeline_runs WHERE id = $1',
+            [pipelineId],
+          );
+          const totals = totalsRows[0];
+
           onEvent({
-            type: 'pipeline_completed',
+            type: 'done',
+            content: execResult,
             pipelineId,
             attempt,
-            validationScore: validation.score,
-            validationReason: validation.reason,
+            totalCost: totals.total_cost,
+            totalTokens: totals.total_tokens,
           });
 
           this.logger.log(`Pipeline ${pipelineId}: completed on attempt ${attempt}, score=${validation.score}`);
@@ -307,12 +317,7 @@ export class PipelineService {
           `UPDATE pipeline_runs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2`,
           ['Exhausted all retry attempts', pipelineId],
         );
-        onEvent({
-          type: 'pipeline_failed',
-          pipelineId,
-          reason: 'Exhausted all retry attempts',
-          totalAttempts: attempt - 1,
-        });
+        onEvent({ type: 'error', message: 'Exhausted all retry attempts' });
         this.logger.warn(`Pipeline ${pipelineId}: failed after ${attempt - 1} attempts`);
       }
     } catch (err: unknown) {
@@ -324,7 +329,7 @@ export class PipelineService {
         [message, pipelineId],
       );
 
-      onEvent({ type: 'pipeline_failed', pipelineId, reason: message });
+      onEvent({ type: 'error', message });
     }
   }
 
@@ -426,7 +431,10 @@ export class PipelineService {
 
     try {
       while (attempt <= maxAttempts) {
-        if (await this.isPaused(pipelineId)) break;
+        if (await this.isPaused(pipelineId)) {
+          onEvent({ type: 'paused', step: 'planning' });
+          break;
+        }
 
         // Planning (if not completed in this attempt)
         if (!completedTypes.has('planning') || attempt > run.attempt_number) {
@@ -439,7 +447,10 @@ export class PipelineService {
           );
         }
 
-        if (await this.isPaused(pipelineId)) break;
+        if (await this.isPaused(pipelineId)) {
+          onEvent({ type: 'paused', step: 'execution' });
+          break;
+        }
 
         // Execution (if not completed in this attempt)
         if (!completedTypes.has('execution') || attempt > run.attempt_number) {
@@ -452,7 +463,10 @@ export class PipelineService {
           );
         }
 
-        if (await this.isPaused(pipelineId)) break;
+        if (await this.isPaused(pipelineId)) {
+          onEvent({ type: 'paused', step: 'validation' });
+          break;
+        }
 
         // Validation (if not completed in this attempt)
         if (!completedTypes.has('validation') || attempt > run.attempt_number) {
@@ -478,9 +492,20 @@ export class PipelineService {
               `UPDATE pipeline_runs SET status = 'completed', current_step = 'done', updated_at = NOW() WHERE id = $1`,
               [pipelineId],
             );
+
+            const { rows: totalsRows } = await this.db.query(
+              'SELECT total_cost, total_tokens FROM pipeline_runs WHERE id = $1',
+              [pipelineId],
+            );
+            const totals = totalsRows[0];
+
             onEvent({
-              type: 'pipeline_completed', pipelineId, attempt,
-              validationScore: validation.score, validationReason: validation.reason,
+              type: 'done',
+              content: currentExecResult,
+              pipelineId,
+              attempt,
+              totalCost: totals.total_cost,
+              totalTokens: totals.total_tokens,
             });
             return;
           }
@@ -505,7 +530,7 @@ export class PipelineService {
           `UPDATE pipeline_runs SET status = 'failed', error_message = 'Exhausted all retry attempts', updated_at = NOW() WHERE id = $1`,
           [pipelineId],
         );
-        onEvent({ type: 'pipeline_failed', pipelineId, reason: 'Exhausted all retry attempts' });
+        onEvent({ type: 'error', message: 'Exhausted all retry attempts' });
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -514,7 +539,7 @@ export class PipelineService {
         `UPDATE pipeline_runs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2`,
         [message, pipelineId],
       );
-      onEvent({ type: 'pipeline_failed', pipelineId, reason: message });
+      onEvent({ type: 'error', message });
     }
   }
 
@@ -570,6 +595,17 @@ export class PipelineService {
         completedAt: s.completed_at,
       })),
     };
+  }
+
+  async getActivePipelineByConversation(conversationId: string): Promise<Record<string, unknown> | null> {
+    const { rows } = await this.db.query<PipelineRun>(
+      `SELECT * FROM pipeline_runs
+       WHERE conversation_id = $1 AND status IN ('running', 'paused')
+       ORDER BY created_at DESC LIMIT 1`,
+      [conversationId],
+    );
+    if (rows.length === 0) return null;
+    return this.getPipelineRun(rows[0].id);
   }
 
   // ── Private: run a single step with streaming ─────────────────────
