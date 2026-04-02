@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Bug, ChevronDown, ChevronRight, Clock, Coins, Hash, Cpu, CheckCircle2, XCircle, FileText } from 'lucide-react';
+import { Bug, ChevronDown, ChevronRight, Clock, Coins, Hash, Cpu, CheckCircle2, XCircle, FileText, MessageSquare, ArrowRight } from 'lucide-react';
 import { MessageDebugData } from '@/types/conversation';
 
 interface DebugPanelProps {
@@ -14,10 +14,10 @@ const STEP_LABELS: Record<string, string> = {
   validation: 'Валидация',
 };
 
-const STEP_COLORS: Record<string, { bg: string; text: string; border: string; icon: string }> = {
-  planning: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', icon: 'text-amber-500' },
-  execution: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', icon: 'text-indigo-500' },
-  validation: { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', icon: 'text-violet-500' },
+const STEP_COLORS: Record<string, { bg: string; text: string; border: string; icon: string; headerBg: string }> = {
+  planning: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', icon: 'text-amber-500', headerBg: 'bg-amber-100/60' },
+  execution: { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', icon: 'text-indigo-500', headerBg: 'bg-indigo-100/60' },
+  validation: { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', icon: 'text-violet-500', headerBg: 'bg-violet-100/60' },
 };
 
 const STRATEGY_LABELS: Record<string, string> = {
@@ -83,6 +83,156 @@ function Stat({ icon, label, value }: { icon: React.ReactNode; label: string; va
   );
 }
 
+// ── Pipeline Step Card ────────────────────────────────────────────────
+
+function PipelineStepCard({ step, index, isExpanded, onToggle }: {
+  step: NonNullable<MessageDebugData['pipelineData']>['steps'][number];
+  index: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  const [showInput, setShowInput] = useState(false);
+  const [showOutput, setShowOutput] = useState(false);
+  const colors = STEP_COLORS[step.stepType] || STEP_COLORS.planning;
+  const isValidation = step.stepType === 'validation';
+  const totalTokens = step.promptTokens + step.completionTokens;
+  const inputMessages = step.inputContext || [];
+
+  return (
+    <div className={`rounded-lg border ${colors.border} overflow-hidden`}>
+      {/* Step header — always visible */}
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`w-full flex items-center gap-2 px-3 py-2 text-left ${colors.headerBg} hover:opacity-90 transition-opacity`}
+      >
+        {isValidation ? (
+          step.validationPassed
+            ? <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+            : <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+        ) : (
+          <FileText className={`w-4 h-4 ${colors.icon} flex-shrink-0`} />
+        )}
+
+        <span className={`text-xs font-semibold ${colors.text} flex-1`}>
+          {STEP_LABELS[step.stepType] || step.stepType}
+          {step.attempt > 1 && (
+            <span className="ml-1.5 text-[10px] font-normal opacity-70">попытка #{step.attempt}</span>
+          )}
+        </span>
+
+        {/* Compact meta */}
+        <span className={`text-[10px] font-mono ${colors.text} opacity-60`}>{step.model}</span>
+        <span className={`text-[10px] font-mono ${colors.text} opacity-60`}>{formatTokens(totalTokens)}</span>
+        <span className={`text-[10px] font-mono ${colors.text} opacity-60`}>${step.cost.toFixed(4)}</span>
+        <span className={`text-[10px] font-mono ${colors.text} opacity-60 flex items-center gap-0.5`}>
+          <Clock className="w-2.5 h-2.5" />
+          {formatDuration(step.durationMs)}
+        </span>
+
+        {isExpanded
+          ? <ChevronDown className={`w-4 h-4 ${colors.icon} flex-shrink-0`} />
+          : <ChevronRight className={`w-4 h-4 ${colors.icon} flex-shrink-0`} />
+        }
+      </button>
+
+      {/* Expanded details */}
+      {isExpanded && (
+        <div className="bg-white">
+          {/* Token & meta row */}
+          <div className="flex flex-wrap gap-3 px-3 py-2 text-[10px] text-gray-500 font-mono border-t border-gray-100">
+            <span>prompt: <span className="text-gray-700">{step.promptTokens.toLocaleString()}</span></span>
+            <span>completion: <span className="text-gray-700">{step.completionTokens.toLocaleString()}</span></span>
+            {inputMessages.length > 0 && (
+              <span>input messages: <span className="text-gray-700">{inputMessages.length}</span></span>
+            )}
+          </div>
+
+          {/* Validation reason */}
+          {step.validationReason && (
+            <div className="px-3 pb-2">
+              <div className={`text-xs rounded-md px-2.5 py-1.5 ${
+                step.validationPassed
+                  ? 'bg-green-50 text-green-700 border border-green-200'
+                  : 'bg-red-50 text-red-700 border border-red-200'
+              }`}>
+                <span className="font-medium">{step.validationPassed ? 'Результат:' : 'Причина отказа:'}</span>{' '}
+                {step.validationReason}
+              </div>
+            </div>
+          )}
+
+          {/* Input Context — collapsible */}
+          {inputMessages.length > 0 && (
+            <div className="border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShowInput(v => !v)}
+                className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left hover:bg-gray-50 transition-colors"
+              >
+                <ArrowRight className="w-3 h-3 text-gray-400" />
+                <span className="text-[11px] font-medium text-gray-500">Входные данные</span>
+                <span className="text-[10px] text-gray-400 font-mono">{inputMessages.length} сообщ.</span>
+                <span className="flex-1" />
+                {showInput
+                  ? <ChevronDown className="w-3 h-3 text-gray-400" />
+                  : <ChevronRight className="w-3 h-3 text-gray-400" />
+                }
+              </button>
+              {showInput && (
+                <div className="px-3 pb-2 space-y-1 max-h-60 overflow-y-auto">
+                  {inputMessages.map((msg, mi) => (
+                    <div key={mi} className="rounded border border-gray-100 bg-gray-50 px-2 py-1.5">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <MessageSquare className="w-3 h-3 text-gray-400" />
+                        <span className={`text-[10px] font-semibold ${
+                          msg.role === 'system' ? 'text-purple-600' :
+                          msg.role === 'user' ? 'text-indigo-600' : 'text-green-600'
+                        }`}>{msg.role}</span>
+                        <span className="text-[10px] text-gray-400 font-mono">{msg.content.length} chars</span>
+                      </div>
+                      <div className="text-[11px] text-gray-600 whitespace-pre-wrap break-words font-mono max-h-32 overflow-y-auto leading-relaxed">
+                        {msg.content}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Output — collapsible */}
+          {step.content && (
+            <div className="border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShowOutput(v => !v)}
+                className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left hover:bg-gray-50 transition-colors"
+              >
+                <FileText className="w-3 h-3 text-gray-400" />
+                <span className="text-[11px] font-medium text-gray-500">Результат</span>
+                <span className="text-[10px] text-gray-400 font-mono">{step.content.length} chars</span>
+                <span className="flex-1" />
+                {showOutput
+                  ? <ChevronDown className="w-3 h-3 text-gray-400" />
+                  : <ChevronRight className="w-3 h-3 text-gray-400" />
+                }
+              </button>
+              {showOutput && (
+                <div className="px-3 pb-2">
+                  <div className="text-[11px] text-gray-600 whitespace-pre-wrap leading-relaxed max-h-52 overflow-y-auto rounded-md bg-gray-50 p-2.5 border border-gray-100">
+                    {step.content}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────
 
 export function DebugPanel({ debugData }: DebugPanelProps) {
@@ -132,108 +282,27 @@ export function DebugPanel({ debugData }: DebugPanelProps) {
               )}
             </div>
 
-            {/* ── Pipeline Section ──────────────────────────────────── */}
+            {/* ── Pipeline Steps ────────────────────────────────────── */}
             {isPipeline && debugData.pipelineData && (
               <Section title="Pipeline этапы" icon={<Cpu className="w-3.5 h-3.5 text-indigo-400" />} defaultOpen>
                 {/* Summary stats */}
                 <div className="flex flex-wrap gap-2 mb-3">
-                  <Stat
-                    icon={<Hash className="w-3 h-3 text-gray-400" />}
-                    label="Попыток"
-                    value={String(debugData.pipelineData.totalAttempts)}
-                  />
-                  <Stat
-                    icon={<Coins className="w-3 h-3 text-gray-400" />}
-                    label="Стоимость"
-                    value={`$${debugData.pipelineData.totalCost.toFixed(4)}`}
-                  />
-                  <Stat
-                    icon={<Hash className="w-3 h-3 text-gray-400" />}
-                    label="Токены"
-                    value={formatTokens(debugData.pipelineData.totalTokens)}
-                  />
+                  <Stat icon={<Hash className="w-3 h-3 text-gray-400" />} label="Попыток" value={String(debugData.pipelineData.totalAttempts)} />
+                  <Stat icon={<Coins className="w-3 h-3 text-gray-400" />} label="Стоимость" value={`$${debugData.pipelineData.totalCost.toFixed(4)}`} />
+                  <Stat icon={<Hash className="w-3 h-3 text-gray-400" />} label="Токены" value={formatTokens(debugData.pipelineData.totalTokens)} />
                 </div>
 
-                {/* Step cards */}
+                {/* Individual step cards */}
                 <div className="space-y-2">
-                  {debugData.pipelineData.steps.map((step, i) => {
-                    const colors = STEP_COLORS[step.stepType] || STEP_COLORS.planning;
-                    const isExpanded = expandedSteps.has(i);
-                    const isValidation = step.stepType === 'validation';
-                    const totalTokens = step.promptTokens + step.completionTokens;
-
-                    return (
-                      <div key={i} className={`rounded-lg border ${colors.border} overflow-hidden`}>
-                        <button
-                          type="button"
-                          onClick={() => toggleStep(i)}
-                          className={`w-full flex items-center gap-2 px-3 py-2 text-left ${colors.bg} hover:opacity-90 transition-opacity`}
-                        >
-                          {/* Step icon */}
-                          {isValidation ? (
-                            step.validationPassed
-                              ? <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
-                              : <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                          ) : (
-                            <FileText className={`w-4 h-4 ${colors.icon} flex-shrink-0`} />
-                          )}
-
-                          {/* Name + attempt */}
-                          <span className={`text-xs font-semibold ${colors.text} flex-1`}>
-                            {STEP_LABELS[step.stepType] || step.stepType}
-                            {step.attempt > 1 && (
-                              <span className="ml-1.5 text-[10px] font-normal opacity-70">попытка #{step.attempt}</span>
-                            )}
-                          </span>
-
-                          {/* Meta pills */}
-                          <div className="flex items-center gap-2 text-[10px] font-mono opacity-75">
-                            <span className={colors.text}>{step.model}</span>
-                            <span className={colors.text}>{formatTokens(totalTokens)} tok</span>
-                            <span className={colors.text}>${step.cost.toFixed(4)}</span>
-                            <span className={`flex items-center gap-0.5 ${colors.text}`}>
-                              <Clock className="w-2.5 h-2.5" />
-                              {formatDuration(step.durationMs)}
-                            </span>
-                          </div>
-
-                          {isExpanded
-                            ? <ChevronDown className={`w-4 h-4 ${colors.icon} flex-shrink-0`} />
-                            : <ChevronRight className={`w-4 h-4 ${colors.icon} flex-shrink-0`} />
-                          }
-                        </button>
-
-                        {isExpanded && (
-                          <div className="px-3 py-2 bg-white border-t border-gray-100">
-                            {/* Token breakdown */}
-                            <div className="flex gap-4 text-[10px] text-gray-500 mb-2 font-mono">
-                              <span>prompt: {step.promptTokens.toLocaleString()}</span>
-                              <span>completion: {step.completionTokens.toLocaleString()}</span>
-                            </div>
-
-                            {/* Validation reason */}
-                            {step.validationReason && (
-                              <div className={`text-xs rounded-md px-2.5 py-1.5 mb-2 ${
-                                step.validationPassed
-                                  ? 'bg-green-50 text-green-700 border border-green-200'
-                                  : 'bg-red-50 text-red-700 border border-red-200'
-                              }`}>
-                                <span className="font-medium">{step.validationPassed ? 'Результат:' : 'Причина отказа:'}</span>{' '}
-                                {step.validationReason}
-                              </div>
-                            )}
-
-                            {/* Content */}
-                            {step.content && (
-                              <div className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed max-h-52 overflow-y-auto rounded-md bg-gray-50 p-2.5 border border-gray-100">
-                                {step.content}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                  {debugData.pipelineData.steps.map((step, i) => (
+                    <PipelineStepCard
+                      key={i}
+                      step={step}
+                      index={i}
+                      isExpanded={expandedSteps.has(i)}
+                      onToggle={() => toggleStep(i)}
+                    />
+                  ))}
                 </div>
               </Section>
             )}
@@ -252,9 +321,7 @@ export function DebugPanel({ debugData }: DebugPanelProps) {
                           onClick={() => layer.content && toggleLayer(i)}
                           className={`w-full flex items-center gap-2 px-3 py-1.5 ${cfg.bg} ${layer.content ? 'cursor-pointer' : 'cursor-default'}`}
                         >
-                          <span className={`text-[11px] font-medium ${cfg.text}`}>
-                            {cfg.emoji} {cfg.label}
-                          </span>
+                          <span className={`text-[11px] font-medium ${cfg.text}`}>{cfg.emoji} {cfg.label}</span>
                           <span className={`text-[11px] font-mono ${cfg.text} opacity-70`}>{layer.tokenCount} tok</span>
                           <span className={`text-[11px] ${cfg.text} truncate flex-1 text-left opacity-70`}>{layer.label}</span>
                           {layer.content && (isExpanded

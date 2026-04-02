@@ -636,11 +636,12 @@ export class PipelineService {
     const stepId = crypto.randomUUID();
     const startTime = Date.now();
 
-    // Insert step
+    // Insert step with input context
+    const inputContext = messages.map(m => ({ role: m.role, content: m.content.slice(0, 2000) }));
     await this.db.query(
-      `INSERT INTO pipeline_steps (id, pipeline_run_id, step_type, attempt_number, status, model)
-       VALUES ($1, $2, $3, $4, 'running', $5)`,
-      [stepId, pipelineId, stepType, attempt, model],
+      `INSERT INTO pipeline_steps (id, pipeline_run_id, step_type, attempt_number, status, model, input_context)
+       VALUES ($1, $2, $3, $4, 'running', $5, $6)`,
+      [stepId, pipelineId, stepType, attempt, model, JSON.stringify(inputContext)],
     );
 
     // Update current_step on run
@@ -767,6 +768,7 @@ export class PipelineService {
             typeof s.output_result === 'string'
               ? s.output_result
               : (s.output_result as { text?: string })?.text || '',
+          inputContext: s.input_context || [],
         })),
       };
 
@@ -774,7 +776,7 @@ export class PipelineService {
         strategyType: 'pipeline',
         contextMessagesCount: 0,
         contextMessagesAfterTruncation: 0,
-        strategyMetadata: pipelineDebugData,
+        pipelineData: pipelineDebugData,
       });
 
       this.logger.debug(`Pipeline ${pipelineId}: debug data saved for message ${messageId}`);

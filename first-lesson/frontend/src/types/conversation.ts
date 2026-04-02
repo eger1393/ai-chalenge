@@ -55,6 +55,7 @@ export interface MessageDebugData {
       validationPassed?: boolean;
       validationReason?: string;
       content: string;
+      inputContext?: Array<{ role: string; content: string }>;
     }>;
   };
 }
