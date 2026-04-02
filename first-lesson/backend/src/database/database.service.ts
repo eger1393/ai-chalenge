@@ -312,6 +312,18 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           CREATE INDEX IF NOT EXISTS idx_pipeline_steps_run ON pipeline_steps(pipeline_run_id);
         `,
       },
+      {
+        name: '017_create_task_invariants',
+        sql: `
+          CREATE TABLE IF NOT EXISTS task_invariants (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            task_id UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            content TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_task_invariants_task ON task_invariants(task_id);
+        `,
+      },
     ];
   }
 }

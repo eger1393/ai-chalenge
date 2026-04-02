@@ -6,3 +6,9 @@ export interface Task {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface TaskInvariant {
+  id: string;
+  content: string;
+  createdAt: string;
+}

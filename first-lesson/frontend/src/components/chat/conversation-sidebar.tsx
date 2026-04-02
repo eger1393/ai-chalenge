@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { Plus, MessageSquare, Trash2, X, FlaskConical, FolderPlus, FolderOpen, ChevronDown, ChevronRight } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Plus, MessageSquare, Trash2, X, FlaskConical, FolderPlus, FolderOpen, ChevronDown, ChevronRight, Shield } from 'lucide-react';
 import { Conversation } from '@/types/conversation';
-import { Task } from '@/types/task';
+import { Task, TaskInvariant } from '@/types/task';
+import { getTaskConversationCount } from '@/lib/api';
 import { formatRelativeDate } from '@/lib/format-date';
 
 interface ConversationSidebarProps {
@@ -18,6 +19,11 @@ interface ConversationSidebarProps {
   onCreateTask?: (title: string, description?: string) => void;
   onDeleteTask?: (id: string) => void;
   onNewConversationInTask?: (taskId: string) => void;
+  invariants?: TaskInvariant[];
+  onLoadInvariants?: (taskId: string) => void;
+  onAddInvariant?: (content: string) => void;
+  onRemoveInvariant?: (invariantId: string) => void;
+  invariantsActiveTaskId?: string | null;
 }
 
 function truncate(text: string, maxLen: number): string {
@@ -37,11 +43,26 @@ export function ConversationSidebar({
   onCreateTask,
   onDeleteTask,
   onNewConversationInTask,
+  invariants,
+  onLoadInvariants,
+  onAddInvariant,
+  onRemoveInvariant,
+  invariantsActiveTaskId,
 }: ConversationSidebarProps) {
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDesc, setTaskDesc] = useState('');
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+  const [deleteTaskConfirm, setDeleteTaskConfirm] = useState<{ id: string; title: string; convCount: number } | null>(null);
+
+  const handleDeleteTaskClick = async (task: Task) => {
+    try {
+      const count = await getTaskConversationCount(task.id);
+      setDeleteTaskConfirm({ id: task.id, title: task.title, convCount: count });
+    } catch {
+      setDeleteTaskConfirm({ id: task.id, title: task.title, convCount: 0 });
+    }
+  };
 
   const handleCreateTask = () => {
     if (!taskTitle.trim() || !onCreateTask) return;
@@ -241,32 +262,50 @@ export function ConversationSidebar({
               const isExpanded = expandedTasks.has(task.id);
               return (
                 <div key={task.id} className="mb-1">
-                  <button
-                    onClick={() => setExpandedTasks(prev => {
-                      const next = new Set(prev);
-                      isExpanded ? next.delete(task.id) : next.add(task.id);
-                      return next;
-                    })}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    {isExpanded ? <ChevronDown size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />}
-                    <FolderOpen size={14} className="text-amber-500 flex-shrink-0" />
-                    <span className="text-sm font-medium text-gray-700 truncate flex-1">{task.title}</span>
-                    <span className="text-[10px] text-gray-400 flex-shrink-0">{taskConvs.length}</span>
-                  </button>
+                  <div className="group flex items-center">
+                    <button
+                      onClick={() => setExpandedTasks(prev => {
+                        const next = new Set(prev);
+                        isExpanded ? next.delete(task.id) : next.add(task.id);
+                        return next;
+                      })}
+                      className="flex-1 flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      {isExpanded ? <ChevronDown size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />}
+                      <FolderOpen size={14} className="text-amber-500 flex-shrink-0" />
+                      <span className="text-sm font-medium text-gray-700 truncate flex-1">{task.title}</span>
+                      <span className="text-[10px] text-gray-400 flex-shrink-0">{taskConvs.length}</span>
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDeleteTaskClick(task); }}
+                      className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all mr-1"
+                      aria-label="Удалить задачу"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                   {isExpanded && (
-                    <div className="pl-4 space-y-0.5">
-                      {taskConvs.map(conv => renderConversationItem(conv))}
-                      {onNewConversationInTask && (
-                        <button
-                          onClick={() => onNewConversationInTask(task.id)}
-                          className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                        >
-                          <Plus size={12} />
-                          Новый диалог в задаче
-                        </button>
-                      )}
-                    </div>
+                    <>
+                      <InvariantsSection
+                        taskId={task.id}
+                        invariants={invariantsActiveTaskId === task.id ? (invariants || []) : []}
+                        onLoad={onLoadInvariants}
+                        onAdd={onAddInvariant}
+                        onRemove={onRemoveInvariant}
+                      />
+                      <div className="pl-4 space-y-0.5">
+                        {taskConvs.map(conv => renderConversationItem(conv))}
+                        {onNewConversationInTask && (
+                          <button
+                            onClick={() => onNewConversationInTask(task.id)}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                          >
+                            <Plus size={12} />
+                            Новый диалог в задаче
+                          </button>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
               );
@@ -306,6 +345,99 @@ export function ConversationSidebar({
           </div>
         </>
       )}
+
+      {/* Delete task confirmation modal */}
+      {deleteTaskConfirm && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-xl shadow-lg p-5 max-w-sm mx-4">
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Удалить задачу?</h3>
+            <p className="text-xs text-gray-600 mb-4">
+              Задача &ldquo;<span className="font-medium">{deleteTaskConfirm.title}</span>&rdquo; и{' '}
+              <span className="font-medium text-red-600">{deleteTaskConfirm.convCount} диалогов</span>{' '}
+              будут удалены навсегда.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setDeleteTaskConfirm(null)} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700">
+                Отмена
+              </button>
+              <button
+                onClick={async () => {
+                  if (onDeleteTask) await onDeleteTask(deleteTaskConfirm.id);
+                  setDeleteTaskConfirm(null);
+                }}
+                className="px-3 py-1.5 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700"
+              >
+                Удалить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
+  );
+}
+
+function InvariantsSection({ taskId, invariants, onLoad, onAdd, onRemove }: {
+  taskId: string;
+  invariants: TaskInvariant[];
+  onLoad?: (taskId: string) => void;
+  onAdd?: (content: string) => void;
+  onRemove?: (id: string) => void;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [text, setText] = useState('');
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!loaded && onLoad) {
+      onLoad(taskId);
+      setLoaded(true);
+    }
+  }, [taskId, loaded, onLoad]);
+
+  const handleAdd = () => {
+    if (!text.trim() || !onAdd) return;
+    onAdd(text.trim());
+    setText('');
+  };
+
+  return (
+    <div className="mx-3 mb-2">
+      <button
+        onClick={() => setShowForm(v => !v)}
+        className="flex items-center gap-1 text-[10px] text-red-500 hover:text-red-700 font-medium mb-1"
+      >
+        <Shield className="w-3 h-3" />
+        Инварианты ({invariants.length})
+      </button>
+      {showForm && (
+        <div className="p-2 bg-red-50 border border-red-200 rounded-md space-y-1.5">
+          {invariants.map(inv => (
+            <div key={inv.id} className="flex items-start gap-1.5 text-[11px] text-red-700 bg-white rounded px-2 py-1 border border-red-100">
+              <span className="flex-1">{inv.content}</span>
+              <button onClick={() => onRemove?.(inv.id)} className="text-red-300 hover:text-red-600 flex-shrink-0">
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+          <div className="flex gap-1">
+            <input
+              value={text}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAdd()}
+              placeholder="Новое правило..."
+              className="flex-1 px-2 py-1 text-[11px] border border-red-200 rounded focus:outline-none focus:ring-1 focus:ring-red-400"
+            />
+            <button
+              onClick={handleAdd}
+              disabled={!text.trim()}
+              className="px-2 py-1 bg-red-600 text-white text-[10px] rounded hover:bg-red-700 disabled:opacity-50"
+            >
+              +
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

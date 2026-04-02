@@ -1,7 +1,7 @@
 import { setTokens, getAccessToken, getRefreshToken, clearTokens } from './tokens';
 import { AIParams, AppliedParams, DEFAULT_AI_PARAMS, TestDialogueEvent, TestDialogueParams, Usage } from '@/types/ai-params';
 import { Checkpoint, Conversation, ConversationBranch, ConversationDetail, ConversationFact, ConversationMessage, ConversationTotals, ContextWindow } from '@/types/conversation';
-import { Task } from '@/types/task';
+import { Task, TaskInvariant } from '@/types/task';
 import { UserProfile } from '@/types/personalization';
 import { PipelineSSEEvent } from '@/types/pipeline';
 
@@ -329,6 +329,27 @@ export async function updateTask(id: string, data: { title?: string; description
 
 export async function deleteTask(id: string): Promise<void> {
   return apiRequest<void>(`/tasks/${id}`, { method: 'DELETE' });
+}
+
+// ===== Task Invariants API =====
+export async function getTaskInvariants(taskId: string): Promise<TaskInvariant[]> {
+  return apiRequest<TaskInvariant[]>(`/tasks/${taskId}/invariants`);
+}
+
+export async function addTaskInvariant(taskId: string, content: string): Promise<TaskInvariant> {
+  return apiRequest<TaskInvariant>(`/tasks/${taskId}/invariants`, {
+    method: 'POST',
+    body: JSON.stringify({ content }),
+  });
+}
+
+export async function removeTaskInvariant(taskId: string, invariantId: string): Promise<void> {
+  return apiRequest<void>(`/tasks/${taskId}/invariants/${invariantId}`, { method: 'DELETE' });
+}
+
+export async function getTaskConversationCount(taskId: string): Promise<number> {
+  const result = await apiRequest<{ count: number }>(`/tasks/${taskId}/conversation-count`);
+  return result.count ?? result as unknown as number;
 }
 
 export async function setConversationTask(convId: string, taskId: string | null): Promise<void> {

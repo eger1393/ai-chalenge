@@ -102,6 +102,7 @@ conversation_facts (id UUID PK, conversation_id FK, fact_key, fact_value, source
 conversation_branches (id UUID PK, conversation_id FK, name, parent_branch_id, checkpoint_message_id, created_at)
 message_debug_data (id UUID PK, message_id FK UNIQUE, strategy_type, token_breakdown JSONB, facts_snapshot JSONB, strategy_metadata JSONB, memory_layers JSONB)
 tasks (id UUID PK, username, title, description TEXT, status, created_at, updated_at)               -- рабочая память
+task_invariants (id UUID PK, task_id FK→tasks ON DELETE CASCADE, content TEXT, created_at)          -- инварианты задачи
 user_profiles (id UUID PK, username UNIQUE, response_language, dialogue_style, response_brevity, custom_prompt, preferences JSONB, created_at, updated_at)  -- долговременная память
 pipeline_runs (id UUID PK, conversation_id FK, user_message_id FK, status, current_step, attempt_number, max_attempts, paused_at_step, error_message, total_cost, total_tokens, created_at, updated_at)
 pipeline_steps (id UUID PK, pipeline_run_id FK, step_type, attempt_number, status, input_context JSONB, output_result JSONB, model, prompt/completion_tokens, cost, duration_ms, validation_passed, validation_reason, created_at, completed_at)
@@ -153,6 +154,7 @@ src/
 │   ├── use-conversations.ts    # conversations[], create, select, remove, rename, refresh
 │   ├── use-ai-params.ts        # AIParams в localStorage (contextStrategy, slidingWindowKeepLast, factsKeepLast)
 │   ├── use-pipeline.ts         # Pipeline SSE state machine: start, pause, resume, cancel
+│   ├── use-invariants.ts       # Инварианты задачи: load, add, remove
 │   ├── use-facts.ts            # Facts CRUD для sticky_facts стратегии
 │   ├── use-branches.ts         # Branches CRUD для branching стратегии
 │   ├── use-test-dialogue.ts    # SSE-стриминг тестового диалога (progress, abort)

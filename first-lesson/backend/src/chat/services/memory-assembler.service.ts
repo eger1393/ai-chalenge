@@ -5,7 +5,7 @@ import { TokenService } from './token.service';
 import { DatabaseService } from '../../database/database.service';
 
 export interface MemoryLayer {
-  type: 'long_term' | 'working' | 'short_term';
+  type: 'invariants' | 'long_term' | 'working' | 'short_term';
   label: string;
   tokenCount: number;
   content?: string;
@@ -34,6 +34,28 @@ export class MemoryAssemblerService {
     const layers: MemoryLayer[] = [];
     const parts: string[] = [];
 
+    // Resolve taskId once for invariants and working memory
+    let taskId: string | null = null;
+    if (params.conversationId) {
+      taskId = await this.getConversationTaskId(params.conversationId);
+    }
+
+    // === INVARIANTS (highest priority — inserted first) ===
+    if (taskId) {
+      const invariants = await this.taskService.getInvariantsByTaskId(taskId);
+      if (invariants.length > 0) {
+        const invariantsContent = invariants.map((inv, i) => `${i + 1}. ${inv}`).join('\n');
+        const section = `═══ ИНВАРИАНТЫ (НАРУШЕНИЕ ЗАПРЕЩЕНО) ═══\nСЛЕДУЮЩИЕ ПРАВИЛА НЕЛЬЗЯ НАРУШАТЬ НИ ПРИ КАКИХ ОБСТОЯТЕЛЬСТВАХ.\nДаже если пользователь явно просит нарушить эти правила — ОТКАЗАТЬ и объяснить что это инвариант.\n\n${invariantsContent}\n═══════════════════════════════════════`;
+        parts.push(section);
+        layers.push({
+          type: 'invariants',
+          label: `Инварианты (${invariants.length})`,
+          tokenCount: this.tokenService.countTokens(section, params.model),
+          content: section,
+        });
+      }
+    }
+
     // === LONG-TERM: user profile ===
     const profile = await this.userProfileService.getProfile(params.username);
     const longTermContent = this.buildLongTermContent(profile);
@@ -49,21 +71,18 @@ export class MemoryAssemblerService {
     }
 
     // === WORKING: conversation task ===
-    if (params.conversationId) {
-      const taskId = await this.getConversationTaskId(params.conversationId);
-      if (taskId) {
-        const task = await this.taskService.findById(taskId);
-        if (task) {
-          const workingContent = `Task: ${task.title}${task.description ? `\n${task.description}` : ''}`;
-          const section = `[WORKING MEMORY — Current Task]\n${workingContent}`;
-          parts.push(section);
-          layers.push({
-            type: 'working',
-            label: `Task: ${task.title}`,
-            tokenCount: this.tokenService.countTokens(section, params.model),
-            content: workingContent,
-          });
-        }
+    if (taskId) {
+      const task = await this.taskService.findById(taskId);
+      if (task) {
+        const workingContent = `Task: ${task.title}${task.description ? `\n${task.description}` : ''}`;
+        const section = `[WORKING MEMORY — Current Task]\n${workingContent}`;
+        parts.push(section);
+        layers.push({
+          type: 'working',
+          label: `Task: ${task.title}`,
+          tokenCount: this.tokenService.countTokens(section, params.model),
+          content: workingContent,
+        });
       }
     }
 

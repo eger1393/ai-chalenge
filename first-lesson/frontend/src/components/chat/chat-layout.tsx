@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Menu, MessageSquare, FlaskConical, FolderOpen, Brain } from 'lucide-react';
+import { Menu, MessageSquare, FlaskConical, FolderOpen, Brain, Shield } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useChat, Message } from '@/hooks/use-chat';
 import { useAIParams } from '@/hooks/use-ai-params';
@@ -13,6 +13,7 @@ import { usePipeline } from '@/hooks/use-pipeline';
 import { useFacts } from '@/hooks/use-facts';
 import { useBranches } from '@/hooks/use-branches';
 import { useTasks } from '@/hooks/use-tasks';
+import { useInvariants } from '@/hooks/use-invariants';
 import { setConversationTask } from '@/lib/api';
 import { ConversationSidebar } from './conversation-sidebar';
 import { ContextIndicator } from './context-indicator';
@@ -39,6 +40,7 @@ export function ChatLayout() {
   const facts = useFacts(chat.conversationId);
   const branches = useBranches(chat.conversationId);
   const { tasks, addTask, removeTask } = useTasks();
+  const invariantsHook = useInvariants();
   const [mode, setMode] = useState<'chat' | 'test'>('chat');
   const [showParams, setShowParams] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -70,6 +72,14 @@ export function ChatLayout() {
           facts.loadFacts(activeId);
         } else if (strategy === 'branching') {
           branches.loadBranches(activeId);
+        }
+
+        // Load invariants for active task
+        const taskId = detail?.taskId || conversations.conversations.find(c => c.id === activeId)?.taskId;
+        if (taskId) {
+          invariantsHook.load(taskId);
+        } else {
+          invariantsHook.reset();
         }
 
         // Check for active pipeline
@@ -341,6 +351,11 @@ export function ChatLayout() {
           onCreateTask={addTask}
           onDeleteTask={removeTask}
           onNewConversationInTask={handleNewConversationInTask}
+          invariants={invariantsHook.invariants}
+          onLoadInvariants={invariantsHook.load}
+          onAddInvariant={invariantsHook.add}
+          onRemoveInvariant={invariantsHook.remove}
+          invariantsActiveTaskId={invariantsHook.activeTaskId}
         />
 
         {/* Main chat area */}
@@ -389,6 +404,14 @@ export function ChatLayout() {
                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-md">
                   <FolderOpen size={12} className="text-amber-500" />
                   <span className="text-[11px] font-medium text-amber-700 max-w-[160px] truncate">{activeTask.title}</span>
+                </div>
+              )}
+              {activeTask && invariantsHook.invariants.length > 0 && (
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-red-50 border border-red-200 rounded-md">
+                  <Shield size={11} className="text-red-500" />
+                  <span className="text-[10px] font-medium text-red-700">
+                    {invariantsHook.invariants.length} инвар.
+                  </span>
                 </div>
               )}
             </div>

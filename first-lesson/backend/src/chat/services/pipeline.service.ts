@@ -182,6 +182,20 @@ export class PipelineService {
     });
     const assembledSystemPrompt = memoryResult.systemPrompt || undefined;
 
+    // Load task invariants
+    let invariants: string[] = [];
+    const taskIdResult = await this.db.query(
+      `SELECT task_id FROM conversations WHERE id = $1`, [dto.conversationId],
+    );
+    const taskId = taskIdResult.rows[0]?.task_id;
+    if (taskId) {
+      const invResult = await this.db.query(
+        `SELECT content FROM task_invariants WHERE task_id = $1 ORDER BY created_at ASC`,
+        [taskId],
+      );
+      invariants = invResult.rows.map((r: Record<string, unknown>) => r.content as string);
+    }
+
     // Get conversation history for context
     const historyMessages = await this.conversationService.getMessagesForContext(dto.conversationId);
 
@@ -211,6 +225,7 @@ export class PipelineService {
           dto.message,
           attempt,
           lastValidationReason,
+          invariants,
         );
 
         const planResult = await this.runStep(
@@ -229,6 +244,7 @@ export class PipelineService {
           assembledSystemPrompt,
           planResult,
           dto.message,
+          invariants,
         );
 
         const execResult = await this.runStep(
@@ -246,6 +262,7 @@ export class PipelineService {
         const validationMessages = this.buildValidationMessages(
           planResult,
           execResult,
+          invariants,
         );
 
         const validResult = await this.runStep(
@@ -429,6 +446,20 @@ export class PipelineService {
     const assembledSystemPrompt = memoryResult.systemPrompt || undefined;
     const historyMessages = await this.conversationService.getMessagesForContext(run.conversation_id);
 
+    // Load task invariants
+    let invariants: string[] = [];
+    const taskIdResult = await this.db.query(
+      `SELECT task_id FROM conversations WHERE id = $1`, [run.conversation_id],
+    );
+    const resumeTaskId = taskIdResult.rows[0]?.task_id;
+    if (resumeTaskId) {
+      const invResult = await this.db.query(
+        `SELECT content FROM task_invariants WHERE task_id = $1 ORDER BY created_at ASC`,
+        [resumeTaskId],
+      );
+      invariants = invResult.rows.map((r: Record<string, unknown>) => r.content as string);
+    }
+
     let attempt = run.attempt_number;
     const maxAttempts = run.max_attempts;
     let lastValidationReason = '';
@@ -445,7 +476,7 @@ export class PipelineService {
         // Planning (if not completed in this attempt)
         if (!completedTypes.has('planning') || attempt > run.attempt_number) {
           const planningMessages = this.buildPlanningMessages(
-            assembledSystemPrompt, historyMessages, userMessage, attempt, lastValidationReason,
+            assembledSystemPrompt, historyMessages, userMessage, attempt, lastValidationReason, invariants,
           );
           currentPlanResult = await this.runStep(
             pipelineId, 'planning', planningModel, planningMessages,
@@ -461,7 +492,7 @@ export class PipelineService {
         // Execution (if not completed in this attempt)
         if (!completedTypes.has('execution') || attempt > run.attempt_number) {
           const executionMessages = this.buildExecutionMessages(
-            assembledSystemPrompt, currentPlanResult, userMessage,
+            assembledSystemPrompt, currentPlanResult, userMessage, invariants,
           );
           currentExecResult = await this.runStep(
             pipelineId, 'execution', userModel, executionMessages,
@@ -476,7 +507,7 @@ export class PipelineService {
 
         // Validation (if not completed in this attempt)
         if (!completedTypes.has('validation') || attempt > run.attempt_number) {
-          const validationMessages = this.buildValidationMessages(currentPlanResult, currentExecResult);
+          const validationMessages = this.buildValidationMessages(currentPlanResult, currentExecResult, invariants);
           const validResult = await this.runStep(
             pipelineId, 'validation', validationModel, validationMessages,
             temperature, maxTokens, attempt, onEvent,
@@ -788,14 +819,22 @@ export class PipelineService {
 
   // ── Private: message builders ─────────────────────────────────────
 
+  private buildInvariantsBlock(invariants: string[]): string {
+    if (invariants.length === 0) return '';
+    const list = invariants.map((inv, i) => `${i + 1}. ${inv}`).join('\n');
+    return `═══ ИНВАРИАНТЫ (НАРУШЕНИЕ ЗАПРЕЩЕНО) ═══\nСЛЕДУЮЩИЕ ПРАВИЛА НЕЛЬЗЯ НАРУШАТЬ НИ ПРИ КАКИХ ОБСТОЯТЕЛЬСТВАХ.\nДаже если пользователь просит иное — ОТКАЗАТЬ.\n\n${list}\n═══════════════════════════════════════\n\n`;
+  }
+
   private buildPlanningMessages(
     assembledSystemPrompt: string | undefined,
     historyMessages: Array<{ role: string; content: string }>,
     userMessage: string,
     attempt: number,
     lastValidationReason: string,
+    invariants: string[],
   ): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
     let systemContent = '';
+    systemContent += this.buildInvariantsBlock(invariants);
     if (assembledSystemPrompt) {
       systemContent += assembledSystemPrompt + '\n\n';
     }
@@ -822,8 +861,10 @@ export class PipelineService {
     assembledSystemPrompt: string | undefined,
     planResult: string,
     userMessage: string,
+    invariants: string[],
   ): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
     let systemContent = '';
+    systemContent += this.buildInvariantsBlock(invariants);
     if (assembledSystemPrompt) {
       systemContent += assembledSystemPrompt + '\n\n';
     }
@@ -836,9 +877,20 @@ export class PipelineService {
   private buildValidationMessages(
     planResult: string,
     execResult: string,
+    invariants: string[],
   ): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
-    let content = VALIDATION_SYSTEM_PROMPT;
+    let content = '';
+    content += this.buildInvariantsBlock(invariants);
+    content += VALIDATION_SYSTEM_PROMPT;
     content += `\n\nПлан:\n${planResult}\n\nРезультат выполнения:\n${execResult}`;
+
+    if (invariants.length > 0) {
+      content += '\n\nОБЯЗАТЕЛЬНО проверь соблюдение каждого инварианта:';
+      invariants.forEach((inv, i) => {
+        content += `\n${i + 1}. ${inv} — соблюдён? (да/нет, почему)`;
+      });
+      content += '\nЕсли хотя бы один инвариант нарушен — VERDICT: FAIL';
+    }
 
     return [{ role: 'system', content }];
   }

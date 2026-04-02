@@ -38,4 +38,24 @@ export class TaskController {
   getConversations(@Request() req, @Param('id') id: string) {
     return this.taskService.getConversations(req.user.username, id);
   }
+
+  @Get(':id/invariants')
+  getInvariants(@Request() req, @Param('id') id: string) {
+    return this.taskService.getInvariants(id);
+  }
+
+  @Post(':id/invariants')
+  addInvariant(@Request() req, @Param('id') id: string, @Body() body: { content: string }) {
+    return this.taskService.addInvariant(id, body.content);
+  }
+
+  @Delete(':id/invariants/:invariantId')
+  removeInvariant(@Param('id') id: string, @Param('invariantId') invariantId: string) {
+    return this.taskService.removeInvariant(id, invariantId);
+  }
+
+  @Get(':id/conversation-count')
+  getConversationCount(@Param('id') id: string) {
+    return this.taskService.getConversationCount(id);
+  }
 }
