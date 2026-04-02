@@ -1,8 +1,7 @@
 'use client';
 
 import { X, RotateCcw } from 'lucide-react';
-import { AIParams, AVAILABLE_MODELS, MODEL_LABELS, MODEL_CONTEXT_SIZES, ConsiliumParams, Role, STRATEGY_LABELS, ContextStrategyType } from '@/types/ai-params';
-import { ConsiliumPanel } from './consilium-panel';
+import { AIParams, AVAILABLE_MODELS, MODEL_LABELS, MODEL_CONTEXT_SIZES, STRATEGY_LABELS, ContextStrategyType } from '@/types/ai-params';
 import { StrategySelector } from './strategy-selector';
 
 interface AIParamsPanelProps {
@@ -11,17 +10,10 @@ interface AIParamsPanelProps {
   resetParams: () => void;
   hasNonDefaults: boolean;
   onClose?: () => void;
-  consilium: ConsiliumParams;
-  roles: Role[];
-  toggleConsilium: () => void;
-  setExpert: (index: number, field: 'name' | 'systemPrompt' | 'mode' | 'roleId', value: string) => void;
-  setExpertRole: (index: number, roleId: string, roleName: string) => void;
-  addExpert: () => void;
-  removeExpert: (index: number) => void;
   conversationStrategy?: string;
 }
 
-export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, onClose, consilium, roles, toggleConsilium, setExpert, setExpertRole, addExpert, removeExpert, conversationStrategy }: AIParamsPanelProps) {
+export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, onClose, conversationStrategy }: AIParamsPanelProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -127,6 +119,31 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
           </div>
         </div>
 
+        {/* Pipeline Mode */}
+        <div className="border-t border-gray-200 pt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-xs font-medium text-gray-700">Pipeline mode</label>
+              <p className="text-[10px] text-gray-400">Этапы: планирование → выполнение → валидация</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={params.pipelineMode}
+              onClick={() => setParam('pipelineMode', !params.pipelineMode)}
+              className={`relative w-9 h-5 rounded-full transition-colors ${
+                params.pipelineMode ? 'bg-indigo-600' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                  params.pipelineMode ? 'translate-x-4' : ''
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
         {/* Context Strategy */}
         <div className="border-t border-gray-200 pt-4">
           <label className="text-xs font-medium text-gray-700 block mb-2">Стратегия контекста</label>
@@ -207,9 +224,8 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
           </div>
         </div>
 
-        {/* System Prompt — hidden when consilium is active */}
-        {!consilium.enabled && (
-          <div>
+        {/* System Prompt */}
+        <div>
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs font-medium text-gray-700">Системный промпт</label>
               <span className="text-[10px] text-gray-400">
@@ -226,20 +242,6 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
               placeholder="Инструкции для модели..."
             />
           </div>
-        )}
-
-        {/* Consilium */}
-        <div className="border-t border-gray-200 pt-4">
-          <ConsiliumPanel
-            consilium={consilium}
-            roles={roles}
-            toggleConsilium={toggleConsilium}
-            setExpert={setExpert}
-            setExpertRole={setExpertRole}
-            addExpert={addExpert}
-            removeExpert={removeExpert}
-          />
-        </div>
 
         {/* Reset */}
         <button

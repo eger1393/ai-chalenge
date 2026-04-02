@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import { sendMessage, sendConsilium, createConversation, getConversation } from '@/lib/api';
-import { AIParams, AppliedParams, ConsiliumParams, DEFAULT_AI_PARAMS, ExpertOpinion, Usage } from '@/types/ai-params';
+import { sendMessage, createConversation, getConversation } from '@/lib/api';
+import { AIParams, AppliedParams, DEFAULT_AI_PARAMS, Usage } from '@/types/ai-params';
 import { ContextWindow, ConversationTotals, MessageDebugData } from '@/types/conversation';
 
 export interface Message {
@@ -11,8 +11,6 @@ export interface Message {
   content: string;
   error?: boolean;
   appliedParams?: AppliedParams;
-  expertOpinions?: ExpertOpinion[];
-  isConsilium?: boolean;
   cost?: number;
   usage?: Usage;
   durationMs?: number;
@@ -44,8 +42,6 @@ export function useChat() {
           role: m.role,
           content: m.content,
           cost: m.cost,
-          isConsilium: m.isConsilium,
-          expertOpinions: m.expertOpinions,
           durationMs: m.durationMs,
           usage: m.promptTokens || m.completionTokens ? {
             promptTokens: m.promptTokens || 0,
@@ -102,7 +98,7 @@ export function useChat() {
   }, []);
 
   const send = useCallback(
-    async (text: string, params?: AIParams, consilium?: ConsiliumParams) => {
+    async (text: string, params?: AIParams) => {
       if (!text.trim() || isLoading) return;
 
       const userMessage: Message = {
@@ -129,75 +125,7 @@ export function useChat() {
           conversationIdRef.current = conv.id;
         }
 
-        const isExpertFilled = (e: {
-          mode: 'role' | 'custom';
-          roleId?: string;
-          systemPrompt: string;
-        }) =>
-          (e.mode === 'role' && !!e.roleId) ||
-          (e.mode === 'custom' && e.systemPrompt.trim().length > 0);
-
-        if (
-          consilium?.enabled &&
-          consilium.experts.filter(isExpertFilled).length >= 2
-        ) {
-          const activeExperts = consilium.experts.filter(isExpertFilled);
-          const consiliumParams: Record<string, unknown> = {};
-          if (
-            params?.model !== undefined &&
-            params.model !== DEFAULT_AI_PARAMS.model
-          ) {
-            consiliumParams.model = params.model;
-          }
-          if (
-            params?.temperature !== undefined &&
-            params.temperature !== DEFAULT_AI_PARAMS.temperature
-          ) {
-            consiliumParams.temperature = params.temperature;
-          }
-          if (
-            params?.maxTokens !== undefined &&
-            params.maxTokens !== DEFAULT_AI_PARAMS.maxTokens
-          ) {
-            consiliumParams.maxTokens = params.maxTokens;
-          }
-
-          const response = await sendConsilium(
-            text.trim(),
-            [],
-            activeExperts,
-            consiliumParams as {
-              model?: string;
-              temperature?: number;
-              maxTokens?: number;
-            },
-            currentConvId,
-          );
-
-          if (response.contextWindow) {
-            setContextWindow(response.contextWindow);
-          }
-          if (response.conversationTotals) {
-            setConversationTotals(response.conversationTotals);
-          }
-
-          const assistantMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            role: 'assistant',
-            content: response.reply,
-            appliedParams: response.appliedParams,
-            expertOpinions: response.expertOpinions,
-            isConsilium: true,
-            cost: response.cost,
-            usage: response.usage,
-            durationMs: response.durationMs,
-            truncation: response.truncation,
-            contextUsedTokens: response.contextWindow?.usedTokens,
-            contextMaxTokens: response.contextWindow?.maxTokens,
-          };
-
-          setMessages((prev) => [...prev, assistantMessage]);
-        } else {
+        {
           const response = await sendMessage(
             text.trim(),
             [],

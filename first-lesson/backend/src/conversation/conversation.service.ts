@@ -7,7 +7,6 @@ interface AddMessageMetadata {
   promptTokens?: number;
   completionTokens?: number;
   cost?: number;
-  isConsilium?: boolean;
   durationMs?: number;
   currentMessageTokens?: number;
   historyTokens?: number;
@@ -19,12 +18,6 @@ interface AddMessageMetadata {
   truncatedMessages?: number;
   truncatedTokens?: number;
   branchId?: string;
-}
-
-interface ExpertOpinionInput {
-  expertName: string;
-  content: string;
-  isError?: boolean;
 }
 
 @Injectable()
@@ -107,27 +100,6 @@ export class ConversationService {
       [id],
     );
 
-    // Load expert opinions for consilium messages
-    const consiliumMessageIds = messageRows
-      .filter((m) => m.is_consilium)
-      .map((m) => m.id);
-
-    let expertOpinions: Record<string, any[]> = {};
-    if (consiliumMessageIds.length > 0) {
-      const placeholders = consiliumMessageIds.map((_, i) => `$${i + 1}`).join(',');
-      const { rows: opinionRows } = await this.db.query(
-        `SELECT * FROM expert_opinions WHERE message_id IN (${placeholders}) ORDER BY id ASC`,
-        consiliumMessageIds,
-      );
-
-      for (const opinion of opinionRows) {
-        if (!expertOpinions[opinion.message_id]) {
-          expertOpinions[opinion.message_id] = [];
-        }
-        expertOpinions[opinion.message_id].push(opinion);
-      }
-    }
-
     // Load debug data for all conversations
     const debugDataMap = await this.getDebugDataForConversation(id);
 
@@ -140,7 +112,6 @@ export class ConversationService {
       promptTokens: m.prompt_tokens,
       completionTokens: m.completion_tokens,
       cost: m.cost,
-      isConsilium: m.is_consilium,
       createdAt: m.created_at,
       durationMs: m.duration_ms || undefined,
       currentMessageTokens: m.current_message_tokens || undefined,
@@ -152,13 +123,6 @@ export class ConversationService {
       contextMaxTokens: m.context_max_tokens || undefined,
       truncatedMessages: m.truncated_messages || undefined,
       truncatedTokens: m.truncated_tokens || undefined,
-      expertOpinions: m.is_consilium
-        ? (expertOpinions[m.id] || []).map((o: any) => ({
-            expert: o.expert_name,
-            reply: o.content,
-            error: o.is_error,
-          }))
-        : undefined,
       debugData: debugDataMap.has(m.id) ? debugDataMap.get(m.id) : undefined,
     }));
 
@@ -226,7 +190,7 @@ export class ConversationService {
         metadata?.promptTokens || 0,
         metadata?.completionTokens || 0,
         metadata?.cost || 0,
-        metadata?.isConsilium || false,
+        false,
         metadata?.durationMs || 0,
         metadata?.currentMessageTokens || 0,
         metadata?.historyTokens || 0,
@@ -248,34 +212,6 @@ export class ConversationService {
     );
 
     return rows[0];
-  }
-
-  async addExpertOpinions(messageId: string, opinions: ExpertOpinionInput[]) {
-    if (opinions.length === 0) return;
-
-    const placeholders: string[] = [];
-    const values: any[] = [];
-
-    for (let i = 0; i < opinions.length; i++) {
-      const offset = i * 5;
-      const id = crypto.randomUUID();
-      placeholders.push(
-        `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5})`,
-      );
-      values.push(
-        id,
-        messageId,
-        opinions[i].expertName,
-        opinions[i].content,
-        opinions[i].isError || false,
-      );
-    }
-
-    await this.db.query(
-      `INSERT INTO expert_opinions (id, message_id, expert_name, content, is_error)
-       VALUES ${placeholders.join(', ')}`,
-      values,
-    );
   }
 
   async setTaskId(conversationId: string, taskId: string | null): Promise<void> {

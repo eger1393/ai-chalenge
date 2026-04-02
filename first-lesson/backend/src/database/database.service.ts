@@ -268,6 +268,50 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
           CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
         `,
       },
+      {
+        name: '016_create_pipeline_tables',
+        sql: `
+          CREATE TABLE IF NOT EXISTS pipeline_runs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+            user_message_id UUID REFERENCES messages(id) ON DELETE SET NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'running'
+              CHECK (status IN ('running', 'paused', 'completed', 'failed', 'cancelled')),
+            current_step VARCHAR(20) NOT NULL DEFAULT 'planning'
+              CHECK (current_step IN ('planning', 'execution', 'validation', 'done')),
+            attempt_number INTEGER NOT NULL DEFAULT 1,
+            max_attempts INTEGER NOT NULL DEFAULT 3,
+            paused_at_step VARCHAR(20),
+            error_message TEXT,
+            total_cost DOUBLE PRECISION DEFAULT 0,
+            total_tokens INTEGER DEFAULT 0,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          );
+          CREATE INDEX IF NOT EXISTS idx_pipeline_runs_conv ON pipeline_runs(conversation_id);
+          CREATE INDEX IF NOT EXISTS idx_pipeline_runs_status ON pipeline_runs(status);
+
+          CREATE TABLE IF NOT EXISTS pipeline_steps (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            pipeline_run_id UUID NOT NULL REFERENCES pipeline_runs(id) ON DELETE CASCADE,
+            step_type VARCHAR(20) NOT NULL CHECK (step_type IN ('planning', 'execution', 'validation')),
+            attempt_number INTEGER NOT NULL DEFAULT 1,
+            status VARCHAR(20) NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'completed', 'failed')),
+            input_context JSONB,
+            output_result JSONB,
+            model VARCHAR(50),
+            prompt_tokens INTEGER DEFAULT 0,
+            completion_tokens INTEGER DEFAULT 0,
+            cost DOUBLE PRECISION DEFAULT 0,
+            duration_ms INTEGER DEFAULT 0,
+            validation_passed BOOLEAN,
+            validation_reason TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            completed_at TIMESTAMPTZ
+          );
+          CREATE INDEX IF NOT EXISTS idx_pipeline_steps_run ON pipeline_steps(pipeline_run_id);
+        `,
+      },
     ];
   }
 }

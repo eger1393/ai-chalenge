@@ -9,6 +9,7 @@ export interface AIParams {
   contextLimit: number;
   contextStrategy: ContextStrategyType;
   slidingWindowKeepLast: number;
+  pipelineMode: boolean;
 }
 
 export interface AppliedParams {
@@ -50,6 +51,7 @@ export const DEFAULT_AI_PARAMS: AIParams = {
   contextLimit: 0,
   contextStrategy: 'sliding_window',
   slidingWindowKeepLast: 10,
+  pipelineMode: false,
 };
 
 export const STRATEGY_LABELS: Record<ContextStrategyType, string> = {
@@ -58,40 +60,9 @@ export const STRATEGY_LABELS: Record<ContextStrategyType, string> = {
   branching: 'Ветки',
 };
 
-export interface Expert {
-  name: string;
-  roleId?: string;
-  systemPrompt: string;
-  mode: 'role' | 'custom';
-}
-
-export interface Role {
-  id: string;
-  name: string;
-}
-
-export interface ConsiliumParams {
-  enabled: boolean;
-  experts: Expert[];
-}
-
-export const DEFAULT_CONSILIUM: ConsiliumParams = {
-  enabled: false,
-  experts: [
-    { name: 'Эксперт 1', systemPrompt: '', mode: 'custom', roleId: '' },
-    { name: 'Эксперт 2', systemPrompt: '', mode: 'custom', roleId: '' },
-  ],
-};
-
 export interface Truncation {
   droppedMessages: number;
   droppedTokens: number;
-}
-
-export interface ExpertOpinion {
-  expert: string;
-  reply: string;
-  error?: boolean;
 }
 
 export interface Usage {

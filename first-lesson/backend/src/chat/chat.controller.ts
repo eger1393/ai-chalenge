@@ -5,10 +5,10 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ChatService } from './chat.service';
 import { MessageDto } from './dto/message.dto';
 import { TestDialogueDto } from './dto/test-dialogue.dto';
-import { ConsiliumMessageDto } from './dto/consilium.dto';
-import { EXPERT_ROLES } from './constants/expert-roles';
+import { PipelineMessageDto } from './dto/pipeline.dto';
 import { FactsService } from './services/facts.service';
 import { BranchService } from './services/branch.service';
+import { PipelineService } from './services/pipeline.service';
 
 @Controller('chat')
 export class ChatController {
@@ -16,6 +16,7 @@ export class ChatController {
     private chatService: ChatService,
     private factsService: FactsService,
     private branchService: BranchService,
+    private pipelineService: PipelineService,
   ) {}
 
   @Post('message')
@@ -23,19 +24,6 @@ export class ChatController {
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   sendMessage(@Request() req, @Body() dto: MessageDto) {
     return this.chatService.sendMessage(dto, req.user.username);
-  }
-
-  @Get('roles')
-  @UseGuards(JwtAuthGuard)
-  getRoles() {
-    return EXPERT_ROLES.map(({ id, name }) => ({ id, name }));
-  }
-
-  @Post('consilium')
-  @UseGuards(JwtAuthGuard)
-  @Throttle({ default: { limit: 20, ttl: 60000 } })
-  consilium(@Request() req, @Body() dto: ConsiliumMessageDto) {
-    return this.chatService.sendConsilium(dto, req.user.username);
   }
 
   @Post('test-dialogue')
@@ -153,7 +141,6 @@ export class ChatController {
       content: m.content,
       model: m.model || undefined,
       cost: m.cost || undefined,
-      isConsilium: m.is_consilium || false,
       branchId: m.branch_id || undefined,
       createdAt: m.created_at,
       durationMs: m.duration_ms || undefined,
@@ -170,5 +157,72 @@ export class ChatController {
       completionTokens: m.completion_tokens || undefined,
       tokenCount: m.token_count || undefined,
     }));
+  }
+
+  // --- Pipeline endpoints ---
+
+  @Post('pipeline')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  async runPipeline(@Request() req, @Body() dto: PipelineMessageDto, @Res() res: Response) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const onEvent = (event: Record<string, unknown>) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    try {
+      await this.pipelineService.runPipeline(dto, req.user.username, onEvent);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.write(`data: ${JSON.stringify({ type: 'error', message })}\n\n`);
+    } finally {
+      res.end();
+    }
+  }
+
+  @Get('pipeline/:id')
+  @UseGuards(JwtAuthGuard)
+  async getPipeline(@Param('id') id: string) {
+    return this.pipelineService.getPipelineRun(id);
+  }
+
+  @Post('pipeline/:id/pause')
+  @UseGuards(JwtAuthGuard)
+  async pausePipeline(@Param('id') id: string) {
+    await this.pipelineService.pausePipeline(id);
+    return { status: 'paused' };
+  }
+
+  @Post('pipeline/:id/resume')
+  @UseGuards(JwtAuthGuard)
+  async resumePipeline(@Request() req, @Param('id') id: string, @Res() res: Response) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const onEvent = (event: Record<string, unknown>) => {
+      res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    try {
+      await this.pipelineService.resumePipeline(id, onEvent);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.write(`data: ${JSON.stringify({ type: 'error', message })}\n\n`);
+    } finally {
+      res.end();
+    }
+  }
+
+  @Post('pipeline/:id/cancel')
+  @UseGuards(JwtAuthGuard)
+  async cancelPipeline(@Param('id') id: string) {
+    await this.pipelineService.cancelPipeline(id);
+    return { status: 'cancelled' };
   }
 }

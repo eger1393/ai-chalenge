@@ -1,8 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { ChevronDown, ChevronRight, Flag } from 'lucide-react';
-import { AppliedParams, ExpertOpinion, Usage } from '@/types/ai-params';
+import { Flag } from 'lucide-react';
+import { AppliedParams, Usage } from '@/types/ai-params';
 import { MessageDebugData } from '@/types/conversation';
 import { AppliedParamsDisplay } from './applied-params-display';
 import { DebugPanel } from './debug-panel';
@@ -12,8 +11,6 @@ interface MessageBubbleProps {
   content: string;
   error?: boolean;
   appliedParams?: AppliedParams;
-  expertOpinions?: ExpertOpinion[];
-  isConsilium?: boolean;
   cost?: number;
   usage?: Usage;
   durationMs?: number;
@@ -27,7 +24,7 @@ interface MessageBubbleProps {
   isTestGenerated?: boolean;
 }
 
-export function MessageBubble({ role, content, error, appliedParams, expertOpinions, isConsilium, cost, usage, durationMs, truncation, contextUsedTokens, contextMaxTokens, onCreateCheckpoint, showCheckpointButton, messageId, debugData, isTestGenerated }: MessageBubbleProps) {
+export function MessageBubble({ role, content, error, appliedParams, cost, usage, durationMs, truncation, contextUsedTokens, contextMaxTokens, onCreateCheckpoint, showCheckpointButton, messageId, debugData, isTestGenerated }: MessageBubbleProps) {
   if (role === 'user') {
     return (
       <div className="flex justify-end mb-4">
@@ -46,9 +43,6 @@ export function MessageBubble({ role, content, error, appliedParams, expertOpini
         </div>
       )}
       <AppliedParamsDisplay appliedParams={appliedParams} cost={cost} usage={usage} durationMs={durationMs} contextUsedTokens={contextUsedTokens} contextMaxTokens={contextMaxTokens} />
-      {isConsilium && expertOpinions && expertOpinions.length > 0 && (
-        <ExpertOpinionsAccordion opinions={expertOpinions} />
-      )}
       <div className="flex items-start gap-3">
       <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center flex-shrink-0 mt-0.5">
         <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -56,9 +50,6 @@ export function MessageBubble({ role, content, error, appliedParams, expertOpini
         </svg>
       </div>
       <div className="max-w-[70%]">
-        {isConsilium && (
-          <div className="text-[10px] text-indigo-600 font-medium mb-1">Синтез консилиума</div>
-        )}
         <div
           className={`px-4 py-3 rounded-2xl rounded-tl-sm text-sm leading-relaxed whitespace-pre-wrap ${
             error
@@ -82,42 +73,6 @@ export function MessageBubble({ role, content, error, appliedParams, expertOpini
       </div>
       </div>
       {debugData && <DebugPanel debugData={debugData} />}
-    </div>
-  );
-}
-
-function ExpertOpinionsAccordion({ opinions }: { opinions: ExpertOpinion[] }) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="ml-11 mb-2">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 transition-colors"
-      >
-        {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-        Мнения экспертов ({opinions.length})
-      </button>
-      {open && (
-        <div className="mt-2 space-y-2">
-          {opinions.map((opinion, i) => (
-            <div
-              key={i}
-              className={`border rounded-lg p-3 text-xs ${
-                opinion.error
-                  ? 'border-red-200 bg-red-50'
-                  : 'border-gray-200 bg-gray-50'
-              }`}
-            >
-              <div className="font-medium text-gray-700 mb-1">{opinion.expert}</div>
-              <div className={`whitespace-pre-wrap leading-relaxed ${opinion.error ? 'text-red-600' : 'text-gray-600'}`}>
-                {opinion.reply}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

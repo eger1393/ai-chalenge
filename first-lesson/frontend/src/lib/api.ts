@@ -1,8 +1,9 @@
 import { setTokens, getAccessToken, getRefreshToken, clearTokens } from './tokens';
-import { AIParams, AppliedParams, DEFAULT_AI_PARAMS, Expert, Role, TestDialogueEvent, TestDialogueParams, Usage } from '@/types/ai-params';
+import { AIParams, AppliedParams, DEFAULT_AI_PARAMS, TestDialogueEvent, TestDialogueParams, Usage } from '@/types/ai-params';
 import { Checkpoint, Conversation, ConversationBranch, ConversationDetail, ConversationFact, ConversationMessage, ConversationTotals, ContextWindow } from '@/types/conversation';
 import { Task } from '@/types/task';
 import { UserProfile } from '@/types/personalization';
+import { PipelineSSEEvent } from '@/types/pipeline';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
@@ -138,53 +139,6 @@ export async function sendMessage(
   }
 
   return apiRequest<{ reply: string; usage: Usage; appliedParams?: AppliedParams; cost?: number; durationMs?: number; contextWindow?: ContextWindow; conversationId?: string; conversationTotals?: ConversationTotals; truncation?: { droppedMessages: number; droppedTokens: number }; strategyMetadata?: Record<string, unknown>; assistantMessageId?: string; memoryLayers?: Array<{ type: 'long_term' | 'working' | 'short_term'; label: string; tokenCount: number; content?: string }> }>('/chat/message', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
-}
-
-export async function fetchRoles(): Promise<Role[]> {
-  return apiRequest<Role[]>('/chat/roles');
-}
-
-export async function sendConsilium(
-  message: string,
-  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }>,
-  experts: Expert[],
-  params?: { model?: string; temperature?: number; maxTokens?: number },
-  conversationId?: string,
-) {
-  const mappedExperts = experts.map((e) => ({
-    name: e.name,
-    ...(e.mode === 'role' && e.roleId
-      ? { roleId: e.roleId }
-      : { systemPrompt: e.systemPrompt }),
-  }));
-
-  const body: Record<string, unknown> = {
-    message,
-    experts: mappedExperts,
-    ...params,
-  };
-
-  if (conversationId) {
-    body.conversationId = conversationId;
-  } else {
-    body.conversationHistory = conversationHistory;
-  }
-
-  return apiRequest<{
-    reply: string;
-    expertOpinions: Array<{ expert: string; reply: string; error?: boolean }>;
-    usage: Usage;
-    appliedParams?: AppliedParams;
-    cost?: number;
-    durationMs?: number;
-    contextWindow?: ContextWindow;
-    conversationId?: string;
-    conversationTotals?: ConversationTotals;
-    truncation?: { droppedMessages: number; droppedTokens: number };
-  }>('/chat/consilium', {
     method: 'POST',
     body: JSON.stringify(body),
   });
@@ -394,4 +348,121 @@ export async function updateProfile(data: Partial<UserProfile>): Promise<UserPro
     method: 'PUT',
     body: JSON.stringify(data),
   });
+}
+
+// ===== Pipeline API =====
+
+export function startPipeline(
+  message: string,
+  conversationId: string,
+  params: Partial<AIParams> | undefined,
+  onEvent: (event: PipelineSSEEvent) => void,
+): AbortController {
+  const controller = new AbortController();
+  const token = getAccessToken();
+
+  const body: Record<string, unknown> = { message, conversationId };
+  if (params) {
+    const filtered: Record<string, unknown> = {};
+    if (params.model) filtered.model = params.model;
+    if (params.temperature !== undefined) filtered.temperature = params.temperature;
+    if (params.maxTokens !== undefined) filtered.maxTokens = params.maxTokens;
+    if (params.systemPrompt) filtered.systemPrompt = params.systemPrompt;
+    if (params.contextLimit) filtered.contextLimit = params.contextLimit;
+    if (params.contextStrategy) filtered.contextStrategy = params.contextStrategy;
+    if (Object.keys(filtered).length > 0) body.params = filtered;
+  }
+
+  fetch(`${API_BASE}/chat/pipeline`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  }).then(async (res) => {
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      onEvent({ type: 'error', message: err.message || 'Request failed' });
+      return;
+    }
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try { onEvent(JSON.parse(line.slice(6))); } catch { /* ignore */ }
+        }
+      }
+    }
+  }).catch((err) => {
+    if (err.name !== 'AbortError') {
+      onEvent({ type: 'error', message: err.message });
+    }
+  });
+
+  return controller;
+}
+
+export function resumePipeline(
+  pipelineId: string,
+  onEvent: (event: PipelineSSEEvent) => void,
+): AbortController {
+  const controller = new AbortController();
+  const token = getAccessToken();
+
+  fetch(`${API_BASE}/chat/pipeline/${pipelineId}/resume`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    signal: controller.signal,
+  }).then(async (res) => {
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      onEvent({ type: 'error', message: err.message || 'Resume failed' });
+      return;
+    }
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try { onEvent(JSON.parse(line.slice(6))); } catch { /* ignore */ }
+        }
+      }
+    }
+  }).catch((err) => {
+    if (err.name !== 'AbortError') {
+      onEvent({ type: 'error', message: err.message });
+    }
+  });
+
+  return controller;
+}
+
+export async function pausePipeline(pipelineId: string): Promise<void> {
+  await apiRequest<void>(`/chat/pipeline/${pipelineId}/pause`, { method: 'POST' });
+}
+
+export async function cancelPipeline(pipelineId: string): Promise<void> {
+  await apiRequest<void>(`/chat/pipeline/${pipelineId}/cancel`, { method: 'POST' });
+}
+
+export async function getPipelineRun(pipelineId: string) {
+  return apiRequest<Record<string, unknown>>(`/chat/pipeline/${pipelineId}`);
 }

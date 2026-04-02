@@ -71,10 +71,8 @@ export interface ConversationMessage {
   content: string;
   model?: string;
   cost?: number;
-  isConsilium?: boolean;
   branchId?: string;
   createdAt: string;
-  expertOpinions?: Array<{ expert: string; reply: string; error?: boolean }>;
   usage?: Usage;
   durationMs?: number;
   tokenCount?: number;

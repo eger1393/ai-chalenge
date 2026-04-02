@@ -6,10 +6,10 @@ import { Menu, MessageSquare, FlaskConical, FolderOpen, Brain } from 'lucide-rea
 import { useAuth } from '@/context/auth-context';
 import { useChat, Message } from '@/hooks/use-chat';
 import { useAIParams } from '@/hooks/use-ai-params';
-import { useConsilium } from '@/hooks/use-consilium';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { useConversations } from '@/hooks/use-conversations';
 import { useTestDialogue } from '@/hooks/use-test-dialogue';
+import { usePipeline } from '@/hooks/use-pipeline';
 import { useFacts } from '@/hooks/use-facts';
 import { useBranches } from '@/hooks/use-branches';
 import { useTasks } from '@/hooks/use-tasks';
@@ -26,6 +26,7 @@ import { EmptyState } from './empty-state';
 import { TestSetupForm } from './test-setup-form';
 import { TestProgressBar } from './test-progress-bar';
 import { AIParamsPanel } from './ai-params-panel';
+import { PipelineMessageBubble } from './pipeline-message-bubble';
 
 export function ChatLayout() {
   const { user, logout } = useAuth();
@@ -33,16 +34,8 @@ export function ChatLayout() {
   const conversations = useConversations();
   const chat = useChat();
   const { params, setParam, resetParams, hasNonDefaults } = useAIParams();
-  const {
-    consilium,
-    roles,
-    toggleConsilium,
-    setExpert,
-    setExpertRole,
-    addExpert,
-    removeExpert,
-  } = useConsilium();
   const testDialogue = useTestDialogue();
+  const pipeline = usePipeline();
   const facts = useFacts(chat.conversationId);
   const branches = useBranches(chat.conversationId);
   const { tasks, addTask, removeTask } = useTasks();
@@ -94,8 +87,23 @@ export function ChatLayout() {
 
   const handleSend = useCallback(
     async (text: string) => {
-      await chat.send(text, params, consilium);
-      conversations.refresh();
+      if (params.pipelineMode) {
+        let currentConvId = chat.conversationId;
+        if (!currentConvId) {
+          const conv = await conversations.create(params.model, params.systemPrompt, params.contextStrategy);
+          currentConvId = conv.id;
+          chat.setConversationId(conv.id);
+        }
+        // Add user message to UI
+        const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text.trim() };
+        chat.setMessages((prev: Message[]) => [...prev, userMsg]);
+        // Start pipeline
+        pipeline.start(text.trim(), currentConvId, params);
+        conversations.refresh();
+      } else {
+        await chat.send(text, params);
+        conversations.refresh();
+      }
       if (!conversationStrategy) {
         setConversationStrategy(params.contextStrategy);
       }
@@ -103,7 +111,7 @@ export function ChatLayout() {
         facts.loadFacts(chat.conversationId);
       }
     },
-    [chat, params, consilium, conversations, currentStrategy, facts, conversationStrategy],
+    [chat, params, conversations, currentStrategy, facts, conversationStrategy, pipeline],
   );
 
   // Sync auto-created conversationId back to conversations
@@ -172,7 +180,6 @@ export function ChatLayout() {
               role: m.role as 'user' | 'assistant',
               content: m.content,
               cost: m.cost,
-              isConsilium: m.isConsilium,
               durationMs: m.durationMs,
               usage: m.promptTokens || m.completionTokens ? {
                 promptTokens: m.promptTokens || 0,
@@ -210,7 +217,6 @@ export function ChatLayout() {
             role: m.role as 'user' | 'assistant',
             content: m.content,
             cost: m.cost,
-            isConsilium: m.isConsilium,
             durationMs: m.durationMs,
             usage: m.promptTokens || m.completionTokens ? {
               promptTokens: m.promptTokens || 0,
@@ -270,6 +276,29 @@ export function ChatLayout() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [testDialogue.conversationId, testDialogue.isGenerating]);
+
+  // Handle pipeline completion
+  useEffect(() => {
+    if (pipeline.pipelineState?.status === 'completed') {
+      const execStep = [...(pipeline.pipelineState.steps || [])].reverse().find(
+        (s) => s.stepType === 'execution' && s.status === 'completed',
+      );
+      if (execStep) {
+        const assistantMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: execStep.content,
+          cost: pipeline.pipelineState.totalCost,
+        };
+        chat.setMessages((prev: Message[]) => [...prev, assistantMsg]);
+      }
+      pipeline.reset();
+      if (chat.conversationId) {
+        chat.loadConversation(chat.conversationId);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipeline.pipelineState?.status]);
 
   // Determine which messages to show
   const isTestMode = mode === 'test';
@@ -408,8 +437,6 @@ export function ChatLayout() {
                         content={msg.content}
                         error={msg.error}
                         appliedParams={msg.appliedParams}
-                        expertOpinions={msg.expertOpinions}
-                        isConsilium={msg.isConsilium}
                         cost={msg.cost}
                         usage={msg.usage}
                         durationMs={msg.durationMs}
@@ -432,6 +459,14 @@ export function ChatLayout() {
                   );
                 })}
                 {chat.isLoading && <TypingIndicator />}
+                {pipeline.pipelineState && pipeline.pipelineState.status !== 'completed' && (
+                  <PipelineMessageBubble
+                    pipelineState={pipeline.pipelineState}
+                    onPause={pipeline.pause}
+                    onResume={pipeline.resume}
+                    onCancel={pipeline.cancel}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -467,7 +502,7 @@ export function ChatLayout() {
           {/* Input */}
           <ChatInput
             onSend={handleSend}
-            disabled={chat.isLoading || testDialogue.isGenerating}
+            disabled={chat.isLoading || testDialogue.isGenerating || pipeline.isRunning}
             showParams={showParams}
             onToggleParams={() => setShowParams((v) => !v)}
             hasNonDefaults={hasNonDefaults}
@@ -495,13 +530,6 @@ export function ChatLayout() {
           resetParams={resetParams}
           hasNonDefaults={hasNonDefaults}
           onClose={() => setShowParams(false)}
-          consilium={consilium}
-          roles={roles}
-          toggleConsilium={toggleConsilium}
-          setExpert={setExpert}
-          setExpertRole={setExpertRole}
-          addExpert={addExpert}
-          removeExpert={removeExpert}
           conversationStrategy={conversationStrategy}
         />
       </div>

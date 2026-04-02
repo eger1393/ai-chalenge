@@ -31,6 +31,16 @@ export class OpenAIService {
     maxTokens: number,
     frequencyPenalty?: number,
   ): OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming {
+    return this.buildBaseParams(model, messages, temperature, maxTokens, frequencyPenalty) as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming;
+  }
+
+  private buildBaseParams(
+    model: string,
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    temperature: number,
+    maxTokens: number,
+    frequencyPenalty?: number,
+  ): Record<string, unknown> {
     return {
       model,
       messages,
@@ -81,6 +91,45 @@ export class OpenAIService {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`OpenAI unexpected error: ${message}`);
       throw new BadGatewayException(`OpenAI API error: ${message}`);
+    }
+  }
+
+  async *callOpenAIStream(
+    model: string,
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    temperature: number,
+    maxTokens: number,
+    frequencyPenalty?: number,
+  ): AsyncGenerator<{
+    type: 'delta' | 'done';
+    content?: string;
+    usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
+  }> {
+    const baseParams = this.buildBaseParams(model, messages, temperature, maxTokens, frequencyPenalty);
+    const streamParams = {
+      ...baseParams,
+      stream: true as const,
+      stream_options: { include_usage: true },
+    } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
+
+    this.logger.debug(`→ OpenAI stream request: model=${model} messages=${messages.length}`);
+    const stream = await this.openai.chat.completions.create(streamParams);
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices?.[0]?.delta?.content;
+      if (delta) {
+        yield { type: 'delta' as const, content: delta };
+      }
+      if (chunk.usage) {
+        yield {
+          type: 'done' as const,
+          usage: {
+            prompt_tokens: chunk.usage.prompt_tokens,
+            completion_tokens: chunk.usage.completion_tokens,
+            total_tokens: chunk.usage.total_tokens,
+          },
+        };
+      }
     }
   }
 }

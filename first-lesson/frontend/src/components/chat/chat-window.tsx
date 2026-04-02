@@ -4,7 +4,6 @@ import { useState, useCallback } from 'react';
 import { useAuth } from '@/context/auth-context';
 import { useChat } from '@/hooks/use-chat';
 import { useAIParams } from '@/hooks/use-ai-params';
-import { useConsilium } from '@/hooks/use-consilium';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { MessageBubble } from './message-bubble';
 import { TypingIndicator } from './typing-indicator';
@@ -16,13 +15,12 @@ export function ChatWindow() {
   const { user, logout } = useAuth();
   const { messages, isLoading, send } = useChat();
   const { params, setParam, resetParams, hasNonDefaults } = useAIParams();
-  const { consilium, roles, toggleConsilium, setExpert, setExpertRole, addExpert, removeExpert } = useConsilium();
   const [showParams, setShowParams] = useState(false);
   const scrollRef = useAutoScroll(messages);
 
   const handleSend = useCallback(
-    (text: string) => send(text, params, consilium),
-    [send, params, consilium],
+    (text: string) => send(text, params),
+    [send, params],
   );
 
   return (
@@ -68,8 +66,6 @@ export function ChatWindow() {
                   content={msg.content}
                   error={msg.error}
                   appliedParams={msg.appliedParams}
-                  expertOpinions={msg.expertOpinions}
-                  isConsilium={msg.isConsilium}
                   cost={msg.cost}
                   usage={msg.usage}
                   durationMs={msg.durationMs}
@@ -103,13 +99,6 @@ export function ChatWindow() {
           resetParams={resetParams}
           hasNonDefaults={hasNonDefaults}
           onClose={() => setShowParams(false)}
-          consilium={consilium}
-          roles={roles}
-          toggleConsilium={toggleConsilium}
-          setExpert={setExpert}
-          setExpertRole={setExpertRole}
-          addExpert={addExpert}
-          removeExpert={removeExpert}
         />
       </div>
     </>

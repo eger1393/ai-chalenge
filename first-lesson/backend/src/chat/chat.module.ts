@@ -10,6 +10,7 @@ import { ContextStrategyService } from './services/context-strategy.service';
 import { FactsService } from './services/facts.service';
 import { BranchService } from './services/branch.service';
 import { MemoryAssemblerService } from './services/memory-assembler.service';
+import { PipelineService } from './services/pipeline.service';
 import { SlidingWindowStrategy } from './strategies/sliding-window.strategy';
 import { StickyFactsStrategy } from './strategies/sticky-facts.strategy';
 import { BranchingStrategy } from './strategies/branching.strategy';
@@ -25,6 +26,7 @@ import { BranchingStrategy } from './strategies/branching.strategy';
     FactsService,
     BranchService,
     MemoryAssemblerService,
+    PipelineService,
     SlidingWindowStrategy,
     StickyFactsStrategy,
     BranchingStrategy,

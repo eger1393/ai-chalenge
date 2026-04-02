@@ -226,7 +226,7 @@ export class BranchService {
   async getMessagesForBranch(
     conversationId: string,
     branchId: string,
-  ): Promise<Array<{ id: string; role: string; content: string; created_at: string; branch_id: string | null; model?: string; token_count?: number; prompt_tokens?: number; completion_tokens?: number; cost?: number; is_consilium?: boolean; duration_ms?: number; current_message_tokens?: number; history_tokens?: number; applied_model?: string; applied_temperature?: number; applied_max_tokens?: number; context_used_tokens?: number; context_max_tokens?: number; truncated_messages?: number; truncated_tokens?: number }>> {
+  ): Promise<Array<{ id: string; role: string; content: string; created_at: string; branch_id: string | null; model?: string; token_count?: number; prompt_tokens?: number; completion_tokens?: number; cost?: number; duration_ms?: number; current_message_tokens?: number; history_tokens?: number; applied_model?: string; applied_temperature?: number; applied_max_tokens?: number; context_used_tokens?: number; context_max_tokens?: number; truncated_messages?: number; truncated_tokens?: number }>> {
     // Get the branch info
     const { rows: branchRows } = await this.db.query(
       `SELECT * FROM conversation_branches WHERE id = $1 AND conversation_id = $2`,

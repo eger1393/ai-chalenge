@@ -40,12 +40,13 @@ src/
 │   └── dto/                    # login.dto, refresh.dto
 │
 ├── chat/                       # Основная логика OpenAI
-│   ├── chat.controller.ts      # POST /chat/message, /consilium, /test-dialogue (SSE)
-│   │                           #   + CRUD facts, branches
-│   ├── chat.service.ts         # sendMessage, sendConsilium, generateTestDialogue
+│   ├── chat.controller.ts      # POST /chat/message, /pipeline (SSE), /test-dialogue (SSE)
+│   │                           #   + CRUD facts, branches, pipeline pause/resume/cancel
+│   ├── chat.service.ts         # sendMessage, generateTestDialogue
 │   ├── services/
+│   │   ├── pipeline.service.ts # PipelineService: state machine planning→execution→validation→done
 │   │   ├── token.service.ts    # TokenService: countTokens, encoding cache
-│   │   ├── openai.service.ts   # OpenAIService: callOpenAI, calculateCost
+│   │   ├── openai.service.ts   # OpenAIService: callOpenAI, callOpenAIStream, calculateCost
 │   │   ├── context-strategy.service.ts  # Фабрика/диспетчер стратегий контекста
 │   │   ├── facts.service.ts    # FactsService: CRUD facts + AI extraction (gpt-4.1-nano)
 │   │   ├── branch.service.ts   # BranchService: ветки, checkpoints, ensureMainBranch
@@ -58,10 +59,8 @@ src/
 │   ├── dto/
 │   │   ├── ai-params.dto.ts    # ALLOWED_MODELS, MODEL_PRICING, MODEL_CONTEXT_WINDOWS, DEFAULT_MODEL
 │   │   ├── message.dto.ts      # message, conversationId?, branchId?, params?
-│   │   ├── consilium.dto.ts    # message, experts[2-3], conversationId?, model?, temperature?
+│   │   ├── pipeline.dto.ts     # PipelineMessageDto: message, conversationId, params?
 │   │   └── test-dialogue.dto.ts # topic, pairsCount, params?, simulatorModel?
-│   └── constants/
-│       └── expert-roles.ts     # 15 предустановленных ролей экспертов
 │
 ├── conversation/               # CRUD диалогов
 │   ├── conversation.controller.ts  # POST/GET /conversations, GET/PATCH/DELETE /conversations/:id
@@ -104,6 +103,8 @@ conversation_branches (id UUID PK, conversation_id FK, name, parent_branch_id, c
 message_debug_data (id UUID PK, message_id FK UNIQUE, strategy_type, token_breakdown JSONB, facts_snapshot JSONB, strategy_metadata JSONB, memory_layers JSONB)
 tasks (id UUID PK, username, title, description TEXT, status, created_at, updated_at)               -- рабочая память
 user_profiles (id UUID PK, username UNIQUE, response_language, dialogue_style, response_brevity, custom_prompt, preferences JSONB, created_at, updated_at)  -- долговременная память
+pipeline_runs (id UUID PK, conversation_id FK, user_message_id FK, status, current_step, attempt_number, max_attempts, paused_at_step, error_message, total_cost, total_tokens, created_at, updated_at)
+pipeline_steps (id UUID PK, pipeline_run_id FK, step_type, attempt_number, status, input_context JSONB, output_result JSONB, model, prompt/completion_tokens, cost, duration_ms, validation_passed, validation_reason, created_at, completed_at)
 ```
 
 ---
@@ -138,7 +139,10 @@ src/
 │       ├── conversation-sidebar.tsx  # Левый sidebar: задачи (accordion) + диалоги, new task/dialog
 │       ├── ai-params-panel.tsx      # Правый drawer: вкладки Параметры / Персонализация
 │       ├── personalization-panel.tsx  # Вкладка персонализации: язык, стиль, краткость, кастомный промпт
-│       ├── consilium-panel.tsx      # Настройка экспертов (2-3, role/custom)
+│       ├── pipeline-stepper.tsx      # Горизонтальный stepper: planning→execution→validation→done
+│       ├── pipeline-accordion.tsx   # Accordion с результатами каждого этапа pipeline
+│       ├── pipeline-controls.tsx    # Кнопки Pause/Resume/Cancel для pipeline
+│       ├── pipeline-message-bubble.tsx # Композитный bubble для pipeline-сообщений
 │       ├── context-indicator.tsx    # Полоска % контекста (green→yellow→red)
 │       ├── applied-params-display.tsx  # Мета-строка под ответом
 │       ├── typing-indicator.tsx
@@ -148,7 +152,7 @@ src/
 │   ├── use-chat.ts             # messages, send(), loadConversation(), startNew(), contextWindow
 │   ├── use-conversations.ts    # conversations[], create, select, remove, rename, refresh
 │   ├── use-ai-params.ts        # AIParams в localStorage (contextStrategy, slidingWindowKeepLast, factsKeepLast)
-│   ├── use-consilium.ts        # ConsiliumParams в localStorage + fetch roles
+│   ├── use-pipeline.ts         # Pipeline SSE state machine: start, pause, resume, cancel
 │   ├── use-facts.ts            # Facts CRUD для sticky_facts стратегии
 │   ├── use-branches.ts         # Branches CRUD для branching стратегии
 │   ├── use-test-dialogue.ts    # SSE-стриминг тестового диалога (progress, abort)
@@ -162,7 +166,8 @@ src/
 │   └── format-date.ts          # Относительные даты (русский)
 │
 ├── types/
-│   ├── ai-params.ts            # AIParams, Expert, Role, ConsiliumParams, Usage, AVAILABLE_MODELS
+│   ├── ai-params.ts            # AIParams (+pipelineMode), Usage, AVAILABLE_MODELS
+│   ├── pipeline.ts             # PipelineStepType, PipelineStatus, PipelineRunState, PipelineSSEEvent
 │   ├── conversation.ts         # Conversation (+ taskId?), ConversationMessage, MessageDebugData (+ memoryLayers), ContextWindow
 │   ├── task.ts                 # Task (рабочая память)
 │   └── personalization.ts      # UserProfile, ResponseLanguage, DialogueStyle, ResponseBrevity, лейблы
@@ -228,13 +233,25 @@ Frontend                        Backend                          PostgreSQL    O
    │ ←── {reply, cost, contextWindow} │                            │            │
 ```
 
-### Консилиум
+### Pipeline (поэтапная обработка)
 ```
-1. Для каждого эксперта (2-3, последовательно с delay 500ms):
-   callOpenAI([expert.systemPrompt, ...history, userMessage])
-
-2. Синтез:
-   callOpenAI([moderatorPrompt, ...history, userMessage, expertOpinions, "сформируй ответ"])
-
-3. Сохранение: user msg + consilium msg (is_consilium=true) + expert_opinions
+Frontend                        Backend                          PostgreSQL    OpenAI
+   │ POST /chat/pipeline (SSE)    │                                │            │
+   │ {message, conversationId} ──→│ INSERT pipeline_runs ──────────→│            │
+   │                              │ addMessage(user) ──────────────→│            │
+   │ ←── pipeline_started         │                                │            │
+   │                              │ [PLANNING: gpt-4.1-nano]       │            │
+   │ ←── step_start(planning)     │ callOpenAIStream ──────────────────────────→│
+   │ ←── step_delta (streaming)   │ ←── chunks ───────────────────────────────│
+   │ ←── step_complete(planning)  │ INSERT pipeline_steps ─────────→│            │
+   │                              │ [EXECUTION: user model]         │            │
+   │ ←── step_start(execution)    │ callOpenAIStream ──────────────────────────→│
+   │ ←── step_delta (streaming)   │ ←── chunks ───────────────────────────────│
+   │ ←── step_complete(execution) │ INSERT pipeline_steps ─────────→│            │
+   │                              │ [VALIDATION: gpt-4.1-nano]      │            │
+   │ ←── step_start(validation)   │ callOpenAIStream ──────────────────────────→│
+   │ ←── step_complete(validation)│ INSERT pipeline_steps ─────────→│            │
+   │                              │ PASS → addMessage(assistant) ──→│            │
+   │ ←── done                     │ UPDATE pipeline_runs(completed) →│           │
+   │                              │ FAIL → increment attempt, loop  │            │
 ```
