@@ -151,9 +151,14 @@ export function ChatLayout() {
 
   const handleDeleteConversation = useCallback(
     async (id: string) => {
+      const wasActive = conversations.activeId === id;
       await conversations.remove(id);
+      if (wasActive) {
+        chat.startNew();
+        setConversationStrategy(undefined);
+      }
     },
-    [conversations],
+    [conversations, chat],
   );
 
   const handleNewConversationInTask = useCallback(
@@ -349,7 +354,18 @@ export function ChatLayout() {
           onClose={() => setSidebarOpen(false)}
           tasks={tasks}
           onCreateTask={addTask}
-          onDeleteTask={removeTask}
+          onDeleteTask={async (id: string) => {
+            await removeTask(id);
+            await conversations.refresh();
+            // If active conversation belonged to deleted task, reset
+            if (conversations.activeId) {
+              const still = conversations.conversations.find(c => c.id === conversations.activeId);
+              if (!still || still.taskId === id) {
+                conversations.select(null);
+                chat.startNew();
+              }
+            }
+          }}
           onNewConversationInTask={handleNewConversationInTask}
           invariants={invariantsHook.invariants}
           onLoadInvariants={invariantsHook.load}
