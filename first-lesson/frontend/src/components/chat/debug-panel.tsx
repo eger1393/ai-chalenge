@@ -247,7 +247,12 @@ export function DebugPanel({ debugData }: DebugPanelProps) {
     setExpandedSteps(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
   };
 
-  const isPipeline = debugData.strategyType === 'pipeline' && debugData.pipelineData;
+  // Pipeline data comes from either pipelineData field or strategyMetadata (DB stores in strategy_metadata JSONB)
+  const pipelineData = debugData.pipelineData
+    || (debugData.strategyType === 'pipeline' && debugData.strategyMetadata
+      ? debugData.strategyMetadata as unknown as NonNullable<MessageDebugData['pipelineData']>
+      : null);
+  const isPipeline = debugData.strategyType === 'pipeline' && pipelineData;
 
   return (
     <div className="ml-11 mt-1.5">
@@ -283,18 +288,18 @@ export function DebugPanel({ debugData }: DebugPanelProps) {
             </div>
 
             {/* ── Pipeline Steps ────────────────────────────────────── */}
-            {isPipeline && debugData.pipelineData && (
+            {isPipeline && pipelineData && (
               <Section title="Pipeline этапы" icon={<Cpu className="w-3.5 h-3.5 text-indigo-400" />} defaultOpen>
                 {/* Summary stats */}
                 <div className="flex flex-wrap gap-2 mb-3">
-                  <Stat icon={<Hash className="w-3 h-3 text-gray-400" />} label="Попыток" value={String(debugData.pipelineData.totalAttempts)} />
-                  <Stat icon={<Coins className="w-3 h-3 text-gray-400" />} label="Стоимость" value={`$${debugData.pipelineData.totalCost.toFixed(4)}`} />
-                  <Stat icon={<Hash className="w-3 h-3 text-gray-400" />} label="Токены" value={formatTokens(debugData.pipelineData.totalTokens)} />
+                  <Stat icon={<Hash className="w-3 h-3 text-gray-400" />} label="Попыток" value={String(pipelineData.totalAttempts)} />
+                  <Stat icon={<Coins className="w-3 h-3 text-gray-400" />} label="Стоимость" value={`$${pipelineData.totalCost.toFixed(4)}`} />
+                  <Stat icon={<Hash className="w-3 h-3 text-gray-400" />} label="Токены" value={formatTokens(pipelineData.totalTokens)} />
                 </div>
 
                 {/* Individual step cards */}
                 <div className="space-y-2">
-                  {debugData.pipelineData.steps.map((step, i) => (
+                  {pipelineData.steps.map((step, i) => (
                     <PipelineStepCard
                       key={i}
                       step={step}

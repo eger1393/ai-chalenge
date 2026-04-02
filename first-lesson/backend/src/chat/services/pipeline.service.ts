@@ -776,7 +776,7 @@ export class PipelineService {
         strategyType: 'pipeline',
         contextMessagesCount: 0,
         contextMessagesAfterTruncation: 0,
-        pipelineData: pipelineDebugData,
+        strategyMetadata: pipelineDebugData,
       });
 
       this.logger.debug(`Pipeline ${pipelineId}: debug data saved for message ${messageId}`);
