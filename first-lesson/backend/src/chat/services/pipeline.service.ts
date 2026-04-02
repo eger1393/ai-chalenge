@@ -637,7 +637,7 @@ export class PipelineService {
     const startTime = Date.now();
 
     // Insert step with input context
-    const inputContext = messages.map(m => ({ role: m.role, content: m.content.slice(0, 2000) }));
+    const inputContext = messages.map(m => ({ role: m.role, content: m.content }));
     await this.db.query(
       `INSERT INTO pipeline_steps (id, pipeline_run_id, step_type, attempt_number, status, model, input_context)
        VALUES ($1, $2, $3, $4, 'running', $5, $6)`,
