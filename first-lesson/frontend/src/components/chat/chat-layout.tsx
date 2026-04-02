@@ -302,9 +302,14 @@ export function ChatLayout() {
         };
         chat.setMessages((prev: Message[]) => [...prev, assistantMsg]);
       }
-      pipeline.reset();
+      // Don't reset immediately — loadConversation will provide the message with debugData
+      // Pipeline bubble will disappear because we check status !== 'completed'
       if (chat.conversationId) {
-        chat.loadConversation(chat.conversationId);
+        chat.loadConversation(chat.conversationId).then(() => {
+          pipeline.reset();
+        });
+      } else {
+        pipeline.reset();
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

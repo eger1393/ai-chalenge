@@ -38,6 +38,25 @@ export interface MessageDebugData {
   tokenBreakdown?: Record<string, number>;
   strategyMetadata?: Record<string, unknown>;
   memoryLayers?: MemoryLayerInfo[];
+  pipelineData?: {
+    pipelineId: string;
+    totalAttempts: number;
+    totalCost: number;
+    totalTokens: number;
+    steps: Array<{
+      stepType: string;
+      attempt: number;
+      status: string;
+      model: string;
+      promptTokens: number;
+      completionTokens: number;
+      cost: number;
+      durationMs: number;
+      validationPassed?: boolean;
+      validationReason?: string;
+      content: string;
+    }>;
+  };
 }
 
 export interface ConversationFact {

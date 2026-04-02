@@ -8,6 +8,12 @@ interface DebugPanelProps {
   debugData: MessageDebugData;
 }
 
+const STEP_LABELS: Record<string, string> = {
+  planning: 'Планирование',
+  execution: 'Выполнение',
+  validation: 'Валидация',
+};
+
 const STRATEGY_LABELS: Record<string, string> = {
   sliding_window: 'Окно',
   sticky_facts: 'Факты',
@@ -23,9 +29,18 @@ const LAYER_CONFIG = {
 export function DebugPanel({ debugData }: DebugPanelProps) {
   const [open, setOpen] = useState(false);
   const [expandedLayers, setExpandedLayers] = useState<Set<number>>(new Set());
+  const [expandedPipelineSteps, setExpandedPipelineSteps] = useState<Set<number>>(new Set());
 
   const toggleLayer = (i: number) => {
     setExpandedLayers(prev => {
+      const next = new Set(prev);
+      next.has(i) ? next.delete(i) : next.add(i);
+      return next;
+    });
+  };
+
+  const togglePipelineStep = (i: number) => {
+    setExpandedPipelineSteps(prev => {
       const next = new Set(prev);
       next.has(i) ? next.delete(i) : next.add(i);
       return next;
@@ -46,6 +61,98 @@ export function DebugPanel({ debugData }: DebugPanelProps) {
 
       {open && (
         <div className="border border-gray-200 rounded-lg bg-gray-50 p-3 text-[10px] mt-1 space-y-0 max-w-lg">
+          {/* Pipeline Steps */}
+          {debugData.pipelineData && (
+            <div className="mb-2 pb-2 border-b border-gray-200">
+              <div className="text-[9px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Pipeline этапы</div>
+              <div className="space-y-1">
+                {/* Summary */}
+                <div className="flex items-center gap-3 text-[10px] text-gray-600 mb-2">
+                  <span>Попыток: <span className="font-mono font-medium">{debugData.pipelineData.totalAttempts}</span></span>
+                  <span>Стоимость: <span className="font-mono font-medium">${debugData.pipelineData.totalCost.toFixed(4)}</span></span>
+                  <span>Токены: <span className="font-mono font-medium">{debugData.pipelineData.totalTokens.toLocaleString()}</span></span>
+                </div>
+
+                {/* Steps table */}
+                <table className="w-full text-[10px] font-mono">
+                  <thead>
+                    <tr className="text-gray-400 text-left">
+                      <th className="pr-2 pb-1">Этап</th>
+                      <th className="pr-2 pb-1">#</th>
+                      <th className="pr-2 pb-1">Модель</th>
+                      <th className="pr-2 pb-1">Токены</th>
+                      <th className="pr-2 pb-1">Стоимость</th>
+                      <th className="pr-2 pb-1">Время</th>
+                      <th className="pb-1">Статус</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {debugData.pipelineData.steps.map((step, i) => (
+                      <tr key={i} className="text-gray-600">
+                        <td className="pr-2 py-0.5">{STEP_LABELS[step.stepType] || step.stepType}</td>
+                        <td className="pr-2 py-0.5">{step.attempt}</td>
+                        <td className="pr-2 py-0.5 text-gray-400">{step.model}</td>
+                        <td className="pr-2 py-0.5">{step.promptTokens + step.completionTokens}</td>
+                        <td className="pr-2 py-0.5">${step.cost.toFixed(4)}</td>
+                        <td className="pr-2 py-0.5">{(step.durationMs / 1000).toFixed(1)}s</td>
+                        <td className="py-0.5">
+                          {step.stepType === 'validation' ? (
+                            step.validationPassed
+                              ? <span className="text-green-600">PASS</span>
+                              : <span className="text-red-500">FAIL</span>
+                          ) : (
+                            <span className={step.status === 'completed' ? 'text-green-600' : 'text-gray-400'}>{step.status}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Expandable step contents */}
+                <div className="mt-2 space-y-1">
+                  {debugData.pipelineData.steps.map((step, i) => {
+                    if (!step.content && !step.validationReason) return null;
+                    const isExpanded = expandedPipelineSteps.has(i);
+                    return (
+                      <div key={i} className="rounded border border-gray-200 bg-white">
+                        <button
+                          type="button"
+                          onClick={() => togglePipelineStep(i)}
+                          className="w-full flex items-center gap-2 px-2 py-1 cursor-pointer text-left"
+                        >
+                          {isExpanded ? <ChevronDown className="w-3 h-3 text-gray-400 flex-shrink-0" /> : <ChevronRight className="w-3 h-3 text-gray-400 flex-shrink-0" />}
+                          <span className="text-[10px] font-medium text-gray-600">
+                            {STEP_LABELS[step.stepType] || step.stepType} #{step.attempt}
+                          </span>
+                          {step.validationReason && (
+                            <span className="text-[9px] text-red-400 truncate flex-1">
+                              {step.validationReason}
+                            </span>
+                          )}
+                        </button>
+                        {isExpanded && (
+                          <div className="px-2 pb-2 border-t border-gray-100 pt-1">
+                            {step.validationReason && (
+                              <div className="text-[10px] text-red-500 mb-1">
+                                <span className="font-medium">Причина:</span> {step.validationReason}
+                              </div>
+                            )}
+                            {step.content && (
+                              <div className="text-[10px] font-mono text-gray-600 whitespace-pre-wrap break-words max-h-40 overflow-y-auto">
+                                {step.content}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Memory Layers */}
           {debugData.memoryLayers && debugData.memoryLayers.length > 0 && (
             <div className="mb-2 pb-2 border-b border-gray-200">

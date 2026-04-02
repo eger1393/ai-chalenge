@@ -265,12 +265,17 @@ export class PipelineService {
 
         if (validation.passed) {
           // Save assistant message to conversation
-          await this.conversationService.addMessage(
+          const assistantMsg = await this.conversationService.addMessage(
             dto.conversationId,
             'assistant',
             execResult,
             { model: userModel },
           );
+
+          // Save pipeline debug data for the assistant message
+          if (assistantMsg?.id) {
+            await this.savePipelineDebugData(pipelineId, assistantMsg.id, attempt);
+          }
 
           await this.db.query(
             `UPDATE pipeline_runs SET status = 'completed', current_step = 'done', updated_at = NOW() WHERE id = $1`,
@@ -290,6 +295,7 @@ export class PipelineService {
             attempt,
             totalCost: totals.total_cost,
             totalTokens: totals.total_tokens,
+            assistantMessageId: assistantMsg?.id,
           });
 
           this.logger.log(`Pipeline ${pipelineId}: completed on attempt ${attempt}, score=${validation.score}`);
@@ -485,9 +491,15 @@ export class PipelineService {
           );
 
           if (validation.passed) {
-            await this.conversationService.addMessage(
+            const assistantMsg = await this.conversationService.addMessage(
               run.conversation_id, 'assistant', currentExecResult, { model: userModel },
             );
+
+            // Save pipeline debug data for the assistant message
+            if (assistantMsg?.id) {
+              await this.savePipelineDebugData(pipelineId, assistantMsg.id, attempt);
+            }
+
             await this.db.query(
               `UPDATE pipeline_runs SET status = 'completed', current_step = 'done', updated_at = NOW() WHERE id = $1`,
               [pipelineId],
@@ -506,6 +518,7 @@ export class PipelineService {
               attempt,
               totalCost: totals.total_cost,
               totalTokens: totals.total_tokens,
+              assistantMessageId: assistantMsg?.id,
             });
             return;
           }
@@ -711,6 +724,64 @@ export class PipelineService {
     );
 
     return fullText;
+  }
+
+  // ── Private: save pipeline debug data ──────────────────────────────
+
+  private async savePipelineDebugData(
+    pipelineId: string,
+    messageId: string,
+    attempt: number,
+  ): Promise<void> {
+    try {
+      // Load all pipeline steps
+      const { rows: steps } = await this.db.query<PipelineStep>(
+        `SELECT * FROM pipeline_steps WHERE pipeline_run_id = $1 ORDER BY created_at ASC`,
+        [pipelineId],
+      );
+
+      // Load pipeline run for totals
+      const { rows: runRows } = await this.db.query<PipelineRun>(
+        `SELECT * FROM pipeline_runs WHERE id = $1`,
+        [pipelineId],
+      );
+      const run = runRows[0];
+
+      const pipelineDebugData = {
+        pipelineId,
+        totalAttempts: attempt,
+        totalCost: run?.total_cost || 0,
+        totalTokens: run?.total_tokens || 0,
+        steps: steps.map((s) => ({
+          stepType: s.step_type,
+          attempt: s.attempt_number,
+          status: s.status,
+          model: s.model,
+          promptTokens: s.prompt_tokens,
+          completionTokens: s.completion_tokens,
+          cost: s.cost,
+          durationMs: s.duration_ms,
+          validationPassed: s.validation_passed,
+          validationReason: s.validation_reason,
+          content:
+            typeof s.output_result === 'string'
+              ? s.output_result
+              : (s.output_result as { text?: string })?.text || '',
+        })),
+      };
+
+      await this.conversationService.saveDebugData(messageId, {
+        strategyType: 'pipeline',
+        contextMessagesCount: 0,
+        contextMessagesAfterTruncation: 0,
+        strategyMetadata: pipelineDebugData,
+      });
+
+      this.logger.debug(`Pipeline ${pipelineId}: debug data saved for message ${messageId}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      this.logger.warn(`Pipeline ${pipelineId}: failed to save debug data: ${message}`);
+    }
   }
 
   // ── Private: message builders ─────────────────────────────────────
