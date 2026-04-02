@@ -16,7 +16,7 @@ interface ConversationSidebarProps {
   isOpen: boolean;
   onClose: () => void;
   tasks?: Task[];
-  onCreateTask?: (title: string, description?: string) => void;
+  onCreateTask?: (title: string, description?: string, invariants?: string[]) => void;
   onDeleteTask?: (id: string) => void;
   onNewConversationInTask?: (taskId: string) => void;
   invariants?: TaskInvariant[];
@@ -52,6 +52,8 @@ export function ConversationSidebar({
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [taskTitle, setTaskTitle] = useState('');
   const [taskDesc, setTaskDesc] = useState('');
+  const [taskInvariants, setTaskInvariants] = useState<string[]>([]);
+  const [newInvariantText, setNewInvariantText] = useState('');
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [deleteTaskConfirm, setDeleteTaskConfirm] = useState<{ id: string; title: string; convCount: number } | null>(null);
 
@@ -66,10 +68,22 @@ export function ConversationSidebar({
 
   const handleCreateTask = () => {
     if (!taskTitle.trim() || !onCreateTask) return;
-    onCreateTask(taskTitle.trim(), taskDesc.trim() || undefined);
+    onCreateTask(taskTitle.trim(), taskDesc.trim() || undefined, taskInvariants.length > 0 ? taskInvariants : undefined);
     setTaskTitle('');
     setTaskDesc('');
+    setTaskInvariants([]);
+    setNewInvariantText('');
     setShowTaskForm(false);
+  };
+
+  const handleAddTaskInvariant = () => {
+    if (!newInvariantText.trim()) return;
+    setTaskInvariants(prev => [...prev, newInvariantText.trim()]);
+    setNewInvariantText('');
+  };
+
+  const handleRemoveTaskInvariant = (index: number) => {
+    setTaskInvariants(prev => prev.filter((_, i) => i !== index));
   };
 
   const { byTask, orphans } = useMemo(() => {
@@ -230,6 +244,37 @@ export function ConversationSidebar({
             rows={3}
             className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
+          {/* Invariants in creation form */}
+          <div className="p-2 bg-red-50 border border-red-200 rounded-md space-y-1.5">
+            <div className="text-[10px] font-semibold text-red-600 uppercase tracking-wider flex items-center gap-1">
+              <Shield size={10} />
+              Инварианты
+            </div>
+            {taskInvariants.map((inv, i) => (
+              <div key={i} className="flex items-start gap-1.5 text-[11px] text-red-700 bg-white rounded px-2 py-1 border border-red-100">
+                <span className="flex-1">{inv}</span>
+                <button onClick={() => handleRemoveTaskInvariant(i)} className="text-red-300 hover:text-red-600 flex-shrink-0">
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+            <div className="flex gap-1">
+              <input
+                value={newInvariantText}
+                onChange={e => setNewInvariantText(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), handleAddTaskInvariant())}
+                placeholder="Правило, которое нельзя нарушать..."
+                className="flex-1 px-2 py-1 text-[11px] border border-red-200 rounded focus:outline-none focus:ring-1 focus:ring-red-400"
+              />
+              <button
+                onClick={handleAddTaskInvariant}
+                disabled={!newInvariantText.trim()}
+                className="px-2 py-1 bg-red-600 text-white text-[10px] rounded hover:bg-red-700 disabled:opacity-50"
+              >
+                +
+              </button>
+            </div>
+          </div>
           <div className="flex gap-2">
             <button
               onClick={handleCreateTask}

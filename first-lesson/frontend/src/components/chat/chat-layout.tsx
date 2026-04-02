@@ -14,7 +14,7 @@ import { useFacts } from '@/hooks/use-facts';
 import { useBranches } from '@/hooks/use-branches';
 import { useTasks } from '@/hooks/use-tasks';
 import { useInvariants } from '@/hooks/use-invariants';
-import { setConversationTask } from '@/lib/api';
+import { setConversationTask, addTaskInvariant } from '@/lib/api';
 import { ConversationSidebar } from './conversation-sidebar';
 import { ContextIndicator } from './context-indicator';
 import { BranchSelector } from './branch-selector';
@@ -353,7 +353,14 @@ export function ChatLayout() {
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           tasks={tasks}
-          onCreateTask={addTask}
+          onCreateTask={async (title: string, description?: string, invs?: string[]) => {
+            const task = await addTask(title, description);
+            if (invs && invs.length > 0 && task?.id) {
+              for (const content of invs) {
+                await addTaskInvariant(task.id, content);
+              }
+            }
+          }}
           onDeleteTask={async (id: string) => {
             await removeTask(id);
             await conversations.refresh();
