@@ -71,13 +71,13 @@
 
 ### Report — сохранение отчётов
 
-Отчёт каждой задачи сохраняется в файл в папку `./swarm-report/`. Формат:
+Отчёт каждой задачи сохраняется в файл в папку `./swarm-report/<feature>/`. Формат:
 
 ```
-./swarm-report/<YYYY-MM-DD-HH-MM-><slug>.md
+./swarm-report/<feature>/<YYYY-MM-DD-HH-MM-><slug>.md
 ```
 
-Пример: `./swarm-report/2026-02-20-16-15-telegram-notifications.md`
+Пример: `./swarm-report/telegram-notifications/2026-02-20-16-15-telegram-notifications.md`
 
 ---
 
@@ -152,7 +152,6 @@ Research выполняется НЕ одним агентом, а консил�
 | Архитектор       | `voltagent-qa-sec:code-reviewer`  | Архитектура, модули, зависимости   |
 | Фронтенд-эксперт | `voltagent-lang:react-specialist` | UI/UX со стороны фронта, Kotlin/JS |
 | UI-дизайнер      | `voltagent-core-dev:ui-designer`  | Визуал, UX, компоненты, макеты     |
-| API-дизайнер     | `voltagent-core-dev:api-designer` | Контракты API, REST/GraphQL        |
 
 **Порядок работы Research:**
 
@@ -252,7 +251,7 @@ Report     -> Done
 4. Зафиксировать шаги воспроизведения в файл:
 
 ```
-./swarm-report/YYYY-MM-DD-HH-MM-<slug-бага>-reproduce.md
+./swarm-report/<feature>/YYYY-MM-DD-HH-MM-<slug-бага>-reproduce.md
 ```
 
 Формат:

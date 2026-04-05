@@ -1,6 +1,6 @@
 'use client';
 
-import { Pause, Play, X } from 'lucide-react';
+import { Pause, Play, X, ShieldAlert } from 'lucide-react';
 import { PipelineStatus } from '@/types/pipeline';
 
 interface PipelineControlsProps {
@@ -31,6 +31,15 @@ export function PipelineControls({ status, onPause, onResume, onCancel }: Pipeli
     return (
       <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-500 rounded-lg">
         Отменено
+      </span>
+    );
+  }
+
+  if (status === 'injection_blocked') {
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-amber-100 text-amber-700 rounded-lg">
+        <ShieldAlert className="w-3 h-3" />
+        Заблокировано
       </span>
     );
   }

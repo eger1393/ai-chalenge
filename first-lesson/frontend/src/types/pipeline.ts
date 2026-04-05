@@ -1,5 +1,5 @@
 export type PipelineStepType = 'planning' | 'execution' | 'validation' | 'done';
-export type PipelineStatus = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type PipelineStatus = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'injection_blocked';
 
 export interface PipelineStepData {
   stepType: PipelineStepType;
@@ -26,6 +26,7 @@ export interface PipelineRunState {
   totalTokens: number;
   error?: string;
   finalContent?: string;
+  injectionMessage?: string;
 }
 
 export type PipelineSSEEvent =
@@ -38,7 +39,9 @@ export type PipelineSSEEvent =
   | { type: 'paused'; step: PipelineStepType }
   | { type: 'resumed'; step: PipelineStepType }
   | { type: 'cancelled' }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'injection_blocked'; message: string }
+  | { type: 'injection_detected'; message: string; step: PipelineStepType; attempt: number };
 
 export const PIPELINE_STEP_LABELS: Record<PipelineStepType, string> = {
   planning: 'Планирование',

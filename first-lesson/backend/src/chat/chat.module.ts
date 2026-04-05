@@ -11,6 +11,7 @@ import { FactsService } from './services/facts.service';
 import { BranchService } from './services/branch.service';
 import { MemoryAssemblerService } from './services/memory-assembler.service';
 import { PipelineService } from './services/pipeline.service';
+import { PipelineGuardService } from './services/pipeline-guard.service';
 import { SlidingWindowStrategy } from './strategies/sliding-window.strategy';
 import { StickyFactsStrategy } from './strategies/sticky-facts.strategy';
 import { BranchingStrategy } from './strategies/branching.strategy';
@@ -27,6 +28,7 @@ import { BranchingStrategy } from './strategies/branching.strategy';
     BranchService,
     MemoryAssemblerService,
     PipelineService,
+    PipelineGuardService,
     SlidingWindowStrategy,
     StickyFactsStrategy,
     BranchingStrategy,

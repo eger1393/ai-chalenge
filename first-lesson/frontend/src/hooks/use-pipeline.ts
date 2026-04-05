@@ -121,6 +121,21 @@ export function usePipeline() {
         case 'error':
           return { ...prev, status: 'failed', error: event.message };
 
+        case 'injection_blocked':
+          return {
+            ...prev,
+            status: 'injection_blocked' as PipelineStatus,
+            injectionMessage: event.message,
+          };
+
+        case 'injection_detected':
+          return {
+            ...prev,
+            status: 'failed',
+            injectionMessage: event.message,
+            error: event.message,
+          };
+
         default:
           return prev;
       }

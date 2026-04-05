@@ -1,5 +1,6 @@
 'use client';
 
+import { ShieldAlert } from 'lucide-react';
 import { PipelineRunState } from '@/types/pipeline';
 import { PipelineStepper } from './pipeline-stepper';
 import { PipelineAccordion } from './pipeline-accordion';
@@ -70,6 +71,14 @@ export function PipelineMessageBubble({ pipelineState, onPause, onResume, onCanc
           {pipelineState.error && (
             <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">
               {pipelineState.error}
+            </div>
+          )}
+
+          {/* Injection message */}
+          {pipelineState.injectionMessage && (
+            <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+              <ShieldAlert className="w-4 h-4 text-amber-500 flex-shrink-0" />
+              {pipelineState.injectionMessage}
             </div>
           )}
 

@@ -7,6 +7,7 @@ import { ContextStrategyService } from './context-strategy.service';
 import { MemoryAssemblerService } from './memory-assembler.service';
 import { PipelineMessageDto } from '../dto/pipeline.dto';
 import { ALLOWED_MODELS, DEFAULT_MODEL } from '../dto/ai-params.dto';
+import { PipelineGuardService, PIPELINE_SECURITY_BLOCK, VALIDATION_INJECTION_CHECK } from './pipeline-guard.service';
 
 // ── System prompts (RUSSIAN) ──────────────────────────────────────────
 
@@ -51,7 +52,7 @@ const VALIDATION_SYSTEM_PROMPT = `Ты — AI-валидатор. Тебе да�
 5. Качество и полезность ответа для пользователя
 
 ВАЖНО: Ответь СТРОГО в формате:
-VERDICT: PASS или VERDICT: FAIL
+VERDICT: PASS или VERDICT: FAIL или VERDICT: INJECTION
 SCORE: число от 1 до 10
 REASON: краткое объяснение вердикта
 ISSUES: список проблем (если FAIL)
@@ -72,6 +73,7 @@ interface ValidationResult {
   passed: boolean;
   score: number;
   reason: string;
+  injection: boolean;
 }
 
 interface PipelineRun {
@@ -122,6 +124,7 @@ export class PipelineService {
     private readonly tokenService: TokenService,
     private readonly contextStrategyService: ContextStrategyService,
     private readonly memoryAssemblerService: MemoryAssemblerService,
+    private readonly pipelineGuard: PipelineGuardService,
   ) {}
 
   // ── Public: run pipeline ──────────────────────────────────────────
@@ -161,6 +164,18 @@ export class PipelineService {
       },
     );
 
+    // Injection guard: check message
+    const guardCheck = this.pipelineGuard.checkMessage(dto.message);
+    if (guardCheck.blocked) {
+      const blockMsg = 'Ваше сообщение содержит инструкции, которые нарушают порядок работы pipeline';
+      await this.conversationService.addMessage(
+        dto.conversationId, 'assistant', blockMsg, {},
+      );
+      onEvent({ type: 'injection_blocked', message: blockMsg });
+      this.logger.warn(`Injection detected in message for conv=${dto.conversationId}, pattern=${guardCheck.matchedPattern}`);
+      return;
+    }
+
     // Create pipeline_run
     const pipelineId = crypto.randomUUID();
     const maxAttempts = 3;
@@ -193,7 +208,8 @@ export class PipelineService {
         `SELECT content FROM task_invariants WHERE task_id = $1 ORDER BY created_at ASC`,
         [taskId],
       );
-      invariants = invResult.rows.map((r: Record<string, unknown>) => r.content as string);
+      const rawInvariants = invResult.rows.map((r: Record<string, unknown>) => r.content as string);
+      invariants = this.pipelineGuard.filterInvariants(rawInvariants, taskId);
     }
 
     // Get conversation history for context
@@ -272,6 +288,20 @@ export class PipelineService {
 
         const validation = this.parseValidation(validResult);
 
+        if (validation.injection) {
+          await this.db.query(
+            `UPDATE pipeline_steps SET validation_passed = false, validation_reason = $1 WHERE pipeline_run_id = $2 AND step_type = 'validation' AND attempt_number = $3`,
+            [validation.reason, pipelineId, attempt],
+          );
+          await this.db.query(
+            `UPDATE pipeline_runs SET status = 'failed', error_message = 'injection_detected_by_validator', updated_at = NOW() WHERE id = $1`,
+            [pipelineId],
+          );
+          onEvent({ type: 'injection_detected', message: 'Обнаружена попытка обхода pipeline', step: 'validation', attempt });
+          this.logger.warn(`Pipeline ${pipelineId}: injection detected by validator on attempt ${attempt}`);
+          return;
+        }
+
         // Update validation on the step
         await this.db.query(
           `UPDATE pipeline_steps
@@ -281,6 +311,18 @@ export class PipelineService {
         );
 
         if (validation.passed) {
+          // Final gate: verify all 3 stages completed
+          const integrityOk = await this.pipelineGuard.verifyStageIntegrity(pipelineId, attempt);
+          if (!integrityOk) {
+            await this.db.query(
+              `UPDATE pipeline_runs SET status = 'failed', error_message = 'stage_integrity_check_failed', updated_at = NOW() WHERE id = $1`,
+              [pipelineId],
+            );
+            onEvent({ type: 'error', message: 'Stage integrity check failed: missing completed steps' });
+            this.logger.error(`Pipeline ${pipelineId}: stage integrity check failed on attempt ${attempt}`);
+            return;
+          }
+
           // Save assistant message to conversation
           const assistantMsg = await this.conversationService.addMessage(
             dto.conversationId,
@@ -457,7 +499,8 @@ export class PipelineService {
         `SELECT content FROM task_invariants WHERE task_id = $1 ORDER BY created_at ASC`,
         [resumeTaskId],
       );
-      invariants = invResult.rows.map((r: Record<string, unknown>) => r.content as string);
+      const rawInvariants = invResult.rows.map((r: Record<string, unknown>) => r.content as string);
+      invariants = this.pipelineGuard.filterInvariants(rawInvariants, resumeTaskId);
     }
 
     let attempt = run.attempt_number;
@@ -514,6 +557,20 @@ export class PipelineService {
           );
           const validation = this.parseValidation(validResult);
 
+          if (validation.injection) {
+            await this.db.query(
+              `UPDATE pipeline_steps SET validation_passed = false, validation_reason = $1 WHERE pipeline_run_id = $2 AND step_type = 'validation' AND attempt_number = $3`,
+              [validation.reason, pipelineId, attempt],
+            );
+            await this.db.query(
+              `UPDATE pipeline_runs SET status = 'failed', error_message = 'injection_detected_by_validator', updated_at = NOW() WHERE id = $1`,
+              [pipelineId],
+            );
+            onEvent({ type: 'injection_detected', message: 'Обнаружена попытка обхода pipeline', step: 'validation', attempt });
+            this.logger.warn(`Pipeline ${pipelineId}: injection detected by validator on attempt ${attempt}`);
+            return;
+          }
+
           await this.db.query(
             `UPDATE pipeline_steps
              SET validation_passed = $1, validation_reason = $2
@@ -522,6 +579,18 @@ export class PipelineService {
           );
 
           if (validation.passed) {
+            // Final gate: verify all 3 stages completed
+            const integrityOk = await this.pipelineGuard.verifyStageIntegrity(pipelineId, attempt);
+            if (!integrityOk) {
+              await this.db.query(
+                `UPDATE pipeline_runs SET status = 'failed', error_message = 'stage_integrity_check_failed', updated_at = NOW() WHERE id = $1`,
+                [pipelineId],
+              );
+              onEvent({ type: 'error', message: 'Stage integrity check failed: missing completed steps' });
+              this.logger.error(`Pipeline ${pipelineId}: stage integrity check failed on attempt ${attempt}`);
+              return;
+            }
+
             const assistantMsg = await this.conversationService.addMessage(
               run.conversation_id, 'assistant', currentExecResult, { model: userModel },
             );
@@ -839,6 +908,7 @@ export class PipelineService {
       systemContent += assembledSystemPrompt + '\n\n';
     }
     systemContent += PLANNING_SYSTEM_PROMPT;
+    systemContent += '\n\n' + PIPELINE_SECURITY_BLOCK;
 
     if (attempt > 1 && lastValidationReason) {
       systemContent += RETRY_PLANNING_ADDITION(lastValidationReason, attempt);
@@ -869,6 +939,7 @@ export class PipelineService {
       systemContent += assembledSystemPrompt + '\n\n';
     }
     systemContent += EXECUTION_SYSTEM_PROMPT;
+    systemContent += '\n\n' + PIPELINE_SECURITY_BLOCK;
     systemContent += `\n\nПлан:\n${planResult}\n\nЗадача пользователя:\n${userMessage}`;
 
     return [{ role: 'system', content: systemContent }];
@@ -882,6 +953,7 @@ export class PipelineService {
     let content = '';
     content += this.buildInvariantsBlock(invariants);
     content += VALIDATION_SYSTEM_PROMPT;
+    content += '\n\n' + VALIDATION_INJECTION_CHECK + '\n\n' + PIPELINE_SECURITY_BLOCK;
     content += `\n\nПлан:\n${planResult}\n\nРезультат выполнения:\n${execResult}`;
 
     if (invariants.length > 0) {
@@ -898,15 +970,16 @@ export class PipelineService {
   // ── Private: parse validation output ──────────────────────────────
 
   private parseValidation(text: string): ValidationResult {
-    const verdictMatch = text.match(/VERDICT:\s*(PASS|FAIL)/i);
+    const verdictMatch = text.match(/VERDICT:\s*(PASS|FAIL|INJECTION)/i);
     const scoreMatch = text.match(/SCORE:\s*(\d+)/i);
     const reasonMatch = text.match(/REASON:\s*(.+)/i);
 
     const passed = verdictMatch ? verdictMatch[1].toUpperCase() === 'PASS' : false;
+    const injection = verdictMatch ? verdictMatch[1].toUpperCase() === 'INJECTION' : false;
     const score = scoreMatch ? parseInt(scoreMatch[1], 10) : 0;
     const reason = reasonMatch ? reasonMatch[1].trim() : 'No reason provided';
 
-    return { passed, score, reason };
+    return { passed, score, reason, injection };
   }
 
   // ── Private: status helpers ───────────────────────────────────────

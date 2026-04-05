@@ -1,6 +1,6 @@
 'use client';
 
-import { CheckCircle, XCircle, Circle } from 'lucide-react';
+import { CheckCircle, XCircle, Circle, ShieldAlert } from 'lucide-react';
 import { PipelineStepType, PipelineStepData, PipelineStatus, PIPELINE_STEP_LABELS } from '@/types/pipeline';
 
 const STEPS: PipelineStepType[] = ['planning', 'execution', 'validation', 'done'];
@@ -20,6 +20,7 @@ export function PipelineStepper({ currentStep, status, attempt, maxAttempts, ste
     // Find the latest step data for this step type
     const stepData = [...steps].reverse().find((s) => s.stepType === step);
 
+    if (status === 'injection_blocked') return 'injection';
     if (step === currentStep && status === 'running') return 'active';
     if (step === currentStep && status === 'paused') return 'active';
     if (stepData?.status === 'completed') return 'completed';
@@ -54,17 +55,22 @@ export function PipelineStepper({ currentStep, status, attempt, maxAttempts, ste
                 {state === 'pending' && (
                   <Circle className="w-5 h-5 text-gray-300" />
                 )}
+                {state === 'injection' && (
+                  <ShieldAlert className="w-5 h-5 text-amber-500" />
+                )}
               </div>
               {/* Label */}
               <span
                 className={`text-[10px] font-medium whitespace-nowrap ${
-                  state === 'active'
-                    ? 'text-indigo-600'
-                    : state === 'completed'
-                      ? 'text-green-600'
-                      : state === 'failed'
-                        ? 'text-red-600'
-                        : 'text-gray-400'
+                  state === 'injection'
+                    ? 'text-amber-600'
+                    : state === 'active'
+                      ? 'text-indigo-600'
+                      : state === 'completed'
+                        ? 'text-green-600'
+                        : state === 'failed'
+                          ? 'text-red-600'
+                          : 'text-gray-400'
                 }`}
               >
                 {PIPELINE_STEP_LABELS[step]}

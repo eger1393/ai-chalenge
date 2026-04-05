@@ -44,6 +44,7 @@ src/
 │   │                           #   + CRUD facts, branches, pipeline pause/resume/cancel
 │   ├── chat.service.ts         # sendMessage, generateTestDialogue
 │   ├── services/
+│   │   ├── pipeline-guard.service.ts  # PipelineGuardService: injection detection, sanitizer, stage integrity
 │   │   ├── pipeline.service.ts # PipelineService: state machine planning→execution→validation→done
 │   │   ├── token.service.ts    # TokenService: countTokens, encoding cache
 │   │   ├── openai.service.ts   # OpenAIService: callOpenAI, callOpenAIStream, calculateCost
