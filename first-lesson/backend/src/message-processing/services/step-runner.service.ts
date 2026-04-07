@@ -351,7 +351,8 @@ export class StepRunnerService {
             result = `Tool error: ${errMsg}`;
           }
 
-          this.logger.log(`Message ${messageId}: tool_call ${name} result length=${result.length}`);
+          const truncatedResult = result.length > 500 ? result.slice(0, 500) + '...(truncated)' : result;
+          this.logger.log(`Message ${messageId}: tool_call ${name} result (${result.length} chars): ${truncatedResult}`);
 
           // Emit SSE event for frontend
           onEvent({
