@@ -8,5 +8,6 @@ fi
 
 exec supergateway \
   --stdio "mcp-server-postgres $DATABASE_URL" \
+  --outputTransport streamableHttp \
   --port 8096 \
   --host 0.0.0.0

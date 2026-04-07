@@ -6,7 +6,7 @@ import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { Client } = require('@modelcontextprotocol/sdk/client');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { SSEClientTransport } = require('@modelcontextprotocol/sdk/client/sse.js');
+const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
 
 /** Minimal type definitions for MCP Client used in this service */
 interface McpCallToolResult {
@@ -77,7 +77,7 @@ export class McpClientService implements OnModuleDestroy {
       // Close previous connection if any
       await this.disconnect();
 
-      this.transport = new SSEClientTransport(new URL(url));
+      this.transport = new StreamableHTTPClientTransport(new URL(url));
 
       this.transport.onerror = (error: Error) => {
         this.logger.error(`MCP transport error: ${error.message}`);
