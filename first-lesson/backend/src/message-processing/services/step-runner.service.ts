@@ -503,9 +503,10 @@ export class StepRunnerService {
   // ── Validation parser ─────────────────────────────────────────────
 
   parseValidation(text: string): ValidationResult {
-    const verdictMatch = text.match(/VERDICT:\s*(PASS|FAIL|INJECTION)/i);
-    const scoreMatch = text.match(/SCORE:\s*(\d+)/i);
-    const reasonMatch = text.match(/REASON:\s*(.+)/i);
+    const safeText = text || '';
+    const verdictMatch = safeText.match(/VERDICT:\s*(PASS|FAIL|INJECTION)/i);
+    const scoreMatch = safeText.match(/SCORE:\s*(\d+)/i);
+    const reasonMatch = safeText.match(/REASON:\s*(.+)/i);
 
     const passed = verdictMatch ? verdictMatch[1].toUpperCase() === 'PASS' : false;
     const injection = verdictMatch ? verdictMatch[1].toUpperCase() === 'INJECTION' : false;
