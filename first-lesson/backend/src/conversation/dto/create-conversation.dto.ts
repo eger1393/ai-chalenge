@@ -1,33 +1,39 @@
-import { IsOptional, IsString, IsBoolean, MaxLength, IsIn } from 'class-validator';
-import { ALLOWED_MODELS } from '../../chat/dto/ai-params.dto';
+import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateConversationDto {
+  @IsUUID()
+  @IsNotEmpty()
+  projectId: string;
+
   @IsOptional()
   @IsString()
-  @MaxLength(200)
   title?: string;
 
   @IsOptional()
   @IsString()
-  @IsIn(ALLOWED_MODELS as unknown as string[])
   model?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(4000)
   systemPrompt?: string;
 
   @IsOptional()
+  @IsNumber()
+  temperature?: number;
+
+  @IsOptional()
+  @IsNumber()
+  maxTokens?: number;
+
+  @IsOptional()
+  @IsNumber()
+  repetitionPenalty?: number;
+
+  @IsOptional()
+  @IsNumber()
+  contextLimit?: number;
+
+  @IsOptional()
   @IsString()
-  @IsIn(['sliding_window', 'sticky_facts', 'branching'])
   contextStrategy?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  isTest?: boolean;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  testTopic?: string;
 }

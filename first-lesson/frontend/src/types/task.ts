@@ -1,14 +1,16 @@
-export interface Task {
+export interface Project {
   id: string;
+  userId: string;
   title: string;
   description?: string;
-  status: 'active' | 'completed' | 'archived';
+  status: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface TaskInvariant {
+export interface ProjectInvariant {
   id: string;
+  projectId: string;
   content: string;
   createdAt: string;
 }

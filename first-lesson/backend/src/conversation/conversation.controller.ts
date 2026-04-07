@@ -11,7 +11,6 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
-  NotFoundException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ConversationService } from './conversation.service';
@@ -25,26 +24,20 @@ export class ConversationController {
 
   @Post()
   create(@Request() req, @Body() dto: CreateConversationDto) {
-    return this.conversationService.create(
-      req.user.username,
-      dto.title,
-      dto.model,
-      dto.systemPrompt,
-      dto.contextStrategy,
-      dto.isTest,
-      dto.testTopic,
-    );
+    return this.conversationService.create(req.user.userId, dto.projectId, dto);
   }
 
   @Get()
-  findAll(@Request() req, @Query('limit') limit?: string) {
-    const parsedLimit = limit ? Math.min(Math.max(parseInt(limit, 10) || 10, 1), 100) : 10;
-    return this.conversationService.findAll(req.user.username, parsedLimit);
+  findAll(@Request() req, @Query('projectId') projectId?: string) {
+    return this.conversationService.findAll(req.user.userId, projectId);
   }
 
   @Get(':id')
   findOne(@Request() req, @Param('id') id: string) {
-    return this.conversationService.findOne(req.user.username, id);
+    return this.conversationService.getConversationWithMessages(
+      req.user.userId,
+      id,
+    );
   }
 
   @Patch(':id')
@@ -53,24 +46,12 @@ export class ConversationController {
     @Param('id') id: string,
     @Body() dto: UpdateConversationDto,
   ) {
-    return this.conversationService.update(req.user.username, id, dto);
+    return this.conversationService.update(req.user.userId, id, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   remove(@Request() req, @Param('id') id: string) {
-    return this.conversationService.remove(req.user.username, id);
-  }
-
-  @Patch(':id/task')
-  async setTask(
-    @Request() req,
-    @Param('id') id: string,
-    @Body() body: { taskId: string | null },
-  ) {
-    const conversation = await this.conversationService.findOne(req.user.username, id);
-    if (!conversation) throw new NotFoundException('Conversation not found');
-    await this.conversationService.setTaskId(id, body.taskId ?? null);
-    return { success: true };
+    return this.conversationService.remove(req.user.userId, id);
   }
 }

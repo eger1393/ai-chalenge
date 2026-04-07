@@ -1,11 +1,48 @@
 export type PipelineStepType = 'planning' | 'execution' | 'validation' | 'done';
 export type PipelineStatus = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'injection_blocked';
 
+export type PipelineSSEEventType =
+  | 'message_started'
+  | 'step_start'
+  | 'step_delta'
+  | 'step_complete'
+  | 'tool_call'
+  | 'done'
+  | 'failed'
+  | 'error';
+
+export interface PipelineSSEEvent {
+  type: PipelineSSEEventType;
+  messageId?: string;
+  step?: string;
+  attempt?: number;
+  delta?: string;
+  result?: string;
+  response?: string;
+  meta?: any;
+  error?: string;
+  name?: string;
+  arguments?: string;
+}
+
+export interface ToolCallData {
+  name: string;
+  arguments: string;
+  result: string;
+}
+
+export const PIPELINE_STEP_LABELS: Record<PipelineStepType, string> = {
+  planning: 'Планирование',
+  execution: 'Выполнение',
+  validation: 'Валидация',
+  done: 'Готово',
+};
+
 export interface PipelineStepData {
-  stepType: PipelineStepType;
+  stepType: PipelineStepType | string;
   status: 'running' | 'completed' | 'failed';
   content: string;
-  attempt: number;
+  attempt?: number;
   model?: string;
   promptTokens?: number;
   completionTokens?: number;
@@ -16,36 +53,16 @@ export interface PipelineStepData {
 }
 
 export interface PipelineRunState {
-  pipelineId: string | null;
+  messageId: string | null;
   status: PipelineStatus;
-  currentStep: PipelineStepType;
+  currentStep: PipelineStepType | string;
   attempt: number;
   maxAttempts: number;
   steps: PipelineStepData[];
+  toolCalls: ToolCallData[];
   totalCost: number;
   totalTokens: number;
-  error?: string;
   finalContent?: string;
+  error?: string;
   injectionMessage?: string;
 }
-
-export type PipelineSSEEvent =
-  | { type: 'pipeline_started'; pipelineId: string }
-  | { type: 'step_start'; step: PipelineStepType; attempt: number; model: string }
-  | { type: 'step_delta'; step: PipelineStepType; content: string }
-  | { type: 'step_complete'; step: PipelineStepType; content: string; cost: number; tokens: number; durationMs: number; promptTokens: number; completionTokens: number }
-  | { type: 'validation_failed'; reason: string; attempt: number }
-  | { type: 'done'; content: string; pipelineId: string; attempt: number; totalCost: number; totalTokens: number; maxRetriesReached?: boolean; assistantMessageId?: string }
-  | { type: 'paused'; step: PipelineStepType }
-  | { type: 'resumed'; step: PipelineStepType }
-  | { type: 'cancelled' }
-  | { type: 'error'; message: string }
-  | { type: 'injection_blocked'; message: string }
-  | { type: 'injection_detected'; message: string; step: PipelineStepType; attempt: number };
-
-export const PIPELINE_STEP_LABELS: Record<PipelineStepType, string> = {
-  planning: 'Планирование',
-  execution: 'Выполнение',
-  validation: 'Валидация',
-  done: 'Готово',
-};

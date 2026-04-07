@@ -6,7 +6,7 @@ import { PipelineStepType, PipelineStepData, PipelineStatus, PIPELINE_STEP_LABEL
 const STEPS: PipelineStepType[] = ['planning', 'execution', 'validation', 'done'];
 
 interface PipelineStepperProps {
-  currentStep: PipelineStepType;
+  currentStep: PipelineStepType | string;
   status: PipelineStatus;
   attempt: number;
   maxAttempts: number;
@@ -14,7 +14,7 @@ interface PipelineStepperProps {
 }
 
 export function PipelineStepper({ currentStep, status, attempt, maxAttempts, steps }: PipelineStepperProps) {
-  const currentStepIndex = STEPS.indexOf(currentStep);
+  const currentStepIndex = STEPS.indexOf(currentStep as PipelineStepType);
 
   function getStepState(step: PipelineStepType, index: number) {
     // Find the latest step data for this step type

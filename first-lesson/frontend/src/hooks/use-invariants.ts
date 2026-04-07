@@ -1,19 +1,19 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { TaskInvariant } from '@/types/task';
-import { getTaskInvariants, addTaskInvariant, removeTaskInvariant } from '@/lib/api';
+import { ProjectInvariant } from '@/types/task';
+import { getProjectInvariants, addProjectInvariant, removeProjectInvariant } from '@/lib/api';
 
 export function useInvariants() {
-  const [invariants, setInvariants] = useState<TaskInvariant[]>([]);
+  const [invariants, setInvariants] = useState<ProjectInvariant[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
-  const load = useCallback(async (taskId: string) => {
+  const load = useCallback(async (projectId: string) => {
     setIsLoading(true);
-    setActiveTaskId(taskId);
+    setActiveTaskId(projectId);
     try {
-      const data = await getTaskInvariants(taskId);
+      const data = await getProjectInvariants(projectId);
       setInvariants(data);
     } catch {
       setInvariants([]);
@@ -24,13 +24,13 @@ export function useInvariants() {
 
   const add = useCallback(async (content: string) => {
     if (!activeTaskId) return;
-    const inv = await addTaskInvariant(activeTaskId, content);
+    const inv = await addProjectInvariant(activeTaskId, content);
     setInvariants(prev => [...prev, inv]);
   }, [activeTaskId]);
 
   const remove = useCallback(async (invariantId: string) => {
     if (!activeTaskId) return;
-    await removeTaskInvariant(activeTaskId, invariantId);
+    await removeProjectInvariant(activeTaskId, invariantId);
     setInvariants(prev => prev.filter(i => i.id !== invariantId));
   }, [activeTaskId]);
 

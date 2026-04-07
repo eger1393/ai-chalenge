@@ -13,14 +13,14 @@ import { AIParamsPanel } from './ai-params-panel';
 
 export function ChatWindow() {
   const { user, logout } = useAuth();
-  const { messages, isLoading, send } = useChat();
+  const { messages, isLoading } = useChat();
   const { params, setParam, resetParams, hasNonDefaults } = useAIParams();
   const [showParams, setShowParams] = useState(false);
   const scrollRef = useAutoScroll(messages);
 
   const handleSend = useCallback(
-    (text: string) => send(text, params),
-    [send, params],
+    (_text: string) => { /* pipeline mode only — use ChatLayout instead */ },
+    [],
   );
 
   return (

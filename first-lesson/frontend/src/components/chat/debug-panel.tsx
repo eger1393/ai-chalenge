@@ -353,7 +353,7 @@ export function DebugPanel({ debugData }: DebugPanelProps) {
                   {Object.entries(debugData.tokenBreakdown).map(([key, val]) => (
                     <div key={key} className="flex items-center gap-1 px-2 py-1 bg-gray-50 rounded-md border border-gray-100">
                       <span className="text-[10px] text-gray-500">{key}</span>
-                      <span className="text-[11px] font-mono font-medium text-gray-700">{typeof val === 'number' ? val.toLocaleString() : val}</span>
+                      <span className="text-[11px] font-mono font-medium text-gray-700">{typeof val === 'number' ? val.toLocaleString() : String(val)}</span>
                     </div>
                   ))}
                 </div>

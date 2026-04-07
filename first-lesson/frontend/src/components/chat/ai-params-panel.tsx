@@ -119,31 +119,6 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
           </div>
         </div>
 
-        {/* Pipeline Mode */}
-        <div className="border-t border-gray-200 pt-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <label className="text-xs font-medium text-gray-700">Pipeline mode</label>
-              <p className="text-[10px] text-gray-400">Этапы: планирование → выполнение → валидация</p>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={params.pipelineMode}
-              onClick={() => setParam('pipelineMode', !params.pipelineMode)}
-              className={`relative w-9 h-5 rounded-full transition-colors ${
-                params.pipelineMode ? 'bg-indigo-600' : 'bg-gray-300'
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                  params.pipelineMode ? 'translate-x-4' : ''
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
         {/* Context Strategy */}
         <div className="border-t border-gray-200 pt-4">
           <label className="text-xs font-medium text-gray-700 block mb-2">Стратегия контекста</label>

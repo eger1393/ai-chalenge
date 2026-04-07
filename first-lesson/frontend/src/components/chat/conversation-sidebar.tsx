@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { Plus, MessageSquare, Trash2, X, FlaskConical, FolderPlus, FolderOpen, ChevronDown, ChevronRight, Shield } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, X, FolderPlus, FolderOpen, ChevronDown, ChevronRight, Shield } from 'lucide-react';
 import { Conversation } from '@/types/conversation';
-import { Task, TaskInvariant } from '@/types/task';
-import { getTaskConversationCount } from '@/lib/api';
+import { Project, ProjectInvariant } from '@/types/task';
 import { formatRelativeDate } from '@/lib/format-date';
 
 interface ConversationSidebarProps {
@@ -15,12 +14,12 @@ interface ConversationSidebarProps {
   onDelete: (id: string) => void;
   isOpen: boolean;
   onClose: () => void;
-  tasks?: Task[];
+  tasks?: Project[];
   onCreateTask?: (title: string, description?: string, invariants?: string[]) => void;
   onDeleteTask?: (id: string) => void;
-  onNewConversationInTask?: (taskId: string) => void;
-  invariants?: TaskInvariant[];
-  onLoadInvariants?: (taskId: string) => void;
+  onNewConversationInTask?: (projectId: string) => void;
+  invariants?: ProjectInvariant[];
+  onLoadInvariants?: (projectId: string) => void;
   onAddInvariant?: (content: string) => void;
   onRemoveInvariant?: (invariantId: string) => void;
   invariantsActiveTaskId?: string | null;
@@ -55,15 +54,10 @@ export function ConversationSidebar({
   const [taskInvariants, setTaskInvariants] = useState<string[]>([]);
   const [newInvariantText, setNewInvariantText] = useState('');
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
-  const [deleteTaskConfirm, setDeleteTaskConfirm] = useState<{ id: string; title: string; convCount: number } | null>(null);
+  const [deleteTaskConfirm, setDeleteTaskConfirm] = useState<{ id: string; title: string } | null>(null);
 
-  const handleDeleteTaskClick = async (task: Task) => {
-    try {
-      const count = await getTaskConversationCount(task.id);
-      setDeleteTaskConfirm({ id: task.id, title: task.title, convCount: count });
-    } catch {
-      setDeleteTaskConfirm({ id: task.id, title: task.title, convCount: 0 });
-    }
+  const handleDeleteTaskClick = async (task: Project) => {
+    setDeleteTaskConfirm({ id: task.id, title: task.title });
   };
 
   const handleCreateTask = () => {
@@ -86,19 +80,17 @@ export function ConversationSidebar({
     setTaskInvariants(prev => prev.filter((_, i) => i !== index));
   };
 
-  const { byTask, orphans } = useMemo(() => {
-    const byTask = new Map<string, Conversation[]>();
-    const orphans: Conversation[] = [];
+  // Group conversations by projectId
+  const byProject = useMemo(() => {
+    const map = new Map<string, Conversation[]>();
     for (const conv of conversations) {
-      if (conv.taskId) {
-        const list = byTask.get(conv.taskId) ?? [];
+      if (conv.projectId) {
+        const list = map.get(conv.projectId) ?? [];
         list.push(conv);
-        byTask.set(conv.taskId, list);
-      } else {
-        orphans.push(conv);
+        map.set(conv.projectId, list);
       }
     }
-    return { byTask, orphans };
+    return map;
   }, [conversations]);
 
   const renderConversationItem = (conv: Conversation) => {
@@ -121,21 +113,12 @@ export function ConversationSidebar({
             : 'hover:bg-gray-100 border-l-2 border-transparent'
         }`}
       >
-        {conv.isTest ? (
-          <FlaskConical
-            size={16}
-            className={`mt-0.5 flex-shrink-0 ${
-              isActive ? 'text-amber-600' : 'text-amber-400'
-            }`}
-          />
-        ) : (
-          <MessageSquare
-            size={16}
-            className={`mt-0.5 flex-shrink-0 ${
-              isActive ? 'text-indigo-600' : 'text-gray-400'
-            }`}
-          />
-        )}
+        <MessageSquare
+          size={16}
+          className={`mt-0.5 flex-shrink-0 ${
+            isActive ? 'text-indigo-600' : 'text-gray-400'
+          }`}
+        />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <div
@@ -145,30 +128,16 @@ export function ConversationSidebar({
             >
               {truncate(conv.title || 'Новый диалог', 30)}
             </div>
-            {conv.isTest && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 font-medium flex-shrink-0">
-                TEST
-              </span>
-            )}
           </div>
           <div className="flex items-center gap-2 mt-0.5">
             <span className="text-xs px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded font-mono">
               {conv.model}
             </span>
-            {conv.contextStrategy && (
-              <span className="text-[9px] px-1 py-0.5 rounded bg-gray-100 text-gray-500">
-                {conv.contextStrategy === 'sliding_window' ? 'SW' : conv.contextStrategy === 'sticky_facts' ? 'SF' : conv.contextStrategy === 'branching' ? 'BR' : ''}
-              </span>
-            )}
             <span className="text-xs text-gray-400">
               {formatRelativeDate(conv.updatedAt)}
             </span>
           </div>
-          {conv.isTest && conv.testTopic ? (
-            <div className="text-xs text-amber-600 mt-0.5 truncate">
-              {truncate(conv.testTopic, 40)}
-            </div>
-          ) : conv.lastMessage ? (
+          {conv.lastMessage ? (
             <div className="text-xs text-gray-400 mt-0.5 truncate">
               {truncate(conv.lastMessage.content, 40)}
             </div>
@@ -203,7 +172,7 @@ export function ConversationSidebar({
         </button>
       </div>
 
-      {/* New conversation + task buttons */}
+      {/* New conversation + project buttons */}
       <div className="p-3 space-y-2">
         <div className="flex gap-2">
           <button
@@ -219,13 +188,13 @@ export function ConversationSidebar({
               className="flex items-center gap-1.5 px-3 py-1.5 border border-indigo-300 bg-indigo-50 rounded-lg text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors"
             >
               <FolderPlus size={14} />
-              Задача
+              Проект
             </button>
           )}
         </div>
       </div>
 
-      {/* Task creation form */}
+      {/* Project creation form */}
       {showTaskForm && (
         <div className="mx-3 mb-3 p-3 border border-indigo-200 rounded-lg bg-indigo-50/50 space-y-2">
           <input
@@ -233,14 +202,14 @@ export function ConversationSidebar({
             value={taskTitle}
             onChange={(e) => setTaskTitle(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleCreateTask()}
-            placeholder="Название задачи..."
+            placeholder="Название проекта..."
             className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             autoFocus
           />
           <textarea
             value={taskDesc}
             onChange={(e) => setTaskDesc(e.target.value)}
-            placeholder="Описание задачи (стек, ограничения, контекст...)"
+            placeholder="Описание проекта (стек, ограничения, контекст...)"
             rows={3}
             className="w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
@@ -293,38 +262,38 @@ export function ConversationSidebar({
         </div>
       )}
 
-      {/* Conversation list grouped by tasks */}
+      {/* Conversation list grouped by projects */}
       <div className="flex-1 overflow-y-auto px-2 pb-2">
         {tasks.length === 0 && conversations.length === 0 ? (
           <div className="px-3 py-8 text-center text-sm text-gray-400">
-            Нет диалогов
+            Нет проектов
           </div>
         ) : (
           <div className="space-y-1">
-            {/* Tasks with their conversations */}
-            {tasks.map(task => {
-              const taskConvs = byTask.get(task.id) ?? [];
-              const isExpanded = expandedTasks.has(task.id);
+            {/* Projects with their conversations */}
+            {tasks.map(project => {
+              const projectConvs = byProject.get(project.id) ?? [];
+              const isExpanded = expandedTasks.has(project.id);
               return (
-                <div key={task.id} className="mb-1">
+                <div key={project.id} className="mb-1">
                   <div className="group flex items-center">
                     <button
                       onClick={() => setExpandedTasks(prev => {
                         const next = new Set(prev);
-                        isExpanded ? next.delete(task.id) : next.add(task.id);
+                        isExpanded ? next.delete(project.id) : next.add(project.id);
                         return next;
                       })}
                       className="flex-1 flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-100 rounded-lg transition-colors"
                     >
                       {isExpanded ? <ChevronDown size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />}
                       <FolderOpen size={14} className="text-amber-500 flex-shrink-0" />
-                      <span className="text-sm font-medium text-gray-700 truncate flex-1">{task.title}</span>
-                      <span className="text-[10px] text-gray-400 flex-shrink-0">{taskConvs.length}</span>
+                      <span className="text-sm font-medium text-gray-700 truncate flex-1">{project.title}</span>
+                      <span className="text-[10px] text-gray-400 flex-shrink-0">{projectConvs.length}</span>
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleDeleteTaskClick(task); }}
+                      onClick={(e) => { e.stopPropagation(); handleDeleteTaskClick(project); }}
                       className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all mr-1"
-                      aria-label="Удалить задачу"
+                      aria-label="Удалить проект"
                     >
                       <Trash2 size={12} />
                     </button>
@@ -332,21 +301,21 @@ export function ConversationSidebar({
                   {isExpanded && (
                     <>
                       <InvariantsSection
-                        taskId={task.id}
-                        invariants={invariantsActiveTaskId === task.id ? (invariants || []) : []}
+                        taskId={project.id}
+                        invariants={invariantsActiveTaskId === project.id ? (invariants || []) : []}
                         onLoad={onLoadInvariants}
                         onAdd={onAddInvariant}
                         onRemove={onRemoveInvariant}
                       />
                       <div className="pl-4 space-y-0.5">
-                        {taskConvs.map(conv => renderConversationItem(conv))}
+                        {projectConvs.map(conv => renderConversationItem(conv))}
                         {onNewConversationInTask && (
                           <button
-                            onClick={() => onNewConversationInTask(task.id)}
+                            onClick={() => onNewConversationInTask(project.id)}
                             className="w-full flex items-center gap-2 px-3 py-2 text-left text-xs text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
                           >
                             <Plus size={12} />
-                            Новый диалог в задаче
+                            Новый диалог в проекте
                           </button>
                         )}
                       </div>
@@ -355,18 +324,6 @@ export function ConversationSidebar({
                 </div>
               );
             })}
-
-            {/* Orphan conversations (no task) */}
-            {orphans.length > 0 && (
-              <div className={tasks.length > 0 ? 'mt-2 pt-2 border-t border-gray-200' : ''}>
-                {tasks.length > 0 && (
-                  <div className="px-3 py-1 text-[10px] font-medium text-gray-400 uppercase tracking-wider">
-                    Без задачи
-                  </div>
-                )}
-                {orphans.map(conv => renderConversationItem(conv))}
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -391,15 +348,13 @@ export function ConversationSidebar({
         </>
       )}
 
-      {/* Delete task confirmation modal */}
+      {/* Delete project confirmation modal */}
       {deleteTaskConfirm && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
           <div className="bg-white rounded-xl shadow-lg p-5 max-w-sm mx-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-2">Удалить задачу?</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Удалить проект?</h3>
             <p className="text-xs text-gray-600 mb-4">
-              Задача &ldquo;<span className="font-medium">{deleteTaskConfirm.title}</span>&rdquo; и{' '}
-              <span className="font-medium text-red-600">{deleteTaskConfirm.convCount} диалогов</span>{' '}
-              будут удалены навсегда.
+              Проект &ldquo;<span className="font-medium">{deleteTaskConfirm.title}</span>&rdquo; и все его диалоги будут удалены навсегда.
             </p>
             <div className="flex gap-2 justify-end">
               <button onClick={() => setDeleteTaskConfirm(null)} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700">
@@ -424,8 +379,8 @@ export function ConversationSidebar({
 
 function InvariantsSection({ taskId, invariants, onLoad, onAdd, onRemove }: {
   taskId: string;
-  invariants: TaskInvariant[];
-  onLoad?: (taskId: string) => void;
+  invariants: ProjectInvariant[];
+  onLoad?: (projectId: string) => void;
   onAdd?: (content: string) => void;
   onRemove?: (id: string) => void;
 }) {

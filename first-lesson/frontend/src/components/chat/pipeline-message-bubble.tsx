@@ -1,10 +1,61 @@
 'use client';
 
-import { ShieldAlert } from 'lucide-react';
-import { PipelineRunState } from '@/types/pipeline';
+import { useState } from 'react';
+import { ShieldAlert, Database, ChevronDown, ChevronRight } from 'lucide-react';
+import { PipelineRunState, ToolCallData } from '@/types/pipeline';
 import { PipelineStepper } from './pipeline-stepper';
-import { PipelineAccordion } from './pipeline-accordion';
 import { PipelineControls } from './pipeline-controls';
+
+const TOOL_LABELS: Record<string, string> = {
+  query_database: 'SQL запрос',
+  list_database_tables: 'Структура БД',
+};
+
+function ToolCallCard({ toolCall }: { toolCall: ToolCallData }) {
+  const [expanded, setExpanded] = useState(false);
+  const label = TOOL_LABELS[toolCall.name] || toolCall.name;
+  const isLongResult = toolCall.result.length > 200;
+
+  let displayArgs = toolCall.arguments;
+  try {
+    const parsed = JSON.parse(toolCall.arguments);
+    displayArgs = parsed.sql || parsed.query || JSON.stringify(parsed, null, 2);
+  } catch {
+    // keep raw string
+  }
+
+  return (
+    <div className="border border-blue-200 bg-blue-50/50 rounded-lg px-3 py-2 text-xs">
+      <div className="flex items-center gap-1.5 text-blue-700 font-medium mb-1">
+        <Database className="w-3.5 h-3.5 flex-shrink-0" />
+        <span>{label}</span>
+      </div>
+
+      {displayArgs && (
+        <pre className="bg-white/70 border border-blue-100 rounded px-2 py-1 mb-1.5 text-[11px] text-gray-700 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-32">
+          {displayArgs}
+        </pre>
+      )}
+
+      {toolCall.result && (
+        <div>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="flex items-center gap-1 text-gray-500 hover:text-gray-700 transition-colors text-[11px] mb-1"
+          >
+            {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            <span>Результат{isLongResult && !expanded ? ` (${toolCall.result.length} символов)` : ''}</span>
+          </button>
+          {expanded && (
+            <pre className="bg-white/70 border border-gray-200 rounded px-2 py-1 text-[11px] text-gray-600 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-48 overflow-y-auto">
+              {toolCall.result}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface PipelineMessageBubbleProps {
   pipelineState: PipelineRunState;
@@ -50,6 +101,15 @@ export function PipelineMessageBubble({ pipelineState, onPause, onResume, onCanc
             />
           </div>
 
+          {/* Tool calls */}
+          {pipelineState.toolCalls.length > 0 && (
+            <div className="flex flex-col gap-2 mb-3">
+              {pipelineState.toolCalls.map((tc, i) => (
+                <ToolCallCard key={i} toolCall={tc} />
+              ))}
+            </div>
+          )}
+
           {/* Controls */}
           <div className="mb-3">
             <PipelineControls
@@ -81,9 +141,6 @@ export function PipelineMessageBubble({ pipelineState, onPause, onResume, onCanc
               {pipelineState.injectionMessage}
             </div>
           )}
-
-          {/* Accordion with step details */}
-          <PipelineAccordion steps={steps} currentStep={currentStep} />
 
           {/* Totals */}
           {(totalCost > 0 || totalTokens > 0) && (

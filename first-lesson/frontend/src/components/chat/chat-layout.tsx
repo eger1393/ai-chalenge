@@ -2,19 +2,18 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Menu, MessageSquare, FlaskConical, FolderOpen, Brain, Shield } from 'lucide-react';
+import { Menu, FolderOpen, Brain, Shield } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
 import { useChat, Message } from '@/hooks/use-chat';
 import { useAIParams } from '@/hooks/use-ai-params';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { useConversations } from '@/hooks/use-conversations';
-import { useTestDialogue } from '@/hooks/use-test-dialogue';
 import { usePipeline } from '@/hooks/use-pipeline';
 import { useFacts } from '@/hooks/use-facts';
 import { useBranches } from '@/hooks/use-branches';
 import { useTasks } from '@/hooks/use-tasks';
 import { useInvariants } from '@/hooks/use-invariants';
-import { setConversationTask, addTaskInvariant } from '@/lib/api';
+import { addProjectInvariant } from '@/lib/api';
 import { ConversationSidebar } from './conversation-sidebar';
 import { ContextIndicator } from './context-indicator';
 import { BranchSelector } from './branch-selector';
@@ -24,8 +23,6 @@ import { MessageBubble } from './message-bubble';
 import { TypingIndicator } from './typing-indicator';
 import { ChatInput } from './chat-input';
 import { EmptyState } from './empty-state';
-import { TestSetupForm } from './test-setup-form';
-import { TestProgressBar } from './test-progress-bar';
 import { AIParamsPanel } from './ai-params-panel';
 import { PipelineMessageBubble } from './pipeline-message-bubble';
 
@@ -35,13 +32,11 @@ export function ChatLayout() {
   const conversations = useConversations();
   const chat = useChat();
   const { params, setParam, resetParams, hasNonDefaults } = useAIParams();
-  const testDialogue = useTestDialogue();
   const pipeline = usePipeline();
   const facts = useFacts(chat.conversationId);
   const branches = useBranches(chat.conversationId);
   const { tasks, addTask, removeTask } = useTasks();
   const invariantsHook = useInvariants();
-  const [mode, setMode] = useState<'chat' | 'test'>('chat');
   const [showParams, setShowParams] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [conversationStrategy, setConversationStrategy] = useState<string | undefined>(undefined);
@@ -53,9 +48,17 @@ export function ChatLayout() {
   // Determine current strategy: conversation's fixed strategy or params strategy
   const currentStrategy = conversationStrategy || params.contextStrategy;
 
-  // Active conversation & task for header badge
+  // Active conversation & project for header badge
   const activeConversation = conversations.conversations.find(c => c.id === conversations.activeId);
-  const activeTask = tasks.find(t => t.id === activeConversation?.taskId);
+  const activeProject = tasks.find(t => t.id === activeConversation?.projectId);
+
+  // Load all conversations when tasks change
+  useEffect(() => {
+    if (tasks.length > 0) {
+      conversations.loadAll(tasks.map(t => t.id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks]);
 
   useEffect(() => {
     const activeId = conversations.activeId;
@@ -64,26 +67,21 @@ export function ChatLayout() {
 
     if (activeId) {
       chat.loadConversation(activeId).then((detail) => {
-        const conv = conversations.conversations.find((c) => c.id === activeId);
-        const strategy = conv?.contextStrategy;
         const hasMessages = detail && detail.messages && detail.messages.length > 0;
-        setConversationStrategy(hasMessages ? strategy : undefined);
-        if (strategy === 'sticky_facts') {
+        setConversationStrategy(undefined);
+        if (params.contextStrategy === 'sticky_facts') {
           facts.loadFacts(activeId);
-        } else if (strategy === 'branching') {
+        } else if (params.contextStrategy === 'branching') {
           branches.loadBranches(activeId);
         }
 
-        // Load invariants for active task
-        const taskId = detail?.taskId || conversations.conversations.find(c => c.id === activeId)?.taskId;
-        if (taskId) {
-          invariantsHook.load(taskId);
+        // Load invariants for active project
+        const projectId = detail?.projectId || conversations.conversations.find(c => c.id === activeId)?.projectId;
+        if (projectId) {
+          invariantsHook.load(projectId);
         } else {
           invariantsHook.reset();
         }
-
-        // Check for active pipeline
-        pipeline.restoreFromServer(activeId);
       });
     } else {
       chat.startNew();
@@ -101,22 +99,26 @@ export function ChatLayout() {
 
   const handleSend = useCallback(
     async (text: string) => {
-      if (params.pipelineMode) {
-        let currentConvId = chat.conversationId;
-        if (!currentConvId) {
-          const conv = await conversations.create(params.model, params.systemPrompt, params.contextStrategy);
-          currentConvId = conv.id;
-          chat.setConversationId(conv.id);
+      let currentConvId = chat.conversationId;
+      if (!currentConvId) {
+        // Need a project to create a conversation
+        if (!activeProject && tasks.length === 0) {
+          console.error('No project available to create conversation');
+          return;
         }
-        // Add user message to UI
-        const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text.trim() };
-        chat.setMessages((prev: Message[]) => [...prev, userMsg]);
-        // Start pipeline
-        pipeline.start(text.trim(), currentConvId, params);
-        conversations.refresh();
-      } else {
-        await chat.send(text, params);
-        conversations.refresh();
+        const projectId = activeProject?.id || tasks[0]?.id;
+        if (!projectId) return;
+        const conv = await conversations.create(projectId, params.model, params.systemPrompt);
+        currentConvId = conv.id;
+        chat.setConversationId(conv.id);
+      }
+      // Add user message to UI
+      const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text.trim() };
+      chat.setMessages((prev: Message[]) => [...prev, userMsg]);
+      // Start pipeline
+      pipeline.start(text.trim(), currentConvId, params);
+      if (tasks.length > 0) {
+        conversations.refresh(tasks.map(t => t.id));
       }
       if (!conversationStrategy) {
         setConversationStrategy(params.contextStrategy);
@@ -125,7 +127,7 @@ export function ChatLayout() {
         facts.loadFacts(chat.conversationId);
       }
     },
-    [chat, params, conversations, currentStrategy, facts, conversationStrategy, pipeline],
+    [chat, params, conversations, currentStrategy, facts, conversationStrategy, pipeline, activeProject, tasks],
   );
 
   // Sync auto-created conversationId back to conversations
@@ -161,11 +163,9 @@ export function ChatLayout() {
     [conversations, chat],
   );
 
-  const handleNewConversationInTask = useCallback(
-    async (taskId: string) => {
-      const conv = await conversations.create(params.model, params.systemPrompt, params.contextStrategy);
-      await setConversationTask(conv.id, taskId);
-      await conversations.refresh();
+  const handleNewConversationInProject = useCallback(
+    async (projectId: string) => {
+      const conv = await conversations.create(projectId, params.model, params.systemPrompt);
       conversations.select(conv.id);
       setSidebarOpen(false);
     },
@@ -176,7 +176,6 @@ export function ChatLayout() {
     async (messageId: string) => {
       const checkpoint = await branches.createCheckpoint(messageId);
       if (checkpoint) {
-        // Reload conversation to see updated branch_ids on messages
         if (chat.conversationId) {
           await chat.loadConversation(chat.conversationId);
         }
@@ -190,35 +189,20 @@ export function ChatLayout() {
       const name = `Branch ${branches.branches.length + 1}`;
       const branch = await branches.createNewBranch(checkpointId, name);
       if (branch && chat.conversationId) {
-        // Switch to the new branch (which is empty) - reload messages
         const messages = await branches.switchBranch(branch.id);
         if (messages) {
+          // ConversationMessage[] from branch -- map through envelopes
           chat.setMessages(
-            messages.map((m) => ({
-              id: m.id,
-              role: m.role as 'user' | 'assistant',
-              content: m.content,
-              cost: m.cost,
-              durationMs: m.durationMs,
-              usage: m.promptTokens || m.completionTokens ? {
-                promptTokens: m.promptTokens || 0,
-                completionTokens: m.completionTokens || 0,
-                totalTokens: (m.promptTokens || 0) + (m.completionTokens || 0),
-                currentMessageTokens: m.currentMessageTokens || undefined,
-                historyTokens: m.historyTokens || undefined,
-              } : undefined,
-              appliedParams: m.appliedModel ? {
-                model: m.appliedModel,
-                temperature: m.appliedTemperature ?? 1.0,
-                maxTokens: m.appliedMaxTokens ?? 16384,
-              } : undefined,
-              truncation: m.truncatedMessages ? {
-                droppedMessages: m.truncatedMessages,
-                droppedTokens: m.truncatedTokens || 0,
-              } : undefined,
-              contextUsedTokens: m.contextUsedTokens || undefined,
-              contextMaxTokens: m.contextMaxTokens || undefined,
-            })),
+            messages.flatMap((m) => {
+              const msgs: Message[] = [];
+              if (m.userContent) {
+                msgs.push({ id: `${m.id}-user`, role: 'user', content: m.userContent });
+              }
+              if (m.assistantContent) {
+                msgs.push({ id: `${m.id}-assistant`, role: 'assistant', content: m.assistantContent });
+              }
+              return msgs;
+            }),
           );
         }
       }
@@ -231,31 +215,16 @@ export function ChatLayout() {
       const messages = await branches.switchBranch(branchId);
       if (messages) {
         chat.setMessages(
-          messages.map((m) => ({
-            id: m.id,
-            role: m.role as 'user' | 'assistant',
-            content: m.content,
-            cost: m.cost,
-            durationMs: m.durationMs,
-            usage: m.promptTokens || m.completionTokens ? {
-              promptTokens: m.promptTokens || 0,
-              completionTokens: m.completionTokens || 0,
-              totalTokens: (m.promptTokens || 0) + (m.completionTokens || 0),
-              currentMessageTokens: m.currentMessageTokens || undefined,
-              historyTokens: m.historyTokens || undefined,
-            } : undefined,
-            appliedParams: m.appliedModel ? {
-              model: m.appliedModel,
-              temperature: m.appliedTemperature ?? 1.0,
-              maxTokens: m.appliedMaxTokens ?? 16384,
-            } : undefined,
-            truncation: m.truncatedMessages ? {
-              droppedMessages: m.truncatedMessages,
-              droppedTokens: m.truncatedTokens || 0,
-            } : undefined,
-            contextUsedTokens: m.contextUsedTokens || undefined,
-            contextMaxTokens: m.contextMaxTokens || undefined,
-          })),
+          messages.flatMap((m) => {
+            const msgs: Message[] = [];
+            if (m.userContent) {
+              msgs.push({ id: `${m.id}-user`, role: 'user', content: m.userContent });
+            }
+            if (m.assistantContent) {
+              msgs.push({ id: `${m.id}-assistant`, role: 'assistant', content: m.assistantContent });
+            }
+            return msgs;
+          }),
         );
       }
     },
@@ -265,7 +234,6 @@ export function ChatLayout() {
   const handleDeleteBranch = useCallback(
     async (branchId: string) => {
       await branches.removeBranch(branchId);
-      // After deleting, reload main branch messages
       if (chat.conversationId) {
         const mainBranch = branches.branches.find((b) => b.name === 'main');
         if (mainBranch) {
@@ -276,31 +244,10 @@ export function ChatLayout() {
     [branches, chat.conversationId, handleSwitchBranch],
   );
 
-  const handleStartTest = useCallback((topic: string, pairsCount: number) => {
-    testDialogue.start(topic, pairsCount, params);
-  }, [testDialogue, params]);
-
-  // After test generation completes, switch to the created conversation
-  const prevTestConvIdRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (
-      testDialogue.conversationId &&
-      !testDialogue.isGenerating &&
-      testDialogue.conversationId !== prevTestConvIdRef.current
-    ) {
-      prevTestConvIdRef.current = testDialogue.conversationId;
-      conversations.select(testDialogue.conversationId);
-      chat.loadConversation(testDialogue.conversationId);
-      conversations.refresh();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [testDialogue.conversationId, testDialogue.isGenerating]);
-
   // Handle pipeline completion
   useEffect(() => {
     if (pipeline.pipelineState?.status === 'completed') {
       const finalContent = pipeline.pipelineState.finalContent;
-      // Use finalContent from done event, fallback to last execution step
       const content = finalContent || (() => {
         const execStep = [...(pipeline.pipelineState!.steps || [])].reverse().find(
           (s) => s.stepType === 'execution' && s.status === 'completed',
@@ -313,12 +260,9 @@ export function ChatLayout() {
           id: (Date.now() + 1).toString(),
           role: 'assistant',
           content,
-          cost: pipeline.pipelineState.totalCost,
         };
         chat.setMessages((prev: Message[]) => [...prev, assistantMsg]);
       }
-      // Don't reset immediately — loadConversation will provide the message with debugData
-      // Pipeline bubble will disappear because we check status !== 'completed'
       if (chat.conversationId) {
         chat.loadConversation(chat.conversationId).then(() => {
           pipeline.reset();
@@ -329,11 +273,6 @@ export function ChatLayout() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipeline.pipelineState?.status, pipeline.pipelineState?.finalContent]);
-
-  // Determine which messages to show
-  const isTestMode = mode === 'test';
-  const testInProgress = isTestMode && testDialogue.isGenerating;
-  const displayMessages = testInProgress ? testDialogue.messages : chat.messages;
 
   // Build checkpoint map: messageId -> checkpoint
   const checkpointByMessageId = new Map(
@@ -354,26 +293,28 @@ export function ChatLayout() {
           onClose={() => setSidebarOpen(false)}
           tasks={tasks}
           onCreateTask={async (title: string, description?: string, invs?: string[]) => {
-            const task = await addTask(title, description);
-            if (invs && invs.length > 0 && task?.id) {
+            const project = await addTask(title, description);
+            if (invs && invs.length > 0 && project?.id) {
               for (const content of invs) {
-                await addTaskInvariant(task.id, content);
+                await addProjectInvariant(project.id, content);
               }
             }
           }}
           onDeleteTask={async (id: string) => {
             await removeTask(id);
-            await conversations.refresh();
-            // If active conversation belonged to deleted task, reset
+            if (tasks.length > 0) {
+              await conversations.refresh(tasks.filter(t => t.id !== id).map(t => t.id));
+            }
+            // If active conversation belonged to deleted project, reset
             if (conversations.activeId) {
               const still = conversations.conversations.find(c => c.id === conversations.activeId);
-              if (!still || still.taskId === id) {
+              if (!still || still.projectId === id) {
                 conversations.select(null);
                 chat.startNew();
               }
             }
           }}
-          onNewConversationInTask={handleNewConversationInTask}
+          onNewConversationInTask={handleNewConversationInProject}
           invariants={invariantsHook.invariants}
           onLoadInvariants={invariantsHook.load}
           onAddInvariant={invariantsHook.add}
@@ -409,27 +350,13 @@ export function ChatLayout() {
                 </svg>
               </div>
               <span className="font-semibold text-gray-900">ChatGPT App</span>
-              <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5 ml-3">
-                <button
-                  onClick={() => { setMode('chat'); testDialogue.reset(); }}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === 'chat' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  <MessageSquare className="w-3.5 h-3.5 inline mr-1" />Чат
-                </button>
-                <button
-                  onClick={() => setMode('test')}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${mode === 'test' ? 'bg-white shadow-sm text-amber-700' : 'text-gray-500 hover:text-gray-700'}`}
-                >
-                  <FlaskConical className="w-3.5 h-3.5 inline mr-1" />Тест
-                </button>
-              </div>
-              {activeTask && (
+              {activeProject && (
                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-md">
                   <FolderOpen size={12} className="text-amber-500" />
-                  <span className="text-[11px] font-medium text-amber-700 max-w-[160px] truncate">{activeTask.title}</span>
+                  <span className="text-[11px] font-medium text-amber-700 max-w-[160px] truncate">{activeProject.title}</span>
                 </div>
               )}
-              {activeTask && invariantsHook.invariants.length > 0 && (
+              {activeProject && invariantsHook.invariants.length > 0 && (
                 <div className="flex items-center gap-1 px-2 py-0.5 bg-red-50 border border-red-200 rounded-md">
                   <Shield size={11} className="text-red-500" />
                   <span className="text-[10px] font-medium text-red-700">
@@ -483,13 +410,11 @@ export function ChatLayout() {
               <div className="flex items-center justify-center h-full">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
               </div>
-            ) : isTestMode && displayMessages.length === 0 && !testDialogue.isGenerating ? (
-              <TestSetupForm onStart={handleStartTest} isGenerating={testDialogue.isGenerating} />
-            ) : displayMessages.length === 0 ? (
+            ) : chat.messages.length === 0 ? (
               <EmptyState />
             ) : (
               <div className="max-w-3xl mx-auto px-4 py-6">
-                {displayMessages.map((msg) => {
+                {chat.messages.map((msg) => {
                   const checkpoint = checkpointByMessageId.get(msg.id);
                   return (
                     <div key={msg.id}>
@@ -508,7 +433,6 @@ export function ChatLayout() {
                         onCreateCheckpoint={currentStrategy === 'branching' ? handleCreateCheckpoint : undefined}
                         messageId={msg.id}
                         debugData={msg.debugData}
-                        isTestGenerated={msg.isTestGenerated}
                       />
                       {checkpoint && (
                         <CheckpointDivider
@@ -542,28 +466,10 @@ export function ChatLayout() {
             />
           )}
 
-          {/* Test progress bar */}
-          {testDialogue.isGenerating && (
-            <TestProgressBar
-              current={testDialogue.progress.current}
-              total={testDialogue.progress.total}
-              onAbort={testDialogue.abort}
-            />
-          )}
-
-          {/* Test error */}
-          {testDialogue.error && (
-            <div className="max-w-3xl mx-auto px-4 py-2">
-              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                {testDialogue.error}
-              </div>
-            </div>
-          )}
-
           {/* Input */}
           <ChatInput
             onSend={handleSend}
-            disabled={chat.isLoading || testDialogue.isGenerating || pipeline.isRunning}
+            disabled={chat.isLoading || pipeline.isRunning}
             showParams={showParams}
             onToggleParams={() => setShowParams((v) => !v)}
             hasNonDefaults={hasNonDefaults}

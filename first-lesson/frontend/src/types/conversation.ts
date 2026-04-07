@@ -1,15 +1,13 @@
-import { Usage } from './ai-params';
-
 export interface Conversation {
   id: string;
   title: string;
   model: string;
   systemPrompt?: string;
-  contextStrategy?: string;
-  taskId?: string;
-  isTest?: boolean;
-  testTopic?: string;
-  testPairsTarget?: number;
+  projectId: string;
+  temperature: number;
+  maxTokens: number;
+  repetitionPenalty: number;
+  contextLimit: number;
   createdAt: string;
   updatedAt: string;
   messageCount: number;
@@ -20,44 +18,51 @@ export interface Conversation {
   };
 }
 
-export interface MemoryLayerInfo {
-  type: 'long_term' | 'working' | 'short_term';
-  label: string;
-  tokenCount: number;
-  content?: string;
+export interface ConversationMessage {
+  id: string;
+  conversationId: string;
+  branchId?: string;
+  userContent: string;
+  assistantContent?: string;
+  status: 'pending' | 'processing' | 'done' | 'failed' | 'cancelled' | 'paused';
+  currentStep?: string;
+  attemptNumber: number;
+  maxAttempts: number;
+  errorMessage?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
-export interface MessageDebugData {
-  strategyType: string;
+export interface MessageMeta {
+  id: string;
+  messageId: string;
+  appliedModel?: string;
+  appliedTemperature?: number;
+  appliedMaxTokens?: number;
+  appliedRepetitionPenalty?: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cost: number;
+  durationMs: number;
+  contextUsedTokens: number;
+  contextMaxTokens: number;
+  truncatedMessages: number;
+  truncatedTokens: number;
+}
+
+export interface MessageDebug {
+  id: string;
+  messageId: string;
+  strategyType?: string;
   contextMessagesCount: number;
   contextMessagesAfterTruncation: number;
-  factsSnapshot?: Array<{ key: string; value: string }>;
-  factsAfter?: Array<{ key: string; value: string }>;
-  branchInfo?: Record<string, unknown>;
-  summaryInfo?: Record<string, unknown>;
-  tokenBreakdown?: Record<string, number>;
-  strategyMetadata?: Record<string, unknown>;
-  memoryLayers?: MemoryLayerInfo[];
-  pipelineData?: {
-    pipelineId: string;
-    totalAttempts: number;
-    totalCost: number;
-    totalTokens: number;
-    steps: Array<{
-      stepType: string;
-      attempt: number;
-      status: string;
-      model: string;
-      promptTokens: number;
-      completionTokens: number;
-      cost: number;
-      durationMs: number;
-      validationPassed?: boolean;
-      validationReason?: string;
-      content: string;
-      inputContext?: Array<{ role: string; content: string }>;
-    }>;
-  };
+  tokenBreakdown?: any;
+  factsSnapshot?: any;
+  branchInfo?: any;
+  summaryInfo?: any;
+  strategyMetadata?: any;
+  memoryLayers?: any;
 }
 
 export interface ConversationFact {
@@ -85,31 +90,6 @@ export interface Checkpoint {
   createdAt: string;
 }
 
-export interface ConversationMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  model?: string;
-  cost?: number;
-  branchId?: string;
-  createdAt: string;
-  usage?: Usage;
-  durationMs?: number;
-  tokenCount?: number;
-  promptTokens?: number;
-  completionTokens?: number;
-  currentMessageTokens?: number;
-  historyTokens?: number;
-  appliedModel?: string;
-  appliedTemperature?: number;
-  appliedMaxTokens?: number;
-  contextUsedTokens?: number;
-  contextMaxTokens?: number;
-  truncatedMessages?: number;
-  truncatedTokens?: number;
-  debugData?: MessageDebugData;
-}
-
 export interface ConversationTotals {
   totalMessages: number;
   totalTokens: number;
@@ -130,4 +110,41 @@ export interface ContextWindow {
   maxTokens: number;
   usedTokens: number;
   usagePercent: number;
+}
+
+export interface MessageDebugData {
+  strategyType: string;
+  contextMessagesCount: number;
+  contextMessagesAfterTruncation: number;
+  tokenBreakdown?: Record<string, unknown>;
+  factsSnapshot?: Array<{ key: string; value: string }>;
+  factsAfter?: Array<{ key: string; value: string }>;
+  branchInfo?: unknown;
+  summaryInfo?: unknown;
+  strategyMetadata?: Record<string, unknown>;
+  memoryLayers?: Array<{
+    type: 'long_term' | 'working' | 'short_term';
+    label: string;
+    tokenCount: number;
+    content?: string;
+  }>;
+  pipelineData?: {
+    totalAttempts: number;
+    totalCost: number;
+    totalTokens: number;
+    steps: Array<{
+      stepType: string;
+      status: string;
+      content: string;
+      attempt: number;
+      model: string;
+      promptTokens: number;
+      completionTokens: number;
+      cost: number;
+      durationMs: number;
+      validationPassed?: boolean;
+      validationReason?: string;
+      inputContext?: Array<{ role: string; content: string }>;
+    }>;
+  };
 }

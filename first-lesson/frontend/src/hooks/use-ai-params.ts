@@ -37,7 +37,6 @@ function loadFromStorage(): AIParams | null {
       contextLimit: typeof parsed.contextLimit === 'number' ? parsed.contextLimit : DEFAULT_AI_PARAMS.contextLimit,
       contextStrategy,
       slidingWindowKeepLast,
-      pipelineMode: typeof parsed.pipelineMode === 'boolean' ? parsed.pipelineMode : DEFAULT_AI_PARAMS.pipelineMode,
     };
   } catch {
     return null;
@@ -86,8 +85,7 @@ export function useAIParams() {
     params.systemPrompt !== '' ||
     params.contextLimit !== DEFAULT_AI_PARAMS.contextLimit ||
     params.contextStrategy !== DEFAULT_AI_PARAMS.contextStrategy ||
-    params.slidingWindowKeepLast !== DEFAULT_AI_PARAMS.slidingWindowKeepLast ||
-    params.pipelineMode !== DEFAULT_AI_PARAMS.pipelineMode;
+    params.slidingWindowKeepLast !== DEFAULT_AI_PARAMS.slidingWindowKeepLast;
 
   return { params, setParam, resetParams, hasNonDefaults };
 }

@@ -2,22 +2,22 @@
 
 import { useState, useCallback, useRef } from 'react';
 import {
-  startPipeline as apiStartPipeline,
-  resumePipeline as apiResumePipeline,
-  pausePipeline as apiPausePipeline,
-  cancelPipeline as apiCancelPipeline,
-  getActivePipeline,
+  startMessages,
+  resumeMessage as apiResumeMessage,
+  pauseMessage as apiPauseMessage,
+  cancelMessage as apiCancelMessage,
 } from '@/lib/api';
 import { AIParams } from '@/types/ai-params';
 import { PipelineRunState, PipelineSSEEvent, PipelineStepData, PipelineStepType, PipelineStatus } from '@/types/pipeline';
 
 const INITIAL_STATE: PipelineRunState = {
-  pipelineId: null,
+  messageId: null,
   status: 'running',
   currentStep: 'planning',
   attempt: 1,
   maxAttempts: 3,
   steps: [],
+  toolCalls: [],
   totalCost: 0,
   totalTokens: 0,
 };
@@ -30,22 +30,21 @@ export function usePipeline() {
     setPipelineState((prev) => {
       if (!prev) return prev;
       switch (event.type) {
-        case 'pipeline_started':
-          return { ...prev, pipelineId: event.pipelineId };
+        case 'message_started':
+          return { ...prev, messageId: event.messageId || null };
 
         case 'step_start': {
           return {
             ...prev,
-            currentStep: event.step,
-            attempt: event.attempt,
+            currentStep: event.step || prev.currentStep,
+            attempt: event.attempt || prev.attempt,
             steps: [
               ...prev.steps,
               {
-                stepType: event.step,
+                stepType: event.step || 'execution',
                 status: 'running',
                 content: '',
                 attempt: event.attempt,
-                model: event.model,
               },
             ],
           };
@@ -57,7 +56,7 @@ export function usePipeline() {
           if (lastIdx >= 0 && steps[lastIdx].stepType === event.step) {
             steps[lastIdx] = {
               ...steps[lastIdx],
-              content: steps[lastIdx].content + event.content,
+              content: steps[lastIdx].content + (event.delta || ''),
             };
           }
           return { ...prev, steps };
@@ -70,33 +69,19 @@ export function usePipeline() {
             steps[lastIdx] = {
               ...steps[lastIdx],
               status: 'completed',
-              content: event.content,
-              cost: event.cost,
-              durationMs: event.durationMs,
-              promptTokens: event.promptTokens,
-              completionTokens: event.completionTokens,
+              content: event.result || steps[lastIdx].content,
             };
           }
-          return {
-            ...prev,
-            steps,
-            totalCost: prev.totalCost + (event.cost || 0),
-            totalTokens: prev.totalTokens + (event.tokens || 0),
-          };
+          return { ...prev, steps };
         }
 
-        case 'validation_failed': {
-          const steps = [...prev.steps];
-          const lastIdx = steps.length - 1;
-          if (lastIdx >= 0) {
-            steps[lastIdx] = {
-              ...steps[lastIdx],
-              status: 'failed',
-              validationPassed: false,
-              validationReason: event.reason,
-            };
-          }
-          return { ...prev, steps, attempt: event.attempt };
+        case 'tool_call': {
+          const toolCall = {
+            name: event.name || '',
+            arguments: event.arguments || '',
+            result: event.result || '',
+          };
+          return { ...prev, toolCalls: [...prev.toolCalls, toolCall] };
         }
 
         case 'done':
@@ -104,37 +89,14 @@ export function usePipeline() {
             ...prev,
             status: 'completed',
             currentStep: 'done',
-            totalCost: event.totalCost,
-            totalTokens: event.totalTokens,
-            finalContent: event.content,
+            finalContent: event.response,
           };
 
-        case 'paused':
-          return { ...prev, status: 'paused' };
-
-        case 'resumed':
-          return { ...prev, status: 'running' };
-
-        case 'cancelled':
-          return { ...prev, status: 'cancelled' };
+        case 'failed':
+          return { ...prev, status: 'failed', error: event.error };
 
         case 'error':
-          return { ...prev, status: 'failed', error: event.message };
-
-        case 'injection_blocked':
-          return {
-            ...prev,
-            status: 'injection_blocked' as PipelineStatus,
-            injectionMessage: event.message,
-          };
-
-        case 'injection_detected':
-          return {
-            ...prev,
-            status: 'failed',
-            injectionMessage: event.message,
-            error: event.message,
-          };
+          return { ...prev, status: 'failed', error: event.error };
 
         default:
           return prev;
@@ -146,73 +108,38 @@ export function usePipeline() {
     (message: string, conversationId: string, params?: AIParams) => {
       setPipelineState({ ...INITIAL_STATE });
       controllerRef.current?.abort();
-      controllerRef.current = apiStartPipeline(message, conversationId, params, handleEvent);
+      controllerRef.current = startMessages(conversationId, message, params, handleEvent);
     },
     [handleEvent],
   );
 
   const pause = useCallback(async () => {
-    if (pipelineState?.pipelineId) {
-      await apiPausePipeline(pipelineState.pipelineId);
+    if (pipelineState?.messageId) {
+      await apiPauseMessage(pipelineState.messageId);
+      setPipelineState((prev) => (prev ? { ...prev, status: 'paused' } : prev));
     }
-  }, [pipelineState?.pipelineId]);
+  }, [pipelineState?.messageId]);
 
   const resume = useCallback(async () => {
-    if (pipelineState?.pipelineId) {
+    if (pipelineState?.messageId) {
       controllerRef.current?.abort();
-      controllerRef.current = apiResumePipeline(pipelineState.pipelineId, handleEvent);
+      controllerRef.current = apiResumeMessage(pipelineState.messageId, handleEvent);
       setPipelineState((prev) => (prev ? { ...prev, status: 'running' } : prev));
     }
-  }, [pipelineState?.pipelineId, handleEvent]);
+  }, [pipelineState?.messageId, handleEvent]);
 
   const cancel = useCallback(async () => {
-    if (pipelineState?.pipelineId) {
+    if (pipelineState?.messageId) {
       controllerRef.current?.abort();
-      await apiCancelPipeline(pipelineState.pipelineId);
+      await apiCancelMessage(pipelineState.messageId);
       setPipelineState((prev) => (prev ? { ...prev, status: 'cancelled' } : prev));
     }
-  }, [pipelineState?.pipelineId]);
+  }, [pipelineState?.messageId]);
 
   const reset = useCallback(() => {
     controllerRef.current?.abort();
     controllerRef.current = null;
     setPipelineState(null);
-  }, []);
-
-  const restoreFromServer = useCallback(async (conversationId: string) => {
-    const data = await getActivePipeline(conversationId);
-    if (!data) return false;
-
-    const steps: PipelineStepData[] = (data.steps || []).map((s: any) => ({
-      stepType: s.stepType as PipelineStepType,
-      status: s.status as 'running' | 'completed' | 'failed',
-      content: s.outputResult?.text || '',
-      attempt: s.attemptNumber,
-      model: s.model,
-      promptTokens: s.promptTokens,
-      completionTokens: s.completionTokens,
-      cost: s.cost,
-      durationMs: s.durationMs,
-      validationPassed: s.validationPassed,
-      validationReason: s.validationReason,
-    }));
-
-    const restoredStatus: PipelineStatus =
-      data.status === 'running' ? 'paused' : (data.status as PipelineStatus);
-
-    setPipelineState({
-      pipelineId: data.id,
-      status: restoredStatus,
-      currentStep: data.currentStep as PipelineStepType,
-      attempt: data.attemptNumber,
-      maxAttempts: data.maxAttempts,
-      steps,
-      totalCost: data.totalCost || 0,
-      totalTokens: data.totalTokens || 0,
-      error: data.errorMessage || undefined,
-    });
-
-    return true;
   }, []);
 
   return {
@@ -223,6 +150,5 @@ export function usePipeline() {
     resume,
     cancel,
     reset,
-    restoreFromServer,
   };
 }

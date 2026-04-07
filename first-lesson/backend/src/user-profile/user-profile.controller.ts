@@ -10,11 +10,11 @@ export class UserProfileController {
 
   @Get()
   getProfile(@Request() req) {
-    return this.userProfileService.getProfile(req.user.username);
+    return this.userProfileService.getProfile(req.user.userId);
   }
 
   @Put()
   upsertProfile(@Request() req, @Body() dto: UpdateProfileDto) {
-    return this.userProfileService.upsertProfile(req.user.username, dto);
+    return this.userProfileService.upsertProfile(req.user.userId, dto);
   }
 }

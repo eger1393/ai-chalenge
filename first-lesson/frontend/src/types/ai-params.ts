@@ -9,7 +9,6 @@ export interface AIParams {
   contextLimit: number;
   contextStrategy: ContextStrategyType;
   slidingWindowKeepLast: number;
-  pipelineMode: boolean;
 }
 
 export interface AppliedParams {
@@ -51,7 +50,6 @@ export const DEFAULT_AI_PARAMS: AIParams = {
   contextLimit: 0,
   contextStrategy: 'sliding_window',
   slidingWindowKeepLast: 10,
-  pipelineMode: false,
 };
 
 export const STRATEGY_LABELS: Record<ContextStrategyType, string> = {
@@ -73,16 +71,3 @@ export interface Usage {
   historyTokens?: number;
   systemPromptTokens?: number;
 }
-
-export interface TestDialogueParams {
-  topic: string;
-  pairsCount: number;
-  simulatorModel?: string;
-}
-
-export type TestDialogueEvent =
-  | { type: 'started'; conversationId: string; totalPairs: number }
-  | { type: 'user_message'; pair: number; content: string; messageId?: string }
-  | { type: 'assistant_message'; pair: number; content: string; debug?: Record<string, unknown>; usage?: Usage; cost?: number; durationMs?: number; contextWindow?: Record<string, unknown>; truncation?: Record<string, unknown>; messageId?: string }
-  | { type: 'complete'; conversationId: string; totalPairs: number; totals?: Record<string, unknown> }
-  | { type: 'error'; message: string };

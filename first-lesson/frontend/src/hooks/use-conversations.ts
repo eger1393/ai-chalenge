@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import {
   listConversations,
   createConversation,
@@ -12,11 +12,14 @@ import { Conversation } from '@/types/conversation';
 export function useConversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (projectId: string) => {
     try {
-      const list = await listConversations(10);
+      setIsLoading(true);
+      setActiveProjectId(projectId);
+      const list = await listConversations(projectId);
       setConversations(list);
     } catch (e) {
       console.error('Failed to load conversations', e);
@@ -25,14 +28,26 @@ export function useConversations() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  const loadAll = useCallback(async (projectIds: string[]) => {
+    try {
+      setIsLoading(true);
+      const allConvs: Conversation[] = [];
+      for (const pid of projectIds) {
+        const list = await listConversations(pid);
+        allConvs.push(...list);
+      }
+      setConversations(allConvs);
+    } catch (e) {
+      console.error('Failed to load conversations', e);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   const create = useCallback(
-    async (model?: string, systemPrompt?: string, contextStrategy?: string) => {
-      const conv = await createConversation({ model, systemPrompt, contextStrategy });
-      setConversations((prev) => [conv, ...prev].slice(0, 10));
+    async (projectId: string, model?: string, systemPrompt?: string) => {
+      const conv = await createConversation({ projectId, model, systemPrompt });
+      setConversations((prev) => [conv, ...prev]);
       setActiveId(conv.id);
       return conv;
     },
@@ -59,18 +74,25 @@ export function useConversations() {
     );
   }, []);
 
-  const refresh = useCallback(async () => {
-    await load();
-  }, [load]);
+  const refresh = useCallback(async (projectIds?: string[]) => {
+    if (projectIds && projectIds.length > 0) {
+      await loadAll(projectIds);
+    } else if (activeProjectId) {
+      await load(activeProjectId);
+    }
+  }, [load, loadAll, activeProjectId]);
 
   return {
     conversations,
     activeId,
     isLoading,
+    activeProjectId,
     create,
     select,
     remove,
     rename,
     refresh,
+    load,
+    loadAll,
   };
 }

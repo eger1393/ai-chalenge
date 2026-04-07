@@ -1,12 +1,16 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { AuthModule } from './auth/auth.module';
-import { ChatModule } from './chat/chat.module';
 import { DatabaseModule } from './database/database.module';
-import { ConversationModule } from './conversation/conversation.module';
-import { TaskModule } from './task/task.module';
+import { AuthModule } from './auth/auth.module';
 import { UserProfileModule } from './user-profile/user-profile.module';
+import { ProjectModule } from './project/project.module';
+import { ConversationModule } from './conversation/conversation.module';
+import { ContextModule } from './context/context.module';
+import { AIModule } from './ai/ai.module';
+import { MemoryModule } from './memory/memory.module';
+import { MessageProcessingModule } from './message-processing/message-processing.module';
+import { McpModule } from './mcp/mcp.module';
 
 @Module({
   imports: [
@@ -18,11 +22,15 @@ import { UserProfileModule } from './user-profile/user-profile.module';
       },
     ]),
     DatabaseModule,
+    McpModule,
     AuthModule,
-    ChatModule,
-    ConversationModule,
-    TaskModule,
     UserProfileModule,
+    ProjectModule,
+    ConversationModule,
+    ContextModule,
+    AIModule,
+    MemoryModule,
+    MessageProcessingModule,
   ],
 })
 export class AppModule {}

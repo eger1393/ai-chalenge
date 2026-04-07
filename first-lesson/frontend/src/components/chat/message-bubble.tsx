@@ -21,14 +21,13 @@ interface MessageBubbleProps {
   showCheckpointButton?: boolean;
   messageId?: string;
   debugData?: MessageDebugData;
-  isTestGenerated?: boolean;
 }
 
-export function MessageBubble({ role, content, error, appliedParams, cost, usage, durationMs, truncation, contextUsedTokens, contextMaxTokens, onCreateCheckpoint, showCheckpointButton, messageId, debugData, isTestGenerated }: MessageBubbleProps) {
+export function MessageBubble({ role, content, error, appliedParams, cost, usage, durationMs, truncation, contextUsedTokens, contextMaxTokens, onCreateCheckpoint, showCheckpointButton, messageId, debugData }: MessageBubbleProps) {
   if (role === 'user') {
     return (
       <div className="flex justify-end mb-4">
-        <div className={`max-w-[70%] px-4 py-3 text-white rounded-2xl rounded-tr-sm text-sm leading-relaxed ${isTestGenerated ? 'bg-indigo-400' : 'bg-indigo-600'}`}>
+        <div className="max-w-[70%] px-4 py-3 text-white rounded-2xl rounded-tr-sm text-sm leading-relaxed bg-indigo-600">
           {content}
         </div>
       </div>

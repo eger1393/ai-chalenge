@@ -9,9 +9,29 @@ services:
       POSTGRES_PASSWORD: chatpass
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d
     networks:
       - app-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatuser -d chatdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  postgres-mcp:
+    build:
+      context: ./postgres-mcp
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://chatreader:chatreader_readonly@postgres:5432/chatdb
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   backend:
     build:
@@ -21,11 +41,14 @@ services:
       - "3000:3000"
     env_file:
       - .env
+    environment:
+      - MCP_POSTGRES_URL=http://postgres-mcp:8096
     networks:
       - app-network
     restart: unless-stopped
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   frontend:
     build:

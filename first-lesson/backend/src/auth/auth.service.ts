@@ -1,7 +1,13 @@
-import { Injectable, UnauthorizedException, ConflictException, OnModuleInit, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+  OnModuleInit,
+  Logger,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { DatabaseService } from '../database/database.service';
+import { UserRepository } from './repositories/user.repository';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -9,7 +15,7 @@ export class AuthService implements OnModuleInit {
 
   constructor(
     private jwtService: JwtService,
-    private readonly db: DatabaseService,
+    private readonly userRepository: UserRepository,
   ) {}
 
   async onModuleInit() {
@@ -21,41 +27,40 @@ export class AuthService implements OnModuleInit {
     const adminPasswordHash = process.env.ADMIN_PASSWORD_HASH;
     if (!adminUsername || !adminPasswordHash) return;
 
-    const { rows } = await this.db.query(
-      'INSERT INTO users (username, password_hash, role) VALUES ($1, $2, $3) ON CONFLICT (username) DO NOTHING RETURNING username',
-      [adminUsername, adminPasswordHash, 'admin'],
+    const created = await this.userRepository.createIfNotExists(
+      adminUsername,
+      adminPasswordHash,
+      'admin',
     );
-    if (rows.length > 0) {
+    if (created) {
       this.logger.log(`Seeded admin user: ${adminUsername}`);
     }
   }
 
   async login(username: string, password: string) {
-    const { rows } = await this.db.query(
-      'SELECT username, password_hash FROM users WHERE username = $1',
-      [username],
-    );
-    if (rows.length === 0) {
+    const user = await this.userRepository.findByUsername(username);
+    if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const isValid = await bcrypt.compare(password, rows[0].password_hash);
+    const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return this.generateTokens(username);
+    return this.generateTokens(user.id, user.username);
   }
 
   async register(username: string, password: string) {
     const hash = await bcrypt.hash(password, 10);
     try {
-      const { rows } = await this.db.query(
-        `INSERT INTO users (username, password_hash) VALUES ($1, $2)
-         RETURNING id, username, role, created_at AS "createdAt"`,
-        [username, hash],
-      );
-      return rows[0];
+      const user = await this.userRepository.create(username, hash, 'user');
+      return {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        createdAt: user.created_at,
+      };
     } catch (err: any) {
       if (err.code === '23505') {
         throw new ConflictException('Username already exists');
@@ -72,31 +77,35 @@ export class AuthService implements OnModuleInit {
       if (payload.type !== 'refresh') {
         throw new UnauthorizedException('Invalid token type');
       }
-      return this.generateTokens(payload.username);
+      return this.generateTokens(payload.sub, payload.username);
     } catch {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
   }
 
-  async getMe(user: { username: string }) {
-    const { rows } = await this.db.query(
-      'SELECT role FROM users WHERE username = $1',
-      [user.username],
-    );
-    return { username: user.username, role: rows[0]?.role || 'user' };
+  async getMe(user: { userId: string; username: string }) {
+    const found = await this.userRepository.findById(user.userId);
+    return {
+      username: found?.username || user.username,
+      role: found?.role || 'user',
+    };
   }
 
-  private generateTokens(username: string) {
+  private generateTokens(userId: string, username: string) {
     const secret = process.env.JWT_SECRET || 'default-secret';
-    const accessExpiration = parseInt(process.env.JWT_ACCESS_EXPIRATION || '900');
-    const refreshExpiration = parseInt(process.env.JWT_REFRESH_EXPIRATION || '604800');
+    const accessExpiration = parseInt(
+      process.env.JWT_ACCESS_EXPIRATION || '900',
+    );
+    const refreshExpiration = parseInt(
+      process.env.JWT_REFRESH_EXPIRATION || '604800',
+    );
 
     const accessToken = this.jwtService.sign(
-      { sub: username, username, type: 'access' },
+      { sub: userId, username, type: 'access' },
       { secret, expiresIn: accessExpiration },
     );
     const refreshToken = this.jwtService.sign(
-      { sub: username, username, type: 'refresh' },
+      { sub: userId, username, type: 'refresh' },
       { secret, expiresIn: refreshExpiration },
     );
 
