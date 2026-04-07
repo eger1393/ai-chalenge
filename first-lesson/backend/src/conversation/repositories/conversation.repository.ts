@@ -101,10 +101,10 @@ export class ConversationRepository extends BaseRepository<Conversation> {
         data.title || 'New dialog',
         data.model || 'gpt-4o-mini',
         data.systemPrompt || null,
-        data.temperature ?? null,
-        data.maxTokens ?? null,
-        data.repetitionPenalty ?? null,
-        data.contextLimit ?? null,
+        data.temperature ?? 1.0,
+        data.maxTokens ?? 16384,
+        data.repetitionPenalty ?? 0,
+        data.contextLimit ?? 128000,
       ],
     );
     return mapRow(rows[0]);
