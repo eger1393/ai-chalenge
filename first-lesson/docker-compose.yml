@@ -54,10 +54,10 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://167.235.226.104:6500/api
     ports:
       - "6501:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:6500/api
     networks:
       - app-network
     restart: unless-stopped
