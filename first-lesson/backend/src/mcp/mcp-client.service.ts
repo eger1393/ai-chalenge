@@ -145,8 +145,14 @@ export class McpClientService implements OnModuleDestroy {
       return 'MCP PostgreSQL is not configured';
     }
 
+    const sql = `SELECT table_name, string_agg(column_name || ' ' || data_type, ', ' ORDER BY ordinal_position) AS columns
+FROM information_schema.columns
+WHERE table_schema = 'public'
+GROUP BY table_name
+ORDER BY table_name`;
+
     return this.withReconnect(async () => {
-      const result = await this.client!.callTool({ name: 'list_tables', arguments: {} });
+      const result = await this.client!.callTool({ name: 'query', arguments: { sql } });
       return this.extractTextContent(result);
     });
   }
