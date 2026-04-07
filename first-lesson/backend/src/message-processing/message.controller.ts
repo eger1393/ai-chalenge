@@ -21,7 +21,7 @@ export class MessageController {
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 10, ttl: 60000 } })
   async sendMessage(
-    @Request() req: { user: { sub: string } },
+    @Request() req: { user: { userId: string; username: string } },
     @Param('id') conversationId: string,
     @Body() dto: SendMessageDto,
     @Res() res: Response,
@@ -36,7 +36,7 @@ export class MessageController {
     };
 
     try {
-      const userId = req.user.sub;
+      const userId = req.user.userId;
 
       // If params provided, update conversation params
       if (dto.params) {
