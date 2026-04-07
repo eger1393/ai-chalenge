@@ -145,7 +145,8 @@ export class StepRunnerService {
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      this.logger.error(`Message ${messageId}: step ${stepType} failed: ${message}`);
+      const stack = err instanceof Error ? err.stack : undefined;
+      this.logger.error(`Message ${messageId}: step ${stepType} failed: ${message}`, stack);
 
       await this.stepRepository.updateStep(step.id, { status: 'failed' });
       throw err;
@@ -375,7 +376,8 @@ export class StepRunnerService {
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      this.logger.error(`Message ${messageId}: step ${stepType} with tools failed: ${message}`);
+      const stack = err instanceof Error ? err.stack : undefined;
+      this.logger.error(`Message ${messageId}: step ${stepType} with tools failed: ${message}`, stack);
 
       await this.stepRepository.updateStep(step.id, { status: 'failed' });
       throw err;

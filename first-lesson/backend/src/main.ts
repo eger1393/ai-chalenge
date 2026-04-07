@@ -1,7 +1,8 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -25,8 +26,12 @@ async function bootstrap() {
     }),
   );
 
+  app.useGlobalFilters(new GlobalExceptionFilter());
+
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  console.log(`Backend running on port ${port}`);
+
+  const logger = new Logger('Bootstrap');
+  logger.log(`Backend running on port ${port}`);
 }
 bootstrap();

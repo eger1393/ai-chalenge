@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, Res } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request, Res, Logger } from '@nestjs/common';
 import { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -10,6 +10,8 @@ import { StepRepository } from './repositories/step.repository';
 
 @Controller()
 export class MessageController {
+  private readonly logger = new Logger(MessageController.name);
+
   constructor(
     private readonly orchestrator: StepOrchestratorService,
     private readonly messageRepository: MessageRepository,
@@ -72,6 +74,8 @@ export class MessageController {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
+      const stack = err instanceof Error ? err.stack : undefined;
+      this.logger.error(`SSE sendMessage failed: ${message}`, stack);
       res.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
     } finally {
       res.end();
@@ -104,6 +108,8 @@ export class MessageController {
       await this.orchestrator.resumeMessage(id, onEvent);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
+      const stack = err instanceof Error ? err.stack : undefined;
+      this.logger.error(`SSE resumeMessage failed: ${message}`, stack);
       res.write(`data: ${JSON.stringify({ type: 'error', error: message })}\n\n`);
     } finally {
       res.end();

@@ -254,7 +254,8 @@ export class StepOrchestratorService {
       );
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-      this.logger.error(`Message ${messageId} error: ${errorMsg}`);
+      const stack = err instanceof Error ? err.stack : undefined;
+      this.logger.error(`Message ${messageId} error: ${errorMsg}`, stack);
 
       await this.messageRepository.updateStatus(messageId, 'failed', undefined, errorMsg);
       onEvent({ type: 'failed', messageId, error: errorMsg });
@@ -405,7 +406,8 @@ export class StepOrchestratorService {
       });
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error';
-      this.logger.error(`Message resume ${messageId} error: ${errorMsg}`);
+      const stack = err instanceof Error ? err.stack : undefined;
+      this.logger.error(`Message resume ${messageId} error: ${errorMsg}`, stack);
       await this.messageRepository.updateStatus(messageId, 'failed', undefined, errorMsg);
       onEvent({ type: 'failed', messageId, error: errorMsg });
     }
