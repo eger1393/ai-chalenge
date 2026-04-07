@@ -9,6 +9,10 @@ import { PipelineControls } from './pipeline-controls';
 const KNOWN_TOOL_LABELS: Record<string, string> = {
   query: 'SQL запрос',
   list_tables: 'Структура БД',
+  search_repos: 'Поиск репозиториев',
+  get_description: 'Описание репозитория',
+  list_branches: 'Список веток',
+  get_commits: 'Коммиты',
 };
 
 const SERVER_ICONS: Record<string, typeof Database> = {
@@ -27,8 +31,8 @@ const SERVER_COLORS: Record<string, { border: string; bg: string; text: string }
 
 const DEFAULT_COLORS = { border: 'border-gray-200', bg: 'bg-gray-50/50', text: 'text-gray-700' };
 
-const SERVER_COLOR_MAP: Record<string, string> = { postgres: 'blue' };
-const SERVER_ICON_MAP: Record<string, string> = { postgres: 'database' };
+const SERVER_COLOR_MAP: Record<string, string> = { postgres: 'blue', 'github-explorer': 'purple' };
+const SERVER_ICON_MAP: Record<string, string> = { postgres: 'database', 'github-explorer': 'globe' };
 
 function getToolInfo(toolCall: ToolCallData) {
   const parts = toolCall.name.split('__');
@@ -51,7 +55,7 @@ function ToolCallCard({ toolCall, serverIcon, colors }: {
   let displayArgs = toolCall.arguments;
   try {
     const parsed = JSON.parse(toolCall.arguments);
-    displayArgs = parsed.sql || parsed.query || JSON.stringify(parsed, null, 2);
+    displayArgs = parsed.sql || parsed.query || parsed.repository || JSON.stringify(parsed, null, 2);
   } catch {
     // keep raw string
   }

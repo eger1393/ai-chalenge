@@ -33,6 +33,14 @@ services:
       postgres:
         condition: service_healthy
 
+  github-explorer-mcp:
+    build:
+      context: ./github-explorer-mcp
+      dockerfile: Dockerfile
+    networks:
+      - app-network
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -43,6 +51,7 @@ services:
       - .env
     environment:
       - MCP_POSTGRES_URL=http://postgres-mcp:8096/mcp
+      - MCP_GITHUB_EXPLORER_URL=http://github-explorer-mcp:8097/mcp
     networks:
       - app-network
     restart: unless-stopped

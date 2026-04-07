@@ -6,6 +6,13 @@
       "icon": "database",
       "color": "blue",
       "enabled": true
+    },
+    "github-explorer": {
+      "url": "${MCP_GITHUB_EXPLORER_URL}",
+      "displayName": "GitHub Explorer",
+      "icon": "globe",
+      "color": "purple",
+      "enabled": true
     }
   }
 }

@@ -8,7 +8,9 @@ ChatGPT-клиент с аутентификацией, историей диа�
 first-lesson/
 ├── backend/                    # NestJS API
 ├── frontend/                   # Next.js 14 SPA
-├── docker-compose.yml          # postgres + backend + frontend
+├── github-explorer-mcp/        # MCP-сервер GitHub (stdio + supergateway)
+├── postgres-mcp/               # MCP-сервер PostgreSQL (stdio + supergateway)
+├── docker-compose.yml          # 5 сервисов: postgres, postgres-mcp, github-explorer-mcp, backend, frontend
 ├── deploy.md                   # Процедура деплоя (SSH, порты, скрипты)
 ├── swarm-report/               # Отчёты задач
 └── PROJECT_MAP.md              # ← этот файл
@@ -145,12 +147,13 @@ src/
 
 ## Инфраструктура
 
-### Docker Compose (4 сервиса)
+### Docker Compose (5 сервисов)
 
 | Сервис | Образ | Порты (local/server) | Назначение |
 |--------|-------|---------------------|-----------|
 | postgres | postgres:16-alpine | internal 5432 | БД (healthcheck, init: chatreader user) |
 | postgres-mcp | ./postgres-mcp/Dockerfile | internal 8096 | MCP-сервер PostgreSQL (read-only, SSE) |
+| github-explorer-mcp | ./github-explorer-mcp/Dockerfile | internal 8097 | MCP-сервер GitHub Explorer (Streamable HTTP) |
 | backend | ./backend/Dockerfile | 3000/6500 | NestJS API |
 | frontend | ./frontend/Dockerfile | 3001/6501 | Next.js SPA |
 
@@ -164,6 +167,7 @@ src/
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` | backend | Единственный пользователь |
 | `OPENAI_MAX_TOKENS` | backend | Лимит токенов (default 16384) |
 | `MCP_POSTGRES_URL` | backend | URL MCP PostgreSQL сервера (SSE, опционально) |
+| `MCP_GITHUB_EXPLORER_URL` | backend | URL MCP GitHub Explorer (Streamable HTTP) |
 | `FRONTEND_URL` | backend | CORS origin |
 | `NEXT_PUBLIC_API_URL` | frontend | URL бэкенда |
 
