@@ -80,6 +80,8 @@ export function usePipeline() {
             name: event.name || '',
             arguments: event.arguments || '',
             result: event.result || '',
+            server: (event as any).server || '',
+            displayName: (event as any).displayName || '',
           };
           return { ...prev, toolCalls: [...prev.toolCalls, toolCall] };
         }

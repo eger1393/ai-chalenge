@@ -71,9 +71,11 @@ src/
 │   ├── token.service.ts        # countTokens (tiktoken)
 │   └── dto/ai-params.dto.ts    # ALLOWED_MODELS, MODEL_PRICING, MODEL_CONTEXT_WINDOWS
 │
-├── mcp/                        # @Global — MCP PostgreSQL client (SSE transport)
-│   ├── mcp.module.ts           # Global module, exports McpClientService
-│   └── mcp-client.service.ts   # Lazy SSE connection, listTables(), query(), auto-reconnect
+├── mcp/                        # @Global — Dynamic MCP tool discovery & routing
+│   ├── mcp.module.ts           # Global module, exports McpRegistryService, McpToolRouter
+│   ├── mcp-connection.ts       # Single MCP server connection (connect, listTools, callTool)
+│   ├── mcp-registry.service.ts # Registry of N MCP servers, dynamic tool catalog, prefix namespace
+│   └── mcp-tool-router.service.ts # Routes prefixed tool_call (server__tool) to correct MCP server
 │
 ├── memory/                     # Сборка system prompt
 │   └── memory-assembler.service.ts  # 4-слойный builder (invariants, long-term, working, short-term)

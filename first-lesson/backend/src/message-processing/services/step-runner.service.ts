@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import OpenAI from 'openai';
 import { OpenAIService } from '../../ai/openai.service';
 import { TokenService } from '../../ai/token.service';
-import { McpClientService } from '../../mcp/mcp-client.service';
+import { McpRegistryService } from '../../mcp/mcp-registry.service';
+import { McpToolRouter } from '../../mcp/mcp-tool-router.service';
 import { StepRepository, MessageStep } from '../repositories/step.repository';
 import { PIPELINE_SECURITY_BLOCK, VALIDATION_INJECTION_CHECK } from './guard.service';
 
@@ -95,13 +96,10 @@ export class StepRunnerService {
     private readonly openaiService: OpenAIService,
     private readonly tokenService: TokenService,
     private readonly stepRepository: StepRepository,
-    private readonly mcpClientService: McpClientService,
+    private readonly mcpRegistry: McpRegistryService,
+    private readonly mcpToolRouter: McpToolRouter,
   ) {}
 
-  /**
-   * Runs a single pipeline step: creates the step record, streams OpenAI,
-   * collects output, updates the step record, returns output text.
-   */
   async runStep(params: StepRunParams): Promise<{ output: string; step: MessageStep }> {
     const { messageId, stepType, attempt, model, temperature, maxTokens, messages, onEvent } = params;
     const startTime = Date.now();
@@ -193,49 +191,10 @@ export class StepRunnerService {
 
   // ── Tool-call aware step runner ──────────────────────────────────
 
-  private static readonly DB_TOOLS: OpenAI.Chat.Completions.ChatCompletionTool[] = [
-    {
-      type: 'function',
-      function: {
-        name: 'query_database',
-        description:
-          'Execute a read-only SQL query against the PostgreSQL database. Use for retrieving data about conversations, messages, users, and projects.',
-        parameters: {
-          type: 'object',
-          properties: {
-            sql: {
-              type: 'string',
-              description:
-                'SQL SELECT query. Only SELECT is allowed. Example: SELECT * FROM conversations LIMIT 10',
-            },
-          },
-          required: ['sql'],
-        },
-      },
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'list_database_tables',
-        description:
-          'Retrieve a list of all tables in the database with their columns. Use when you need to understand the DB schema.',
-        parameters: {
-          type: 'object',
-          properties: {},
-        },
-      },
-    },
-  ];
-
   private static readonly MAX_TOOL_ITERATIONS = 5;
-  private static readonly MAX_QUERY_ROWS = 100;
 
-  /**
-   * Runs a step with OpenAI function-calling (tool call loop).
-   * Falls back to regular runStep() if MCP is unavailable.
-   */
   async runStepWithTools(params: StepRunParams): Promise<{ output: string; step: MessageStep }> {
-    if (!this.mcpClientService.isAvailable()) {
+    if (!this.mcpRegistry.isAvailable()) {
       this.logger.debug('MCP not available, falling back to regular runStep');
       return this.runStep(params);
     }
@@ -258,7 +217,6 @@ export class StepRunnerService {
       `Message ${messageId}: step ${stepType} with tools started (attempt ${attempt}, model ${model})`,
     );
 
-    // Working messages array: supports 'tool' role for function calling
     const workingMessages: Array<{
       role: 'system' | 'user' | 'assistant' | 'tool';
       content: string;
@@ -283,7 +241,7 @@ export class StepRunnerService {
           workingMessages,
           temperature,
           maxTokens,
-          StepRunnerService.DB_TOOLS,
+          this.mcpRegistry.getAllToolsForOpenAI(),
         );
 
         for await (const chunk of stream) {
@@ -300,18 +258,14 @@ export class StepRunnerService {
           }
         }
 
-        // If no tool calls, we have the final text answer
         if (!iterationToolCalls || iterationToolCalls.length === 0) {
           fullText = iterationText;
           break;
         }
 
-        // Process tool calls
-        // Add assistant message with tool_calls (OpenAI expects this)
         workingMessages.push({
           role: 'assistant',
           content: '',
-          // The tool_calls property is added dynamically for the OpenAI API
           ...({
             tool_calls: iterationToolCalls.map((tc) => ({
               id: tc.id,
@@ -328,23 +282,7 @@ export class StepRunnerService {
           let result: string;
           try {
             const args = JSON.parse(argsStr);
-            if (name === 'query_database') {
-              let sql: string = args.sql || '';
-              // Enforce read-only: only SELECT allowed
-              if (!/^\s*SELECT\b/i.test(sql)) {
-                result = 'Error: Only SELECT queries are allowed.';
-              } else {
-                // Enforce row limit
-                if (!/LIMIT\s+\d+/i.test(sql)) {
-                  sql = sql.replace(/;\s*$/, '') + ` LIMIT ${StepRunnerService.MAX_QUERY_ROWS}`;
-                }
-                result = await this.mcpClientService.query(sql);
-              }
-            } else if (name === 'list_database_tables') {
-              result = await this.mcpClientService.listTables();
-            } else {
-              result = `Unknown tool: ${name}`;
-            }
+            result = await this.mcpToolRouter.executeTool(name, args);
           } catch (toolError: unknown) {
             const errMsg = toolError instanceof Error ? toolError.message : 'Unknown tool error';
             this.logger.error(`Message ${messageId}: tool_call ${name} failed: ${errMsg}`);
@@ -354,15 +292,16 @@ export class StepRunnerService {
           const truncatedResult = result.length > 500 ? result.slice(0, 500) + '...(truncated)' : result;
           this.logger.log(`Message ${messageId}: tool_call ${name} result (${result.length} chars): ${truncatedResult}`);
 
-          // Emit SSE event for frontend
+          const serverMeta = this.mcpToolRouter.getServerMetaForTool(name);
           onEvent({
             type: 'tool_call',
             name,
+            server: serverMeta?.serverName || '',
+            displayName: serverMeta?.displayName || '',
             arguments: argsStr,
             result: result.length > 2000 ? result.slice(0, 2000) + '... (truncated)' : result,
           });
 
-          // Add tool result message
           workingMessages.push({
             role: 'tool',
             content: result,
@@ -433,15 +372,7 @@ export class StepRunnerService {
   }
 
   private buildCapabilitiesBlock(): string {
-    if (!this.mcpClientService.isAvailable()) return '';
-    return (
-      '\n\n═══ ДОСТУПНЫЕ ИНСТРУМЕНТЫ ═══\n' +
-      'На этапе выполнения доступны инструменты для работы с PostgreSQL:\n' +
-      '- query_database — выполнить SQL SELECT запрос (только чтение)\n' +
-      '- list_database_tables — получить список таблиц и их структуру (схема БД)\n\n' +
-      'Учитывай наличие этих инструментов при планировании и оценке.\n' +
-      '═════════════════════════════\n'
-    );
+    return this.mcpRegistry.buildCapabilitiesBlock();
   }
 
   buildPlanningMessages(

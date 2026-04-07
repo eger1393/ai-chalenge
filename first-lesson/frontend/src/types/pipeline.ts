@@ -29,6 +29,8 @@ export interface ToolCallData {
   name: string;
   arguments: string;
   result: string;
+  server?: string;
+  displayName?: string;
 }
 
 export const PIPELINE_STEP_LABELS: Record<PipelineStepType, string> = {

@@ -1,16 +1,22 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 
-// The @modelcontextprotocol/sdk uses package.json "exports" which requires
-// moduleResolution "node16" or "bundler". Since this project uses "commonjs",
-// we use require() for runtime and keep type safety via inline typing.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { Client } = require('@modelcontextprotocol/sdk/client');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { StreamableHTTPClientTransport } = require('@modelcontextprotocol/sdk/client/streamableHttp.js');
 
-/** Minimal type definitions for MCP Client used in this service */
+export interface McpToolDefinition {
+  name: string;
+  description?: string;
+  inputSchema: Record<string, unknown>;
+}
+
 interface McpCallToolResult {
   content: Array<{ type: string; text?: string }>;
+}
+
+interface McpListToolsResult {
+  tools?: McpToolDefinition[];
 }
 
 interface McpTransport {
@@ -22,62 +28,39 @@ interface McpClient {
   connect(transport: McpTransport): Promise<void>;
   close(): Promise<void>;
   callTool(params: { name: string; arguments: Record<string, unknown> }): Promise<McpCallToolResult>;
+  listTools(): Promise<McpListToolsResult>;
 }
 
-@Injectable()
-export class McpClientService implements OnModuleDestroy {
-  private readonly logger = new Logger(McpClientService.name);
+export class McpConnection {
+  private readonly logger: Logger;
   private client: McpClient | null = null;
   private transport: McpTransport | null = null;
-  private connecting = false;
   private connected = false;
+  private connectPromise: Promise<void> | null = null;
 
-  private get mcpUrl(): string | undefined {
-    return process.env.MCP_POSTGRES_URL;
+  constructor(
+    private readonly serverName: string,
+    private readonly url: string,
+  ) {
+    this.logger = new Logger(`McpConnection:${serverName}`);
   }
 
-  /** Returns true if MCP_POSTGRES_URL is configured */
-  isAvailable(): boolean {
-    return !!this.mcpUrl;
-  }
-
-  /** Lazy connect: establishes connection on first call */
   private async ensureConnected(): Promise<void> {
     if (this.connected && this.client) return;
-    if (this.connecting) {
-      // Wait for ongoing connection attempt
-      await new Promise<void>((resolve) => {
-        const interval = setInterval(() => {
-          if (!this.connecting) {
-            clearInterval(interval);
-            resolve();
-          }
-        }, 100);
-      });
-      return;
-    }
-
-    this.connecting = true;
-    try {
-      await this.connect();
-    } finally {
-      this.connecting = false;
-    }
+    if (this.connectPromise) return this.connectPromise;
+    this.connectPromise = this.connect().finally(() => {
+      this.connectPromise = null;
+    });
+    return this.connectPromise;
   }
 
   private async connect(): Promise<void> {
-    const url = this.mcpUrl;
-    if (!url) {
-      throw new Error('MCP_POSTGRES_URL is not configured');
-    }
-
-    this.logger.log(`Connecting to MCP server at ${url}`);
+    this.logger.log(`Connecting to MCP server "${this.serverName}" at ${this.url}`);
 
     try {
-      // Close previous connection if any
       await this.disconnect();
 
-      this.transport = new StreamableHTTPClientTransport(new URL(url));
+      this.transport = new StreamableHTTPClientTransport(new URL(this.url));
 
       this.transport.onerror = (error: Error) => {
         this.logger.error(`MCP transport error: ${error.message}`);
@@ -96,16 +79,16 @@ export class McpClientService implements OnModuleDestroy {
 
       await this.client.connect(this.transport);
       this.connected = true;
-      this.logger.log('Connected to MCP server successfully');
+      this.logger.log(`Connected to MCP server "${this.serverName}" successfully`);
     } catch (error: unknown) {
       this.connected = false;
       const message = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Failed to connect to MCP server: ${message}`);
+      this.logger.error(`Failed to connect to MCP server "${this.serverName}": ${message}`);
       throw error;
     }
   }
 
-  private async disconnect(): Promise<void> {
+  async disconnect(): Promise<void> {
     try {
       if (this.client) {
         await this.client.close();
@@ -118,7 +101,6 @@ export class McpClientService implements OnModuleDestroy {
     this.connected = false;
   }
 
-  /** Reconnect on failure, then retry the operation once */
   private async withReconnect<T>(operation: () => Promise<T>): Promise<T> {
     try {
       await this.ensureConnected();
@@ -139,32 +121,16 @@ export class McpClientService implements OnModuleDestroy {
     }
   }
 
-  /** Lists all tables in the database */
-  async listTables(): Promise<string> {
-    if (!this.isAvailable()) {
-      return 'MCP PostgreSQL is not configured';
-    }
-
-    const sql = `SELECT table_name, string_agg(column_name || ' ' || data_type, ', ' ORDER BY ordinal_position) AS columns
-FROM information_schema.columns
-WHERE table_schema = 'public'
-GROUP BY table_name
-ORDER BY table_name`;
-
+  async listTools(): Promise<McpToolDefinition[]> {
     return this.withReconnect(async () => {
-      const result = await this.client!.callTool({ name: 'query', arguments: { sql } });
-      return this.extractTextContent(result);
+      const result = await this.client!.listTools();
+      return result.tools || [];
     });
   }
 
-  /** Executes a read-only SQL query via MCP */
-  async query(sql: string): Promise<string> {
-    if (!this.isAvailable()) {
-      return 'MCP PostgreSQL is not configured';
-    }
-
+  async callTool(name: string, args: Record<string, unknown>): Promise<string> {
     return this.withReconnect(async () => {
-      const result = await this.client!.callTool({ name: 'query', arguments: { sql } });
+      const result = await this.client!.callTool({ name, arguments: args });
       return this.extractTextContent(result);
     });
   }
@@ -178,10 +144,5 @@ ORDER BY table_name`;
       .filter((c) => c.type === 'text' && c.text)
       .map((c) => c.text)
       .join('\n');
-  }
-
-  async onModuleDestroy(): Promise<void> {
-    await this.disconnect();
-    this.logger.log('MCP client disconnected on module destroy');
   }
 }

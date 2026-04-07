@@ -1,9 +1,10 @@
 import { Global, Module } from '@nestjs/common';
-import { McpClientService } from './mcp-client.service';
+import { McpRegistryService } from './mcp-registry.service';
+import { McpToolRouter } from './mcp-tool-router.service';
 
 @Global()
 @Module({
-  providers: [McpClientService],
-  exports: [McpClientService],
+  providers: [McpRegistryService, McpToolRouter],
+  exports: [McpRegistryService, McpToolRouter],
 })
 export class McpModule {}

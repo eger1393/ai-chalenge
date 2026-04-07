@@ -1,20 +1,52 @@
 'use client';
 
 import { useState } from 'react';
-import { ShieldAlert, Database, ChevronDown, ChevronRight } from 'lucide-react';
+import { ShieldAlert, Database, Server, Globe, ChevronDown, ChevronRight } from 'lucide-react';
 import { PipelineRunState, ToolCallData } from '@/types/pipeline';
 import { PipelineStepper } from './pipeline-stepper';
 import { PipelineControls } from './pipeline-controls';
 
-const TOOL_LABELS: Record<string, string> = {
-  query_database: 'SQL запрос',
-  list_database_tables: 'Структура БД',
+const KNOWN_TOOL_LABELS: Record<string, string> = {
+  query: 'SQL запрос',
+  list_tables: 'Структура БД',
 };
 
-function ToolCallCard({ toolCall }: { toolCall: ToolCallData }) {
+const SERVER_ICONS: Record<string, typeof Database> = {
+  database: Database,
+  server: Server,
+  globe: Globe,
+};
+
+const SERVER_COLORS: Record<string, { border: string; bg: string; text: string }> = {
+  blue: { border: 'border-blue-200', bg: 'bg-blue-50/50', text: 'text-blue-700' },
+  green: { border: 'border-green-200', bg: 'bg-green-50/50', text: 'text-green-700' },
+  purple: { border: 'border-purple-200', bg: 'bg-purple-50/50', text: 'text-purple-700' },
+  indigo: { border: 'border-indigo-200', bg: 'bg-indigo-50/50', text: 'text-indigo-700' },
+  amber: { border: 'border-amber-200', bg: 'bg-amber-50/50', text: 'text-amber-700' },
+};
+
+const DEFAULT_COLORS = { border: 'border-gray-200', bg: 'bg-gray-50/50', text: 'text-gray-700' };
+
+const SERVER_COLOR_MAP: Record<string, string> = { postgres: 'blue' };
+const SERVER_ICON_MAP: Record<string, string> = { postgres: 'database' };
+
+function getToolInfo(toolCall: ToolCallData) {
+  const parts = toolCall.name.split('__');
+  const originalName = parts.length > 1 ? parts.slice(1).join('__') : toolCall.name;
+  const label = KNOWN_TOOL_LABELS[originalName] || originalName.replace(/_/g, ' ');
+  const serverLabel = toolCall.displayName || (parts.length > 1 ? parts[0] : '');
+  return { label, serverLabel, originalName };
+}
+
+function ToolCallCard({ toolCall, serverIcon, colors }: {
+  toolCall: ToolCallData;
+  serverIcon: string;
+  colors: { border: string; bg: string; text: string };
+}) {
   const [expanded, setExpanded] = useState(false);
-  const label = TOOL_LABELS[toolCall.name] || toolCall.name;
+  const { label, serverLabel } = getToolInfo(toolCall);
   const isLongResult = toolCall.result.length > 200;
+  const Icon = SERVER_ICONS[serverIcon] || Server;
 
   let displayArgs = toolCall.arguments;
   try {
@@ -25,14 +57,14 @@ function ToolCallCard({ toolCall }: { toolCall: ToolCallData }) {
   }
 
   return (
-    <div className="border border-blue-200 bg-blue-50/50 rounded-lg px-3 py-2 text-xs">
-      <div className="flex items-center gap-1.5 text-blue-700 font-medium mb-1">
-        <Database className="w-3.5 h-3.5 flex-shrink-0" />
-        <span>{label}</span>
+    <div className={`border ${colors.border} ${colors.bg} rounded-lg px-3 py-2 text-xs`}>
+      <div className={`flex items-center gap-1.5 ${colors.text} font-medium mb-1`}>
+        <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+        <span>{serverLabel ? `${serverLabel}: ${label}` : label}</span>
       </div>
 
       {displayArgs && (
-        <pre className="bg-white/70 border border-blue-100 rounded px-2 py-1 mb-1.5 text-[11px] text-gray-700 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-32">
+        <pre className="bg-white/70 border border-gray-100 rounded px-2 py-1 mb-1.5 text-[11px] text-gray-700 font-mono whitespace-pre-wrap break-all overflow-x-auto max-h-32">
           {displayArgs}
         </pre>
       )}
@@ -104,9 +136,13 @@ export function PipelineMessageBubble({ pipelineState, onPause, onResume, onCanc
           {/* Tool calls */}
           {pipelineState.toolCalls.length > 0 && (
             <div className="flex flex-col gap-2 mb-3">
-              {pipelineState.toolCalls.map((tc, i) => (
-                <ToolCallCard key={i} toolCall={tc} />
-              ))}
+              {pipelineState.toolCalls.map((tc, i) => {
+                const serverPrefix = tc.server || tc.name.split('__')[0] || '';
+                const serverColorKey = SERVER_COLOR_MAP[serverPrefix] || 'gray';
+                const colors = SERVER_COLORS[serverColorKey] || DEFAULT_COLORS;
+                const iconKey = SERVER_ICON_MAP[serverPrefix] || 'server';
+                return <ToolCallCard key={i} toolCall={tc} serverIcon={iconKey} colors={colors} />;
+              })}
             </div>
           )}
 

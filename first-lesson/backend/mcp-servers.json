@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "postgres": {
+      "url": "${MCP_POSTGRES_URL}",
+      "displayName": "PostgreSQL",
+      "icon": "database",
+      "color": "blue",
+      "enabled": true
+    }
+  }
+}
