@@ -11,44 +11,11 @@ export class MigrationsService {
   ) {}
 
   async runMigrations(): Promise<void> {
-    this.logger.log('Running migrations — dropping old tables and creating new schema...');
+    this.logger.log('Running migrations — ensuring schema exists...');
 
-    await this.dropOldTables();
     await this.createNewSchema();
 
     this.logger.log('Migrations completed successfully');
-  }
-
-  private async dropOldTables(): Promise<void> {
-    const dropStatements = [
-      'DROP TABLE IF EXISTS task_invariants CASCADE',
-      'DROP TABLE IF EXISTS pipeline_steps CASCADE',
-      'DROP TABLE IF EXISTS pipeline_runs CASCADE',
-      'DROP TABLE IF EXISTS expert_opinions CASCADE',
-      'DROP TABLE IF EXISTS checkpoints CASCADE',
-      'DROP TABLE IF EXISTS message_debug_data CASCADE',
-      'DROP TABLE IF EXISTS conversation_facts CASCADE',
-      'DROP TABLE IF EXISTS conversation_branches CASCADE',
-      'DROP TABLE IF EXISTS messages CASCADE',
-      'DROP TABLE IF EXISTS conversations CASCADE',
-      'DROP TABLE IF EXISTS tasks CASCADE',
-      'DROP TABLE IF EXISTS user_profiles CASCADE',
-      'DROP TABLE IF EXISTS users CASCADE',
-      'DROP TABLE IF EXISTS _migrations CASCADE',
-      // New schema tables (in case of re-run)
-      'DROP TABLE IF EXISTS message_debug CASCADE',
-      'DROP TABLE IF EXISTS message_meta CASCADE',
-      'DROP TABLE IF EXISTS message_steps CASCADE',
-      'DROP TABLE IF EXISTS project_invariants CASCADE',
-      'DROP TABLE IF EXISTS conversation_contexts CASCADE',
-      'DROP TABLE IF EXISTS projects CASCADE',
-    ];
-
-    for (const sql of dropStatements) {
-      await this.db.query(sql);
-    }
-
-    this.logger.log('Old tables dropped');
   }
 
   private async createNewSchema(): Promise<void> {
