@@ -42,7 +42,7 @@ services:
     env_file:
       - .env
     environment:
-      - MCP_POSTGRES_URL=http://postgres-mcp:8096
+      - MCP_POSTGRES_URL=http://postgres-mcp:8096/sse
     networks:
       - app-network
     restart: unless-stopped
