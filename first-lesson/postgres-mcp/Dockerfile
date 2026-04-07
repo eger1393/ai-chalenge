@@ -1,6 +1,6 @@
 FROM node:20-alpine
 
-RUN npm install -g @modelcontextprotocol/server-postgres @anthropic-ai/supergateway
+RUN npm install -g @modelcontextprotocol/server-postgres supergateway
 
 EXPOSE 8096
 
