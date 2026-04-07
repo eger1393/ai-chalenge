@@ -56,7 +56,7 @@ src/
 │   ├── conversation.controller.ts  # CRUD /conversations
 │   ├── conversation.service.ts     # create (с context в транзакции), findAll, update, remove
 │   ├── repositories/conversation.repository.ts
-│   └── repositories/message.repository.ts  # envelope CRUD, meta, debug, getForContext
+│   └── repositories/message.repository.ts  # envelope CRUD, meta, debug, getForContext, getMetaByMessageId
 │
 ├── context/                    # Стратегии контекста, facts, branches
 │   ├── context.controller.ts   # /conversations/:id/context, /facts, /branches, /checkpoints
@@ -81,7 +81,7 @@ src/
 │   └── memory-assembler.service.ts  # 4-слойный builder (invariants, long-term, working, short-term)
 │
 └── message-processing/         # Pipeline обработки сообщений
-    ├── message.controller.ts   # POST /conversations/:id/messages (SSE), pause/resume/cancel
+    ├── message.controller.ts   # POST /conversations/:id/messages (SSE), pause/resume/cancel, GET /messages/:id/debug
     ├── services/step-orchestrator.service.ts  # State machine, retry loop, SSE events
     ├── services/step-runner.service.ts        # Запуск шагов, streaming, system prompts, runStepWithTools (function calling)
     ├── services/guard.service.ts              # Injection detection, stage integrity

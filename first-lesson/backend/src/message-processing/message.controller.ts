@@ -123,6 +123,59 @@ export class MessageController {
     return { status: 'cancelled' };
   }
 
+  @Get('messages/:id/debug')
+  @UseGuards(JwtAuthGuard)
+  async getMessageDebug(@Param('id') id: string) {
+    const [meta, debug, steps] = await Promise.all([
+      this.messageRepository.getMetaByMessageId(id),
+      this.messageRepository.getDebugByMessageId(id),
+      this.stepRepository.findByMessageId(id),
+    ]);
+
+    if (!debug && !meta && steps.length === 0) {
+      return { error: 'Debug data not found' };
+    }
+
+    // Build pipeline data from steps
+    const pipelineSteps = steps.map(s => ({
+      stepType: s.stepType,
+      status: s.status,
+      content: s.outputResult ? (typeof s.outputResult === 'object' && (s.outputResult as Record<string, unknown>).text ? (s.outputResult as Record<string, unknown>).text : JSON.stringify(s.outputResult)) : '',
+      attempt: s.attemptNumber,
+      model: s.model || '',
+      promptTokens: s.promptTokens,
+      completionTokens: s.completionTokens,
+      cost: s.cost,
+      durationMs: s.durationMs,
+      validationPassed: s.validationPassed,
+      validationReason: s.validationReason,
+      inputContext: Array.isArray(s.inputContext) ? s.inputContext : [],
+    }));
+
+    const totalCost = steps.reduce((sum, s) => sum + s.cost, 0);
+    const totalTokens = steps.reduce((sum, s) => sum + s.promptTokens + s.completionTokens, 0);
+    const totalAttempts = steps.length > 0 ? Math.max(...steps.map(s => s.attemptNumber)) : 0;
+
+    return {
+      strategyType: debug?.strategyType || 'pipeline',
+      contextMessagesCount: debug?.contextMessagesCount || 0,
+      contextMessagesAfterTruncation: debug?.contextMessagesAfterTruncation || 0,
+      tokenBreakdown: debug?.tokenBreakdown || null,
+      factsSnapshot: debug?.factsSnapshot || null,
+      branchInfo: debug?.branchInfo || null,
+      summaryInfo: debug?.summaryInfo || null,
+      strategyMetadata: debug?.strategyMetadata || null,
+      memoryLayers: debug?.memoryLayers || null,
+      meta: meta || null,
+      pipelineData: {
+        totalAttempts,
+        totalCost,
+        totalTokens,
+        steps: pipelineSteps,
+      },
+    };
+  }
+
   @Get('messages/:id')
   @UseGuards(JwtAuthGuard)
   async getMessage(@Param('id') id: string) {

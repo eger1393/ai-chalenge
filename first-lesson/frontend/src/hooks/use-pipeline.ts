@@ -45,6 +45,7 @@ export function usePipeline() {
                 status: 'running',
                 content: '',
                 attempt: event.attempt,
+                model: (event as any).model,
               },
             ],
           };
@@ -70,6 +71,11 @@ export function usePipeline() {
               ...steps[lastIdx],
               status: 'completed',
               content: event.result || steps[lastIdx].content,
+              model: (event as any).model || steps[lastIdx].model,
+              promptTokens: (event as any).tokens?.prompt || steps[lastIdx].promptTokens,
+              completionTokens: (event as any).tokens?.completion || steps[lastIdx].completionTokens,
+              cost: (event as any).cost || steps[lastIdx].cost,
+              durationMs: (event as any).durationMs || steps[lastIdx].durationMs,
             };
           }
           return { ...prev, steps };
@@ -92,6 +98,8 @@ export function usePipeline() {
             status: 'completed',
             currentStep: 'done',
             finalContent: event.response,
+            totalCost: event.meta?.totalCost ?? prev.totalCost,
+            totalTokens: event.meta?.totalTokens ?? prev.totalTokens,
           };
 
         case 'failed':

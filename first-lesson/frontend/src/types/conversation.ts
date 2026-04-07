@@ -128,6 +128,21 @@ export interface MessageDebugData {
     tokenCount: number;
     content?: string;
   }>;
+  meta?: {
+    appliedModel?: string;
+    appliedTemperature?: number;
+    appliedMaxTokens?: number;
+    appliedRepetitionPenalty?: number;
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+    cost?: number;
+    durationMs?: number;
+    contextUsedTokens?: number;
+    contextMaxTokens?: number;
+    truncatedMessages?: number;
+    truncatedTokens?: number;
+  };
   pipelineData?: {
     totalAttempts: number;
     totalCost: number;

@@ -1,6 +1,6 @@
 import { setTokens, getAccessToken, getRefreshToken, clearTokens } from './tokens';
 import { AIParams } from '@/types/ai-params';
-import { Checkpoint, Conversation, ConversationBranch, ConversationDetail, ConversationFact, ConversationMessage } from '@/types/conversation';
+import { Checkpoint, Conversation, ConversationBranch, ConversationDetail, ConversationFact, ConversationMessage, MessageDebugData } from '@/types/conversation';
 import { Project, ProjectInvariant } from '@/types/task';
 import { UserProfile } from '@/types/personalization';
 import { PipelineSSEEvent } from '@/types/pipeline';
@@ -388,4 +388,8 @@ export async function cancelMessage(messageId: string): Promise<void> {
 
 export async function getMessageDetails(messageId: string) {
   return apiRequest<ConversationMessage>(`/messages/${messageId}`);
+}
+
+export async function getMessageDebug(messageId: string) {
+  return apiRequest<MessageDebugData>(`/messages/${messageId}/debug`);
 }

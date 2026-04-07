@@ -257,6 +257,30 @@ export class MessageRepository extends BaseRepository<Message> {
     return rows.length > 0 ? mapDebugRow(rows[0]) : null;
   }
 
+  async getMetaByMessageId(messageId: string): Promise<MessageMetaData | null> {
+    const { rows } = await this.db.query(
+      `SELECT * FROM message_meta WHERE message_id = $1`,
+      [messageId],
+    );
+    if (rows.length === 0) return null;
+    const row = rows[0];
+    return {
+      appliedModel: row.applied_model ?? undefined,
+      appliedTemperature: row.applied_temperature ?? undefined,
+      appliedMaxTokens: row.applied_max_tokens ?? undefined,
+      appliedRepetitionPenalty: row.applied_repetition_penalty ?? undefined,
+      promptTokens: row.prompt_tokens ?? undefined,
+      completionTokens: row.completion_tokens ?? undefined,
+      totalTokens: row.total_tokens ?? undefined,
+      cost: row.cost ?? undefined,
+      durationMs: row.duration_ms ?? undefined,
+      contextUsedTokens: row.context_used_tokens ?? undefined,
+      contextMaxTokens: row.context_max_tokens ?? undefined,
+      truncatedMessages: row.truncated_messages ?? undefined,
+      truncatedTokens: row.truncated_tokens ?? undefined,
+    };
+  }
+
   async getTotals(
     conversationId: string,
   ): Promise<{ totalTokens: number; totalCost: number }> {
