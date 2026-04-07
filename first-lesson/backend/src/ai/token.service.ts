@@ -20,6 +20,7 @@ export class TokenService {
   }
 
   countTokens(text: string, model: string): number {
+    if (!text) return 0;
     const enc = this.getEncodingForModel(model);
     return enc.encode(text).length;
   }

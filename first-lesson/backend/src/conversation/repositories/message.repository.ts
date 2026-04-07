@@ -100,6 +100,14 @@ export class MessageRepository extends BaseRepository<Message> {
     super(db, 'messages');
   }
 
+  async findById(id: string): Promise<Message | null> {
+    const { rows } = await this.db.query(
+      `SELECT * FROM messages WHERE id = $1`,
+      [id],
+    );
+    return rows.length > 0 ? mapRow(rows[0]) : null;
+  }
+
   async createEnvelope(
     conversationId: string,
     userContent: string,
