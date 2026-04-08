@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { ChevronDown, ChevronRight, Clock, Coins, Hash, Cpu, CheckCircle2, XCircle, FileText, MessageSquare, ArrowRight, Copy, Check } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, Coins, Hash, Cpu, CheckCircle2, XCircle, FileText, MessageSquare, ArrowRight, Copy, Check, Wrench } from 'lucide-react';
 import { MessageDebugData } from '@/types/conversation';
 
 interface DebugPanelProps {
@@ -90,11 +90,35 @@ function PipelineStepCard({ step, index, isExpanded, onToggle }: {
   onToggle: () => void;
 }) {
   const [showInput, setShowInput] = useState(false);
+  const [showToolCalls, setShowToolCalls] = useState(false);
+  const [expandedToolResults, setExpandedToolResults] = useState<Set<number>>(new Set());
   const [showOutput, setShowOutput] = useState(false);
   const colors = STEP_COLORS[step.stepType] || STEP_COLORS.planning;
   const isValidation = step.stepType === 'validation';
   const totalTokens = step.promptTokens + step.completionTokens;
   const inputMessages = step.inputContext || [];
+  const toolCalls = step.toolCalls || [];
+
+  const toggleToolResult = (i: number) => {
+    setExpandedToolResults(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
+  };
+
+  const getToolDisplayName = (name: string) => {
+    const parts = name.split('__');
+    return parts.length > 1 ? parts.slice(1).join('__') : name;
+  };
+
+  const getToolServer = (tc: NonNullable<typeof step.toolCalls>[number]) => {
+    return tc.displayName || tc.server || tc.name.split('__')[0] || '';
+  };
+
+  const formatToolArgs = (args: string): string => {
+    try {
+      return JSON.stringify(JSON.parse(args), null, 2);
+    } catch {
+      return args;
+    }
+  };
 
   return (
     <div className={`rounded-lg border ${colors.border} overflow-hidden`}>
@@ -195,6 +219,69 @@ function PipelineStepCard({ step, index, isExpanded, onToggle }: {
                       </div>
                     </div>
                   ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tool Calls -- collapsible */}
+          {toolCalls.length > 0 && (
+            <div className="border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShowToolCalls(v => !v)}
+                className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left hover:bg-teal-50/50 transition-colors"
+              >
+                <Wrench className="w-3 h-3 text-teal-500" />
+                <span className="text-[11px] font-medium text-teal-600">Tool Calls</span>
+                <span className="text-[10px] text-teal-400 font-mono">{toolCalls.length} вызов{toolCalls.length > 1 ? 'ов' : ''}</span>
+                <span className="flex-1" />
+                {showToolCalls
+                  ? <ChevronDown className="w-3 h-3 text-teal-400" />
+                  : <ChevronRight className="w-3 h-3 text-teal-400" />
+                }
+              </button>
+              {showToolCalls && (
+                <div className="px-3 pb-2 space-y-1.5 max-h-80 overflow-y-auto">
+                  {toolCalls.map((tc, ti) => {
+                    const displayName = getToolDisplayName(tc.name);
+                    const serverLabel = getToolServer(tc);
+                    const isResultLong = tc.result && tc.result.length > 200;
+                    const isResultExpanded = expandedToolResults.has(ti);
+                    return (
+                      <div key={ti} className="rounded border border-teal-100 bg-teal-50/30 px-2.5 py-1.5">
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <Wrench className="w-3 h-3 text-teal-500" />
+                          <span className="text-[11px] font-semibold text-teal-700">{displayName.replace(/_/g, ' ')}</span>
+                          {serverLabel && (
+                            <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-teal-100 text-teal-600">{serverLabel}</span>
+                          )}
+                        </div>
+                        {tc.arguments && (
+                          <pre className="text-[11px] text-gray-600 whitespace-pre-wrap break-words font-mono bg-white/70 border border-gray-100 rounded px-2 py-1 mb-1 max-h-32 overflow-y-auto">
+                            {formatToolArgs(tc.arguments)}
+                          </pre>
+                        )}
+                        {tc.result && (
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => toggleToolResult(ti)}
+                              className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-700 transition-colors mb-0.5"
+                            >
+                              {isResultExpanded ? <ChevronDown className="w-2.5 h-2.5" /> : <ChevronRight className="w-2.5 h-2.5" />}
+                              <span>Результат{isResultLong && !isResultExpanded ? ` (${tc.result.length} символов)` : ''}</span>
+                            </button>
+                            {isResultExpanded && (
+                              <pre className="text-[11px] text-gray-600 whitespace-pre-wrap break-words font-mono bg-white/70 border border-gray-100 rounded px-2 py-1 max-h-48 overflow-y-auto">
+                                {tc.result}
+                              </pre>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

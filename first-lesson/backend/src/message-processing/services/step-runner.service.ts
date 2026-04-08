@@ -227,6 +227,13 @@ export class StepRunnerService {
     let promptTokens = 0;
     let completionTokens = 0;
     let iteration = 0;
+    const collectedToolCalls: Array<{
+      name: string;
+      arguments: string;
+      result: string;
+      server: string;
+      displayName: string;
+    }> = [];
 
     try {
       while (iteration < StepRunnerService.MAX_TOOL_ITERATIONS) {
@@ -293,13 +300,23 @@ export class StepRunnerService {
           this.logger.log(`Message ${messageId}: tool_call ${name} result (${result.length} chars): ${truncatedResult}`);
 
           const serverMeta = this.mcpToolRouter.getServerMetaForTool(name);
+          const truncatedResultForStorage = result.length > 2000 ? result.slice(0, 2000) + '... (truncated)' : result;
+
+          collectedToolCalls.push({
+            name,
+            arguments: argsStr,
+            result: truncatedResultForStorage,
+            server: serverMeta?.serverName || '',
+            displayName: serverMeta?.displayName || '',
+          });
+
           onEvent({
             type: 'tool_call',
             name,
             server: serverMeta?.serverName || '',
             displayName: serverMeta?.displayName || '',
             arguments: argsStr,
-            result: result.length > 2000 ? result.slice(0, 2000) + '... (truncated)' : result,
+            result: truncatedResultForStorage,
           });
 
           workingMessages.push({
@@ -326,9 +343,13 @@ export class StepRunnerService {
     const durationMs = Date.now() - startTime;
     const cost = this.openaiService.calculateCost(model, promptTokens, completionTokens);
 
+    const outputResult = collectedToolCalls.length > 0
+      ? { text: fullText, toolCalls: collectedToolCalls }
+      : { text: fullText };
+
     await this.stepRepository.updateStep(step.id, {
       status: 'completed',
-      outputResult: { text: fullText },
+      outputResult,
       promptTokens,
       completionTokens,
       cost,
@@ -354,7 +375,7 @@ export class StepRunnerService {
       step: {
         ...step,
         status: 'completed',
-        outputResult: { text: fullText },
+        outputResult,
         promptTokens,
         completionTokens,
         cost,

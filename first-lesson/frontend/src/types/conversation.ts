@@ -160,6 +160,13 @@ export interface MessageDebugData {
       validationPassed?: boolean;
       validationReason?: string;
       inputContext?: Array<{ role: string; content: string }>;
+      toolCalls?: Array<{
+        name: string;
+        arguments: string;
+        result: string;
+        server?: string;
+        displayName?: string;
+      }>;
     }>;
   };
 }

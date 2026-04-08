@@ -150,6 +150,7 @@ export class MessageController {
       validationPassed: s.validationPassed,
       validationReason: s.validationReason,
       inputContext: Array.isArray(s.inputContext) ? s.inputContext : [],
+      toolCalls: (typeof s.outputResult === 'object' && s.outputResult && Array.isArray((s.outputResult as Record<string, unknown>).toolCalls)) ? (s.outputResult as Record<string, unknown>).toolCalls : [],
     }));
 
     const totalCost = steps.reduce((sum, s) => sum + s.cost, 0);
