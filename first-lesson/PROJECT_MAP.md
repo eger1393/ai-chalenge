@@ -82,12 +82,24 @@ src/
 ├── memory/                     # Сборка system prompt
 │   └── memory-assembler.service.ts  # 4-слойный builder (invariants, long-term, working, short-term)
 │
-└── message-processing/         # Pipeline обработки сообщений
-    ├── message.controller.ts   # POST /conversations/:id/messages (SSE), pause/resume/cancel, GET /messages/:id/debug
-    ├── services/step-orchestrator.service.ts  # State machine, retry loop, SSE events
-    ├── services/step-runner.service.ts        # Запуск шагов, streaming, system prompts, runStepWithTools (function calling)
-    ├── services/guard.service.ts              # Injection detection, stage integrity
-    └── repositories/step.repository.ts        # message_steps table
+├── message-processing/         # Pipeline обработки сообщений
+│   ├── message.controller.ts   # POST /conversations/:id/messages (SSE), pause/resume/cancel, GET /messages/:id/debug
+│   ├── services/step-orchestrator.service.ts  # State machine, retry loop, SSE events
+│   ├── services/step-runner.service.ts        # Запуск шагов, streaming, system prompts, runStepWithTools (function calling)
+│   ├── services/guard.service.ts              # Injection detection, stage integrity
+│   └── repositories/step.repository.ts        # message_steps table
+│
+├── subscription/               # Подписки на GitHub issues
+│   ├── subscription.controller.ts  # POST/GET /subscriptions, GET /subscriptions/by-conversation/:id
+│   ├── subscription.service.ts
+│   ├── subscription-poller.service.ts  # @Cron('*/5 * * * *') polling через MCP, LLM summary
+│   └── repositories/subscription.repository.ts
+│
+└── notification/               # Push-уведомления (SSE)
+    ├── notification.controller.ts  # SSE /notifications/stream + REST /notifications
+    ├── notification.service.ts
+    ├── notification-gateway.service.ts  # SSE hub (Map<userId, Subject>)
+    └── repositories/notification.repository.ts
 ```
 
 ### БД — PostgreSQL (raw SQL, Repository pattern)
@@ -105,6 +117,8 @@ message_steps (id, message_id FK, step_type, attempt_number, status, input_conte
 message_meta (id, message_id UNIQUE FK, applied_model/temperature/max_tokens, tokens, cost, duration_ms, context stats)
 message_debug (id, message_id UNIQUE FK, strategy_type, token_breakdown JSONB, facts_snapshot JSONB, memory_layers JSONB)
 checkpoints (id, conversation_id FK, message_id FK, label)
+issue_subscriptions (id UUID PK, conversation_id FK→conversations, user_id FK→users, repository, last_checked_at, last_issue_number, expires_at, is_active, created_at)
+issue_notifications (id UUID PK, subscription_id FK→issue_subscriptions, conversation_id FK→conversations, issue_number, issue_title, issue_url, issue_author, summary, is_read, created_at)
 ```
 
 ---
@@ -129,6 +143,8 @@ src/
 │   ├── context-indicator.tsx, applied-params-display.tsx, debug-panel.tsx
 │   ├── strategy-selector.tsx, facts-panel.tsx, branch-selector.tsx
 │   ├── personalization-panel.tsx, empty-state.tsx, typing-indicator.tsx
+│   ├── notification-bubble.tsx   # Inline уведомление (teal, react-markdown)
+│   └── subscription-indicator.tsx # Панель подписок с TTL progress bar
 │
 ├── hooks/
 │   ├── use-chat.ts             # messages (envelope→UI маппинг), send, loadConversation
@@ -137,6 +153,9 @@ src/
 │   ├── use-ai-params.ts        # AI params (server SoT + localStorage defaults)
 │   ├── use-pipeline.ts         # Pipeline SSE: start, pause, resume, cancel (messageId)
 │   ├── use-invariants.ts, use-facts.ts, use-branches.ts, use-personalization.ts
+│   ├── use-notification-stream.ts  # Persistent SSE для push-уведомлений
+│   ├── use-subscriptions.ts        # Управление подписками
+│   └── use-notifications.ts        # Коллекция уведомлений
 │
 ├── lib/api.ts                  # API: projects, conversations, messages, context, facts, branches
 ├── types/                      # Project, Conversation, ConversationMessage (envelope), Pipeline, AIParams
@@ -168,6 +187,7 @@ src/
 | `OPENAI_MAX_TOKENS` | backend | Лимит токенов (default 16384) |
 | `MCP_POSTGRES_URL` | backend | URL MCP PostgreSQL сервера (SSE, опционально) |
 | `MCP_GITHUB_EXPLORER_URL` | backend | URL MCP GitHub Explorer (Streamable HTTP) |
+| `GITHUB_TOKEN` | github-explorer-mcp | Токен GitHub API (scope: public_repo) |
 | `FRONTEND_URL` | backend | CORS origin |
 | `NEXT_PUBLIC_API_URL` | frontend | URL бэкенда |
 

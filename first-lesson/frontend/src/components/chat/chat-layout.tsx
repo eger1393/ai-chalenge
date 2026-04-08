@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Menu, FolderOpen, Brain, Shield } from 'lucide-react';
 import { useAuth } from '@/context/auth-context';
@@ -13,13 +13,17 @@ import { useFacts } from '@/hooks/use-facts';
 import { useBranches } from '@/hooks/use-branches';
 import { useTasks } from '@/hooks/use-tasks';
 import { useInvariants } from '@/hooks/use-invariants';
+import { useNotificationContext } from '@/context/notification-context';
 import { addProjectInvariant } from '@/lib/api';
+import { IssueNotification } from '@/types/notification';
 import { ConversationSidebar } from './conversation-sidebar';
 import { ContextIndicator } from './context-indicator';
+import { SubscriptionIndicator } from './subscription-indicator';
 import { BranchSelector } from './branch-selector';
 import { CheckpointDivider } from './checkpoint-divider';
 import { FactsPanel } from './facts-panel';
 import { MessageBubble } from './message-bubble';
+import { NotificationBubble } from './notification-bubble';
 import { TypingIndicator } from './typing-indicator';
 import { ChatInput } from './chat-input';
 import { EmptyState } from './empty-state';
@@ -37,6 +41,7 @@ export function ChatLayout() {
   const branches = useBranches(chat.conversationId);
   const { tasks, addTask, removeTask } = useTasks();
   const invariantsHook = useInvariants();
+  const { notifications, subscriptions, loadNotifications, loadSubscriptions, markRead } = useNotificationContext();
   const [showParams, setShowParams] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [conversationStrategy, setConversationStrategy] = useState<string | undefined>(undefined);
@@ -90,6 +95,38 @@ export function ChatLayout() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations.activeId]);
+
+  // Load subscriptions & notifications when conversation changes
+  useEffect(() => {
+    if (conversations.activeId) {
+      loadSubscriptions(conversations.activeId);
+      loadNotifications(conversations.activeId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversations.activeId]);
+
+  // Build merged timeline: messages in order, notifications sorted by createdAt
+  type TimelineItem =
+    | { kind: 'message'; data: Message; order: number }
+    | { kind: 'notification'; data: IssueNotification; order: number };
+
+  const timeline = useMemo<TimelineItem[]>(() => {
+    // Messages keep their original array order
+    const items: TimelineItem[] = chat.messages.map((m, i) => ({
+      kind: 'message' as const,
+      data: m,
+      order: i,
+    }));
+    // Notifications sorted by createdAt, placed after all messages
+    const sortedNotifs = [...notifications].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    const baseOrder = chat.messages.length;
+    sortedNotifs.forEach((n, i) => {
+      items.push({ kind: 'notification' as const, data: n, order: baseOrder + i });
+    });
+    return items;
+  }, [chat.messages, notifications]);
 
   const handleNewChat = useCallback(() => {
     conversations.select(null);
@@ -386,6 +423,9 @@ export function ChatLayout() {
           {/* Context indicator */}
           <ContextIndicator contextWindow={chat.contextWindow} conversationTotals={chat.conversationTotals} />
 
+          {/* Subscription indicator */}
+          <SubscriptionIndicator subscriptions={subscriptions} />
+
           {/* Branch selector */}
           {currentStrategy === 'branching' && branches.branches.length > 0 && (
             <BranchSelector
@@ -414,7 +454,17 @@ export function ChatLayout() {
               <EmptyState />
             ) : (
               <div className="max-w-3xl mx-auto px-4 py-6">
-                {chat.messages.map((msg) => {
+                {timeline.map((item) => {
+                  if (item.kind === 'notification') {
+                    return (
+                      <NotificationBubble
+                        key={`notif-${item.data.id}`}
+                        notification={item.data}
+                        onMarkRead={markRead}
+                      />
+                    );
+                  }
+                  const msg = item.data;
                   const checkpoint = checkpointByMessageId.get(msg.id);
                   return (
                     <div key={msg.id}>

@@ -4,6 +4,7 @@ import { Checkpoint, Conversation, ConversationBranch, ConversationDetail, Conve
 import { Project, ProjectInvariant } from '@/types/task';
 import { UserProfile } from '@/types/personalization';
 import { PipelineSSEEvent } from '@/types/pipeline';
+import { IssueSubscription, IssueNotification } from '@/types/notification';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
@@ -392,4 +393,55 @@ export async function getMessageDetails(messageId: string) {
 
 export async function getMessageDebug(messageId: string) {
   return apiRequest<MessageDebugData>(`/messages/${messageId}/debug`);
+}
+
+// ===== Subscriptions =====
+
+export async function createSubscription(data: {
+  repository: string;
+  conversationId: string;
+}): Promise<IssueSubscription> {
+  return apiRequest<IssueSubscription>('/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export async function getSubscriptions(): Promise<IssueSubscription[]> {
+  return apiRequest<IssueSubscription[]>('/subscriptions');
+}
+
+export async function getConversationSubscriptions(
+  conversationId: string,
+): Promise<IssueSubscription[]> {
+  return apiRequest<IssueSubscription[]>(
+    `/subscriptions?conversationId=${conversationId}`,
+  );
+}
+
+// ===== Notifications =====
+
+export async function getNotifications(
+  conversationId: string,
+  limit = 50,
+  offset = 0,
+): Promise<{ notifications: IssueNotification[]; unreadCount: number }> {
+  return apiRequest<{ notifications: IssueNotification[]; unreadCount: number }>(
+    `/notifications?conversationId=${conversationId}&limit=${limit}&offset=${offset}`,
+  );
+}
+
+export async function markNotificationRead(id: string): Promise<void> {
+  return apiRequest<void>(`/notifications/${id}/read`, {
+    method: 'POST',
+  });
+}
+
+export async function markAllNotificationsRead(
+  conversationId: string,
+): Promise<void> {
+  return apiRequest<void>(`/notifications/read-all`, {
+    method: 'POST',
+    body: JSON.stringify({ conversationId }),
+  });
 }

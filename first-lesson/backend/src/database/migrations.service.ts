@@ -282,6 +282,55 @@ export class MigrationsService {
       $$
     `);
 
+    // 15. issue_subscriptions
+    await this.db.query(`
+      CREATE TABLE IF NOT EXISTS issue_subscriptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        repository VARCHAR(500) NOT NULL,
+        last_checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_issue_number INTEGER NOT NULL DEFAULT 0,
+        expires_at TIMESTAMPTZ NOT NULL,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await this.db.query(`
+      CREATE INDEX IF NOT EXISTS idx_issue_subs_active ON issue_subscriptions(is_active, expires_at)
+    `);
+    await this.db.query(`
+      CREATE INDEX IF NOT EXISTS idx_issue_subs_conv ON issue_subscriptions(conversation_id)
+    `);
+    await this.db.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_subs_unique ON issue_subscriptions(conversation_id, repository) WHERE is_active = true
+    `);
+
+    // 16. issue_notifications
+    await this.db.query(`
+      CREATE TABLE IF NOT EXISTS issue_notifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        subscription_id UUID NOT NULL REFERENCES issue_subscriptions(id) ON DELETE CASCADE,
+        conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        issue_number INTEGER NOT NULL,
+        issue_title TEXT NOT NULL,
+        issue_url TEXT NOT NULL,
+        issue_author VARCHAR(200),
+        summary TEXT,
+        is_read BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await this.db.query(`
+      CREATE INDEX IF NOT EXISTS idx_issue_notif_sub ON issue_notifications(subscription_id)
+    `);
+    await this.db.query(`
+      CREATE INDEX IF NOT EXISTS idx_issue_notif_conv ON issue_notifications(conversation_id, created_at DESC)
+    `);
+    await this.db.query(`
+      CREATE INDEX IF NOT EXISTS idx_issue_notif_unread ON issue_notifications(conversation_id, is_read) WHERE is_read = false
+    `);
+
     this.logger.log('New schema created successfully');
   }
 }

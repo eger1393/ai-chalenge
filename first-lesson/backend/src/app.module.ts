@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
@@ -11,10 +12,13 @@ import { AIModule } from './ai/ai.module';
 import { MemoryModule } from './memory/memory.module';
 import { MessageProcessingModule } from './message-processing/message-processing.module';
 import { McpModule } from './mcp/mcp.module';
+import { NotificationModule } from './notification/notification.module';
+import { SubscriptionModule } from './subscription/subscription.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([
       {
         ttl: parseInt(process.env.THROTTLE_TTL || '60000'),
@@ -31,6 +35,8 @@ import { McpModule } from './mcp/mcp.module';
     AIModule,
     MemoryModule,
     MessageProcessingModule,
+    NotificationModule,
+    SubscriptionModule,
   ],
 })
 export class AppModule {}

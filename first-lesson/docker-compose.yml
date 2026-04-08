@@ -37,6 +37,8 @@ services:
     build:
       context: ./github-explorer-mcp
       dockerfile: Dockerfile
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
     networks:
       - app-network
     restart: unless-stopped

@@ -6,6 +6,7 @@ import { searchRepos } from './tools/search-repos.js';
 import { getDescription } from './tools/get-description.js';
 import { listBranches } from './tools/list-branches.js';
 import { getCommits } from './tools/get-commits.js';
+import { checkNewIssues } from './tools/check-new-issues.js';
 
 const server = new McpServer({
   name: 'github-explorer',
@@ -79,6 +80,23 @@ server.tool(
   async (args) => {
     try {
       const result = await getCommits(args);
+      return { content: [{ type: 'text', text: result }] };
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+);
+
+server.tool(
+  'check_new_issues',
+  'Check for new issues in a GitHub repository since a given timestamp. Returns issues created after the specified date.',
+  {
+    repository: z.string().describe('Repository in format owner/repo'),
+    since: z.string().describe('ISO 8601 timestamp to check issues from'),
+  },
+  async (args) => {
+    try {
+      const result = await checkNewIssues(args);
       return { content: [{ type: 'text', text: result }] };
     } catch (error) {
       return handleError(error);
