@@ -282,7 +282,8 @@ export class MigrationsService {
       $$
     `);
 
-    // 15. issue_subscriptions
+    // 15. issue_subscriptions (DEPRECATED: subscriptions are now managed by github-explorer MCP server.
+    //     Table kept for backward compatibility with existing installs.)
     await this.db.query(`
       CREATE TABLE IF NOT EXISTS issue_subscriptions (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -329,6 +330,17 @@ export class MigrationsService {
     `);
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_issue_notif_unread ON issue_notifications(conversation_id, is_read) WHERE is_read = false
+    `);
+
+    // 17. Migration: drop FK and make subscription_id nullable in issue_notifications
+    // (subscriptions now managed by github-explorer MCP, subscription_id may not reference local table)
+    await this.db.query(`
+      ALTER TABLE issue_notifications
+        DROP CONSTRAINT IF EXISTS issue_notifications_subscription_id_fkey
+    `);
+    await this.db.query(`
+      ALTER TABLE issue_notifications
+        ALTER COLUMN subscription_id DROP NOT NULL
     `);
 
     this.logger.log('New schema created successfully');

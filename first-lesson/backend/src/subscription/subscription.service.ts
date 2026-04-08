@@ -1,71 +1,50 @@
-import {
-  Injectable,
-  ForbiddenException,
-  Logger,
-} from '@nestjs/common';
-import { SubscriptionRepository } from './repositories/subscription.repository';
-import { DatabaseService } from '../database/database.service';
-import { CreateSubscriptionDto } from './dto/create-subscription.dto';
+import { Injectable, Logger } from '@nestjs/common';
+import { McpToolRouter } from '../mcp/mcp-tool-router.service';
 import { IssueSubscription } from './interfaces/issue-subscription.interface';
 
 @Injectable()
 export class SubscriptionService {
   private readonly logger = new Logger(SubscriptionService.name);
 
-  constructor(
-    private readonly subscriptionRepo: SubscriptionRepository,
-    private readonly db: DatabaseService,
-  ) {}
+  constructor(private readonly mcpToolRouter: McpToolRouter) {}
 
   async create(
     userId: string,
-    dto: CreateSubscriptionDto,
+    dto: { repository: string; conversationId: string },
   ): Promise<IssueSubscription> {
-    // Verify conversation belongs to user
-    const { rows } = await this.db.query(
-      `SELECT id FROM conversations WHERE id = $1 AND user_id = $2`,
-      [dto.conversationId, userId],
+    const result = await this.mcpToolRouter.executeTool(
+      'github-explorer__subscribe_to_issues',
+      {
+        repository: dto.repository,
+        conversation_id: dto.conversationId,
+        user_id: userId,
+        ttl_minutes: 1440,
+      },
     );
-
-    if (rows.length === 0) {
-      throw new ForbiddenException(
-        'Conversation not found or does not belong to user',
-      );
-    }
-
-    // Check for duplicate active subscription
-    const existing = await this.subscriptionRepo.findDuplicate(
-      dto.conversationId,
-      dto.repository,
-    );
-
-    if (existing) {
-      this.logger.log(
-        `Returning existing subscription ${existing.id} for ${dto.repository}`,
-      );
-      return existing;
-    }
-
-    const subscription = await this.subscriptionRepo.create({
-      userId,
-      conversationId: dto.conversationId,
-      repository: dto.repository,
-    });
 
     this.logger.log(
-      `Created subscription ${subscription.id} for ${dto.repository} in conversation ${dto.conversationId}`,
+      `Created MCP subscription for ${dto.repository} in conversation ${dto.conversationId}`,
     );
 
-    return subscription;
+    const parsed = JSON.parse(result) as IssueSubscription;
+    return parsed;
   }
 
   async findByConversation(
     conversationId: string,
   ): Promise<IssueSubscription[]> {
-    return this.subscriptionRepo.findActiveByConversation(conversationId);
+    const result = await this.mcpToolRouter.executeTool(
+      'github-explorer__list_subscriptions',
+      { conversation_id: conversationId },
+    );
+
+    const parsed = JSON.parse(result) as IssueSubscription[];
+    return parsed;
   }
 
-  async findByUser(userId: string): Promise<IssueSubscription[]> {
-    return this.subscriptionRepo.findActiveByUserId(userId);
+  async findByUser(_userId: string): Promise<IssueSubscription[]> {
+    // MCP doesn't support user-level queries;
+    // frontend always passes conversationId anyway
+    return [];
   }
 }

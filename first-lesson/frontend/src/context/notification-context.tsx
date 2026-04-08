@@ -13,7 +13,6 @@ interface NotificationContextType {
   subscriptionsLoading: boolean;
   loadNotifications: (conversationId: string) => Promise<void>;
   loadSubscriptions: (conversationId?: string) => Promise<void>;
-  subscribe: (repository: string, conversationId: string) => Promise<IssueSubscription>;
   markRead: (id: string) => Promise<void>;
   markAllRead: (conversationId: string) => Promise<void>;
 }
@@ -37,7 +36,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         subscriptionsLoading: subs.loading,
         loadNotifications: notif.loadNotifications,
         loadSubscriptions: subs.loadSubscriptions,
-        subscribe: subs.subscribe,
         markRead: notif.markRead,
         markAllRead: notif.markAllRead,
       }}

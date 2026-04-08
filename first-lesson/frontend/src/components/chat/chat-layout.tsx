@@ -302,6 +302,7 @@ export function ChatLayout() {
       }
       if (chat.conversationId) {
         chat.loadConversation(chat.conversationId).then(() => {
+          loadSubscriptions(chat.conversationId!);
           pipeline.reset();
         });
       } else {

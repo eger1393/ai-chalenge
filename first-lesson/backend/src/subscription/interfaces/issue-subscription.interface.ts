@@ -1,11 +1,10 @@
 export interface IssueSubscription {
   id: string;
-  conversationId: string;
-  userId: string;
   repository: string;
-  lastCheckedAt: Date;
-  lastIssueNumber: number;
-  expiresAt: Date;
-  isActive: boolean;
-  createdAt: Date;
+  conversation_id?: string;
+  user_id?: string;
+  expires_at?: string;
+  is_active?: boolean;
+  created_at?: string;
+  ttl_minutes?: number;
 }

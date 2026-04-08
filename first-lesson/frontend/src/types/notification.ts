@@ -22,5 +22,5 @@ export interface IssueNotification {
 }
 
 export type NotificationSSEEvent =
-  | { type: 'new_issue'; notification: IssueNotification }
+  | { type: 'new_notification'; notification: IssueNotification }
   | { type: 'heartbeat' };

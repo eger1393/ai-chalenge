@@ -27,7 +27,7 @@ export function useNotificationStream(
     es.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'new_issue') {
+        if (data.type === 'new_notification') {
           onNotificationRef.current(data.notification);
         }
       } catch (e) {

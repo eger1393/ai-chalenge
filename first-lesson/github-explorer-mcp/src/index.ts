@@ -7,6 +7,10 @@ import { getDescription } from './tools/get-description.js';
 import { listBranches } from './tools/list-branches.js';
 import { getCommits } from './tools/get-commits.js';
 import { checkNewIssues } from './tools/check-new-issues.js';
+import { subscribeToIssues } from './tools/subscribe-to-issues.js';
+import { listSubscriptions } from './tools/list-subscriptions.js';
+import { initDb } from './db.js';
+import { startPoller } from './poller.js';
 
 const server = new McpServer({
   name: 'github-explorer',
@@ -104,9 +108,47 @@ server.tool(
   }
 );
 
+server.tool(
+  'subscribe_to_issues',
+  'Subscribe to new issues in a GitHub repository. Polls periodically and sends notifications via callback.',
+  {
+    repository: z.string().describe('Repository in format owner/repo'),
+    conversation_id: z.string().describe('UUID of the conversation to associate the subscription with'),
+    user_id: z.string().describe('UUID of the user creating the subscription'),
+    ttl_minutes: z.number().optional().describe('Subscription lifetime in minutes (default 1440 = 24h)'),
+  },
+  async (args) => {
+    try {
+      const result = await subscribeToIssues(args);
+      return { content: [{ type: 'text', text: result }] };
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+);
+
+server.tool(
+  'list_subscriptions',
+  'List active issue subscriptions for a conversation',
+  {
+    conversation_id: z.string().describe('UUID of the conversation'),
+  },
+  async (args) => {
+    try {
+      const result = await listSubscriptions(args);
+      return { content: [{ type: 'text', text: result }] };
+    } catch (error) {
+      return handleError(error);
+    }
+  }
+);
+
 async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  await initDb();
+  startPoller();
 }
 
 main().catch((error) => {

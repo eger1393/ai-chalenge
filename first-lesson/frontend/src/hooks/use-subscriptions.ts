@@ -22,11 +22,5 @@ export function useSubscriptions() {
     }
   }, []);
 
-  const subscribe = useCallback(async (repository: string, conversationId: string) => {
-    const sub = await api.createSubscription({ repository, conversationId });
-    setSubscriptions((prev) => [...prev, sub]);
-    return sub;
-  }, []);
-
-  return { subscriptions, loading, loadSubscriptions, subscribe, setSubscriptions };
+  return { subscriptions, loading, loadSubscriptions, setSubscriptions };
 }

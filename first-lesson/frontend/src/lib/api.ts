@@ -397,16 +397,6 @@ export async function getMessageDebug(messageId: string) {
 
 // ===== Subscriptions =====
 
-export async function createSubscription(data: {
-  repository: string;
-  conversationId: string;
-}): Promise<IssueSubscription> {
-  return apiRequest<IssueSubscription>('/subscriptions', {
-    method: 'POST',
-    body: JSON.stringify(data),
-  });
-}
-
 export async function getSubscriptions(): Promise<IssueSubscription[]> {
   return apiRequest<IssueSubscription[]>('/subscriptions');
 }
@@ -415,7 +405,7 @@ export async function getConversationSubscriptions(
   conversationId: string,
 ): Promise<IssueSubscription[]> {
   return apiRequest<IssueSubscription[]>(
-    `/subscriptions?conversationId=${conversationId}`,
+    `/conversations/${conversationId}/subscriptions`,
   );
 }
 

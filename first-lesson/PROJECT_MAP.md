@@ -89,11 +89,11 @@ src/
 │   ├── services/guard.service.ts              # Injection detection, stage integrity
 │   └── repositories/step.repository.ts        # message_steps table
 │
-├── subscription/               # Подписки на GitHub issues
-│   ├── subscription.controller.ts  # POST/GET /subscriptions, GET /subscriptions/by-conversation/:id
-│   ├── subscription.service.ts
-│   ├── subscription-poller.service.ts  # @Cron('*/5 * * * *') polling через MCP, LLM summary
-│   └── repositories/subscription.repository.ts
+├── subscription/               # Подписки на GitHub issues (данные в MCP)
+│   ├── subscription.controller.ts  # GET /subscriptions(?conversationId), GET /conversations/:id/subscriptions
+│   ├── subscription.service.ts     # Проксирует CRUD через McpToolRouter → github-explorer MCP
+│   ├── subscription-callback.controller.ts  # POST /internal/subscription-callback (MCP → backend)
+│   └── dto/subscription-callback.dto.ts
 │
 └── notification/               # Push-уведомления (SSE)
     ├── notification.controller.ts  # SSE /notifications/stream + REST /notifications
@@ -117,8 +117,9 @@ message_steps (id, message_id FK, step_type, attempt_number, status, input_conte
 message_meta (id, message_id UNIQUE FK, applied_model/temperature/max_tokens, tokens, cost, duration_ms, context stats)
 message_debug (id, message_id UNIQUE FK, strategy_type, token_breakdown JSONB, facts_snapshot JSONB, memory_layers JSONB)
 checkpoints (id, conversation_id FK, message_id FK, label)
-issue_subscriptions (id UUID PK, conversation_id FK→conversations, user_id FK→users, repository, last_checked_at, last_issue_number, expires_at, is_active, created_at)
-issue_notifications (id UUID PK, subscription_id FK→issue_subscriptions, conversation_id FK→conversations, issue_number, issue_title, issue_url, issue_author, summary, is_read, created_at)
+issue_subscriptions (DEPRECATED — подписки теперь в MCP: mcp_issue_subscriptions)
+issue_notifications (id UUID PK, subscription_id UUID nullable, conversation_id FK→conversations, issue_number, issue_title, issue_url, issue_author, summary, is_read, created_at)
+-- MCP таблица: mcp_issue_subscriptions (id UUID PK, repository, conversation_id, user_id, callback_url, last_checked_at, last_issue_number, ttl_minutes, expires_at, is_active, created_at)
 ```
 
 ---
@@ -188,6 +189,9 @@ src/
 | `MCP_POSTGRES_URL` | backend | URL MCP PostgreSQL сервера (SSE, опционально) |
 | `MCP_GITHUB_EXPLORER_URL` | backend | URL MCP GitHub Explorer (Streamable HTTP) |
 | `GITHUB_TOKEN` | github-explorer-mcp | Токен GitHub API (scope: public_repo) |
+| `DATABASE_URL` | github-explorer-mcp | PostgreSQL для хранения подписок |
+| `BACKEND_CALLBACK_URL` | github-explorer-mcp | URL callback endpoint бэкенда |
+| `MCP_CALLBACK_SECRET` | github-explorer-mcp, backend | Shared secret для авторизации callback'ов |
 | `FRONTEND_URL` | backend | CORS origin |
 | `NEXT_PUBLIC_API_URL` | frontend | URL бэкенда |
 

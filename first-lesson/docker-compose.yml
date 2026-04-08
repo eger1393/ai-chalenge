@@ -39,9 +39,15 @@ services:
       dockerfile: Dockerfile
     environment:
       GITHUB_TOKEN: ${GITHUB_TOKEN}
+      DATABASE_URL: postgresql://chatuser:chatpass@postgres:5432/chatdb
+      BACKEND_CALLBACK_URL: http://backend:3000/api/internal/subscription-callback
+      MCP_CALLBACK_SECRET: ${MCP_CALLBACK_SECRET}
     networks:
       - app-network
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   backend:
     build:
@@ -54,6 +60,7 @@ services:
     environment:
       - MCP_POSTGRES_URL=http://postgres-mcp:8096/mcp
       - MCP_GITHUB_EXPLORER_URL=http://github-explorer-mcp:8097/mcp
+      - MCP_CALLBACK_SECRET=${MCP_CALLBACK_SECRET}
     networks:
       - app-network
     restart: unless-stopped
