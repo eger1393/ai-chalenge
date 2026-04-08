@@ -147,6 +147,8 @@ export class StepOrchestratorService {
         previousPlanResult: '',
         previousExecResult: '',
         onEvent,
+        conversationId,
+        userId,
       });
 
       if (!result) {
@@ -373,6 +375,8 @@ export class StepOrchestratorService {
         previousPlanResult: planResult,
         previousExecResult: execResult,
         onEvent,
+        conversationId,
+        userId: conversation.userId,
       });
 
       if (!result) {
@@ -437,6 +441,8 @@ export class StepOrchestratorService {
     previousPlanResult: string;
     previousExecResult: string;
     onEvent: (event: Record<string, unknown>) => void;
+    conversationId?: string;
+    userId?: string;
   }): Promise<{
     execResult: string;
     totalPromptTokens: number;
@@ -458,6 +464,8 @@ export class StepOrchestratorService {
       maxAttempts,
       startAttempt,
       onEvent,
+      conversationId,
+      userId,
     } = params;
 
     let { completedStepTypes, previousPlanResult, previousExecResult } = params;
@@ -529,6 +537,8 @@ export class StepOrchestratorService {
           maxTokens,
           messages: executionMessages,
           onEvent,
+          conversationId,
+          userId,
         });
 
         currentExecResult = execStepResult.output;

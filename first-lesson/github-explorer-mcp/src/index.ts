@@ -1,7 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod/v3';
-import { GitHubApiError } from './github-api.js';
 import { searchRepos } from './tools/search-repos.js';
 import { getDescription } from './tools/get-description.js';
 import { listBranches } from './tools/list-branches.js';
@@ -18,7 +17,8 @@ const server = new McpServer({
 });
 
 function handleError(error: unknown): { content: Array<{ type: 'text'; text: string }>; isError: true } {
-  const message = error instanceof GitHubApiError ? error.message : 'Internal error';
+  console.error('Tool error:', error);
+  const message = error instanceof Error ? error.message : 'Internal error';
   return {
     content: [{ type: 'text', text: JSON.stringify({ error: true, message }) }],
     isError: true,

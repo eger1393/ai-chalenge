@@ -84,6 +84,8 @@ export interface StepRunParams {
   maxTokens: number;
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
   onEvent: (event: Record<string, unknown>) => void;
+  conversationId?: string;
+  userId?: string;
 }
 
 // ── Service ───────────────────────────────────────────────────────────
@@ -289,6 +291,13 @@ export class StepRunnerService {
           let result: string;
           try {
             const args = JSON.parse(argsStr);
+            // Inject backend-known context into tool calls
+            if (params.conversationId && 'conversation_id' in args) {
+              args.conversation_id = params.conversationId;
+            }
+            if (params.userId && 'user_id' in args) {
+              args.user_id = params.userId;
+            }
             result = await this.mcpToolRouter.executeTool(name, args);
           } catch (toolError: unknown) {
             const errMsg = toolError instanceof Error ? toolError.message : 'Unknown tool error';
