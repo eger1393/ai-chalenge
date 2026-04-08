@@ -42,7 +42,7 @@ export class SubscriptionCallbackController {
       try {
         const summary = await this.generateIssueSummary(issue);
 
-        await this.notificationService.createAndPush(dto.user_id, {
+        const created = await this.notificationService.createAndPush(dto.user_id, {
           subscriptionId: dto.subscription_id,
           conversationId: dto.conversation_id,
           issueNumber: issue.number,
@@ -52,7 +52,7 @@ export class SubscriptionCallbackController {
           summary,
         });
 
-        notificationsCreated++;
+        if (created) notificationsCreated++;
       } catch (error: unknown) {
         const message =
           error instanceof Error ? error.message : 'Unknown error';

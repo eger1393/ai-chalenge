@@ -37,14 +37,14 @@ export class NotificationController {
       throw new UnauthorizedException('Missing token query parameter');
     }
 
-    let payload: { userId: string; username: string };
+    let payload: { sub: string; username: string };
     try {
       payload = this.jwtService.verify(token);
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }
 
-    const userId = payload.userId;
+    const userId = payload.sub;
     this.logger.log(`SSE stream opened for user ${userId}`);
 
     const stream$ = this.gateway.getOrCreateStream(userId);

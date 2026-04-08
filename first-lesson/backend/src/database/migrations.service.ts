@@ -332,6 +332,13 @@ export class MigrationsService {
       CREATE INDEX IF NOT EXISTS idx_issue_notif_unread ON issue_notifications(conversation_id, is_read) WHERE is_read = false
     `);
 
+    // 16b. Deduplicate: one notification per subscription + issue
+    await this.db.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_notif_dedup
+        ON issue_notifications(subscription_id, issue_number)
+        WHERE subscription_id IS NOT NULL
+    `);
+
     // 17. Migration: drop FK and make subscription_id nullable in issue_notifications
     // (subscriptions now managed by github-explorer MCP, subscription_id may not reference local table)
     await this.db.query(`

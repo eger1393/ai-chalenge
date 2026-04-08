@@ -18,8 +18,15 @@ export class NotificationService {
   async createAndPush(
     userId: string,
     data: CreateNotificationData,
-  ): Promise<IssueNotification> {
+  ): Promise<IssueNotification | null> {
     const notification = await this.notificationRepository.create(data);
+
+    if (!notification) {
+      this.logger.debug(
+        `Duplicate notification skipped for user ${userId}, issue #${data.issueNumber}`,
+      );
+      return null;
+    }
 
     this.gateway.push(userId, {
       type: 'new_notification',

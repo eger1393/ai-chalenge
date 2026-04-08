@@ -27,11 +27,12 @@ export class NotificationRepository extends BaseRepository<IssueNotification> {
     super(db, 'issue_notifications');
   }
 
-  async create(data: CreateNotificationData): Promise<IssueNotification> {
+  async create(data: CreateNotificationData): Promise<IssueNotification | null> {
     const { rows } = await this.db.query(
       `INSERT INTO issue_notifications
         (subscription_id, conversation_id, issue_number, issue_title, issue_url, issue_author, summary)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (subscription_id, issue_number) WHERE subscription_id IS NOT NULL DO NOTHING
        RETURNING *`,
       [
         data.subscriptionId,
@@ -43,6 +44,7 @@ export class NotificationRepository extends BaseRepository<IssueNotification> {
         data.summary ?? null,
       ],
     );
+    if (rows.length === 0) return null;
     return mapRow(rows[0]);
   }
 
