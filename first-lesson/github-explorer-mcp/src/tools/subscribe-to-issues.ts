@@ -47,7 +47,7 @@ export async function subscribeToIssues(args: {
     `INSERT INTO mcp_issue_subscriptions
        (repository, conversation_id, user_id, callback_url, ttl_minutes, expires_at)
      VALUES
-       ($1, $2, $3, $4, $5, NOW() + $5 * interval '1 minute')
+       ($1, $2, $3, $4, $5, NOW() + make_interval(mins => $5::int))
      RETURNING id, repository, conversation_id, expires_at`,
     [args.repository, args.conversation_id, args.user_id, callbackUrl, ttl],
   );
