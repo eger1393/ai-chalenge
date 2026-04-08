@@ -333,6 +333,15 @@ export class MigrationsService {
     `);
 
     // 16b. Deduplicate: one notification per subscription + issue
+    // First remove duplicates keeping only the oldest row per (subscription_id, issue_number)
+    await this.db.query(`
+      DELETE FROM issue_notifications a
+      USING issue_notifications b
+      WHERE a.subscription_id IS NOT NULL
+        AND a.subscription_id = b.subscription_id
+        AND a.issue_number = b.issue_number
+        AND a.created_at > b.created_at
+    `);
     await this.db.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_notif_dedup
         ON issue_notifications(subscription_id, issue_number)
