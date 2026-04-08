@@ -62,35 +62,46 @@ async function pollAll(): Promise<void> {
       console.log(`Deactivated ${deactivated.rowCount} expired subscriptions`);
     }
 
-    // 2. Fetch active subscriptions
-    const result = await pool.query<ActiveSubscription>(
-      `SELECT id, repository, conversation_id, user_id, callback_url,
-              last_checked_at, last_issue_number
-       FROM mcp_issue_subscriptions
-       WHERE is_active = true
-         AND expires_at > NOW()
-       ORDER BY last_checked_at ASC`,
-    );
+    // 2. Fetch and lock active subscriptions (SKIP LOCKED to avoid duplicate polling)
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    console.log(`Polling ${result.rows.length} active subscriptions`);
+      const result = await client.query<ActiveSubscription>(
+        `SELECT id, repository, conversation_id, user_id, callback_url,
+                last_checked_at, last_issue_number
+         FROM mcp_issue_subscriptions
+         WHERE is_active = true
+           AND expires_at > NOW()
+         ORDER BY last_checked_at ASC
+         FOR UPDATE SKIP LOCKED`,
+      );
 
-    // 3. Poll each subscription independently
-    for (const sub of result.rows) {
-      try {
-        await pollOne(sub);
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : 'Unknown error';
-        console.error(`Error polling ${sub.repository}: ${message}`);
+      console.log(`Polling ${result.rows.length} active subscriptions`);
+
+      // 3. Poll each subscription independently
+      for (const sub of result.rows) {
+        try {
+          await pollOne(sub, client);
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : 'Unknown error';
+          console.error(`Error polling ${sub.repository}: ${message}`);
+        }
       }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
     }
   } finally {
     isPolling = false;
   }
 }
 
-async function pollOne(sub: ActiveSubscription): Promise<void> {
-  const pool = getPool();
-
+async function pollOne(sub: ActiveSubscription, client: import('pg').PoolClient): Promise<void> {
   // Call check_new_issues tool directly
   const resultJson = await checkNewIssues({
     repository: sub.repository,
@@ -104,6 +115,16 @@ async function pollOne(sub: ActiveSubscription): Promise<void> {
   if (newIssues.length === 0) {
     return;
   }
+
+  // Update watermark BEFORE callback to prevent other pollers from processing same issues
+  const maxIssueNumber = Math.max(sub.last_issue_number, ...newIssues.map((i) => i.number));
+  await client.query(
+    `UPDATE mcp_issue_subscriptions
+     SET last_checked_at = NOW(),
+         last_issue_number = $2
+     WHERE id = $1`,
+    [sub.id, maxIssueNumber],
+  );
 
   // Send callback notification
   try {
@@ -139,16 +160,6 @@ async function pollOne(sub: ActiveSubscription): Promise<void> {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(`Callback request failed for ${sub.repository}: ${message}`);
   }
-
-  // Update watermark
-  const maxIssueNumber = Math.max(sub.last_issue_number, ...newIssues.map((i) => i.number));
-  await pool.query(
-    `UPDATE mcp_issue_subscriptions
-     SET last_checked_at = NOW(),
-         last_issue_number = $2
-     WHERE id = $1`,
-    [sub.id, maxIssueNumber],
-  );
 
   console.log(`Found ${newIssues.length} new issues in ${sub.repository}`);
 }
