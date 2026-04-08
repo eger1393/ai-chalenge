@@ -12,7 +12,8 @@
       "displayName": "GitHub Explorer",
       "icon": "globe",
       "color": "purple",
-      "enabled": true
+      "enabled": true,
+      "hiddenTools": ["list_subscriptions"]
     }
   }
 }

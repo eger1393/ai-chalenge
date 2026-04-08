@@ -10,6 +10,7 @@ interface ServerConfig {
   icon: string;
   color: string;
   enabled: boolean;
+  hiddenTools?: string[];
 }
 
 interface McpServersFile {
@@ -92,6 +93,8 @@ export class McpRegistryService implements OnModuleInit, OnModuleDestroy {
 
       this.logger.log(`MCP server "${serverName}" provides ${tools.length} tool(s)`);
 
+      const hidden = new Set(config.hiddenTools || []);
+
       for (const tool of tools) {
         const prefixedName = `${serverName}__${tool.name}`;
 
@@ -99,6 +102,8 @@ export class McpRegistryService implements OnModuleInit, OnModuleDestroy {
           serverName,
           originalName: tool.name,
         });
+
+        if (hidden.has(tool.name)) continue;
 
         this.toolCatalog.push({
           type: 'function',
