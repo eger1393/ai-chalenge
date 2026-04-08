@@ -102,13 +102,6 @@ async function pollOne(sub: ActiveSubscription): Promise<void> {
   const newIssues = parsed.issues.filter((i) => i.number > sub.last_issue_number);
 
   if (newIssues.length === 0) {
-    // Update last_checked_at even when no new issues found
-    await pool.query(
-      `UPDATE mcp_issue_subscriptions
-       SET last_checked_at = NOW()
-       WHERE id = $1`,
-      [sub.id],
-    );
     return;
   }
 
