@@ -359,6 +359,24 @@ export class MigrationsService {
         ALTER COLUMN subscription_id DROP NOT NULL
     `);
 
+    // 18. Deduplicate notifications by (conversation_id, issue_number) instead of (subscription_id, issue_number)
+    // Remove duplicates keeping only the oldest row per (conversation_id, issue_number)
+    await this.db.query(`
+      DELETE FROM issue_notifications a
+      USING issue_notifications b
+      WHERE a.conversation_id = b.conversation_id
+        AND a.issue_number = b.issue_number
+        AND a.created_at > b.created_at
+    `);
+    // Drop old index and create new one
+    await this.db.query(`
+      DROP INDEX IF EXISTS idx_issue_notif_dedup
+    `);
+    await this.db.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_issue_notif_dedup_conv
+        ON issue_notifications(conversation_id, issue_number)
+    `);
+
     this.logger.log('New schema created successfully');
   }
 }

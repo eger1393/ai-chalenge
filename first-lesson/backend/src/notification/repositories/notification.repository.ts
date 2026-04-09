@@ -32,7 +32,7 @@ export class NotificationRepository extends BaseRepository<IssueNotification> {
       `INSERT INTO issue_notifications
         (subscription_id, conversation_id, issue_number, issue_title, issue_url, issue_author, summary)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (subscription_id, issue_number) WHERE subscription_id IS NOT NULL DO NOTHING
+       ON CONFLICT (conversation_id, issue_number) DO NOTHING
        RETURNING *`,
       [
         data.subscriptionId,
