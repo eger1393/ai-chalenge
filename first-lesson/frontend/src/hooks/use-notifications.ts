@@ -22,10 +22,7 @@ export function useNotifications() {
 
     let added = false;
     setNotifications((prev) => {
-      if (prev.some((existing) =>
-        existing.issueNumber === n.issueNumber &&
-        existing.conversationId === n.conversationId
-      )) {
+      if (prev.some((existing) => existing.issueUrl === n.issueUrl)) {
         return prev;
       }
       added = true;
