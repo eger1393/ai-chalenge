@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import { withTransaction } from '../db.js';
+import type { StructuredJson } from '../types.js';
 import { formatEntry, normalizeContent, normalizeTags } from './shared.js';
 
 interface ConflictRow {
@@ -10,7 +11,7 @@ interface CreatedEntryRow {
   id: string;
   content_type: 'text' | 'json';
   text_content: string | null;
-  json_content: Record<string, unknown> | unknown[] | null;
+  json_content: StructuredJson | null;
   created_at: Date;
   updated_at: Date;
 }
