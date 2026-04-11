@@ -14,6 +14,13 @@
       "color": "purple",
       "enabled": true,
       "hiddenTools": ["list_subscriptions"]
+    },
+    "knowledge-base": {
+      "url": "${MCP_KNOWLEDGE_BASE_URL}",
+      "displayName": "Knowledge Base",
+      "icon": "book-open",
+      "color": "emerald",
+      "enabled": true
     }
   }
 }

@@ -32,6 +32,18 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8096/mcp').then((response) => process.exit(response.status < 500 ? 0 : 1)).catch(() => process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   github-explorer-mcp:
     build:
@@ -48,6 +60,43 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8097/mcp').then((response) => process.exit(response.status < 500 ? 0 : 1)).catch(() => process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  knowledge-base-mcp:
+    build:
+      context: ./knowledge-base-mcp
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://chatuser:chatpass@postgres:5432/knowledge_base
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8098/mcp').then((response) => process.exit(response.status < 500 ? 0 : 1)).catch(() => process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   backend:
     build:
@@ -60,12 +109,19 @@ services:
     environment:
       - MCP_POSTGRES_URL=http://postgres-mcp:8096/mcp
       - MCP_GITHUB_EXPLORER_URL=http://github-explorer-mcp:8097/mcp
+      - MCP_KNOWLEDGE_BASE_URL=http://knowledge-base-mcp:8098/mcp
       - MCP_CALLBACK_SECRET=${MCP_CALLBACK_SECRET}
     networks:
       - app-network
     restart: unless-stopped
     depends_on:
       postgres:
+        condition: service_healthy
+      postgres-mcp:
+        condition: service_healthy
+      github-explorer-mcp:
+        condition: service_healthy
+      knowledge-base-mcp:
         condition: service_healthy
 
   frontend:

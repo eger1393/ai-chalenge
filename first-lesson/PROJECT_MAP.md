@@ -9,8 +9,10 @@ first-lesson/
 ├── backend/                    # NestJS API
 ├── frontend/                   # Next.js 14 SPA
 ├── github-explorer-mcp/        # MCP-сервер GitHub (stdio + supergateway)
+├── knowledge-base-mcp/         # MCP-сервер базы знаний (stdio + supergateway)
 ├── postgres-mcp/               # MCP-сервер PostgreSQL (stdio + supergateway)
-├── docker-compose.yml          # 5 сервисов: postgres, postgres-mcp, github-explorer-mcp, backend, frontend
+├── docker-compose.yml          # 6 сервисов: postgres, postgres-mcp, github-explorer-mcp,
+│                               #   knowledge-base-mcp, backend, frontend
 ├── deploy.md                   # Процедура деплоя (SSH, порты, скрипты)
 ├── swarm-report/               # Отчёты задач
 └── PROJECT_MAP.md              # ← этот файл
@@ -76,7 +78,8 @@ src/
 ├── mcp/                        # @Global — Dynamic MCP tool discovery & routing
 │   ├── mcp.module.ts           # Global module, exports McpRegistryService, McpToolRouter
 │   ├── mcp-connection.ts       # Single MCP server connection (connect, listTools, callTool)
-│   ├── mcp-registry.service.ts # Registry of N MCP servers, dynamic tool catalog, prefix namespace
+│   ├── mcp-registry.service.ts # Registry of N MCP servers (postgres, github-explorer,
+│   │                           #   knowledge-base), dynamic tool catalog, prefix namespace
 │   └── mcp-tool-router.service.ts # Routes prefixed tool_call (server__tool) to correct MCP server
 │
 ├── memory/                     # Сборка system prompt
@@ -120,6 +123,8 @@ checkpoints (id, conversation_id FK, message_id FK, label)
 issue_subscriptions (DEPRECATED — подписки теперь в MCP: mcp_issue_subscriptions)
 issue_notifications (id UUID PK, subscription_id UUID nullable, conversation_id FK→conversations, issue_number, issue_title, issue_url, issue_author, summary, is_read, created_at)
 -- MCP таблица: mcp_issue_subscriptions (id UUID PK, repository, conversation_id, user_id, callback_url, last_checked_at, last_issue_number, ttl_minutes, expires_at, is_active, created_at)
+-- Knowledge Base DB: knowledge_base_entries (id UUID PK, content_type, text_content, json_content, created_at, updated_at)
+-- Knowledge Base DB: knowledge_base_tags (id UUID PK, entry_id FK→knowledge_base_entries, tag UNIQUE, created_at)
 ```
 
 ---
@@ -167,13 +172,14 @@ src/
 
 ## Инфраструктура
 
-### Docker Compose (5 сервисов)
+### Docker Compose (6 сервисов)
 
 | Сервис | Образ | Порты (local/server) | Назначение |
 |--------|-------|---------------------|-----------|
 | postgres | postgres:16-alpine | internal 5432 | БД (healthcheck, init: chatreader user) |
 | postgres-mcp | ./postgres-mcp/Dockerfile | internal 8096 | MCP-сервер PostgreSQL (read-only, SSE) |
 | github-explorer-mcp | ./github-explorer-mcp/Dockerfile | internal 8097 | MCP-сервер GitHub Explorer (Streamable HTTP) |
+| knowledge-base-mcp | ./knowledge-base-mcp/Dockerfile | internal 8098 | MCP-сервер базы знаний (CRUD по тегам, отдельная БД `knowledge_base`) |
 | backend | ./backend/Dockerfile | 3000/6500 | NestJS API |
 | frontend | ./frontend/Dockerfile | 3001/6501 | Next.js SPA |
 
@@ -188,8 +194,10 @@ src/
 | `OPENAI_MAX_TOKENS` | backend | Лимит токенов (default 16384) |
 | `MCP_POSTGRES_URL` | backend | URL MCP PostgreSQL сервера (SSE, опционально) |
 | `MCP_GITHUB_EXPLORER_URL` | backend | URL MCP GitHub Explorer (Streamable HTTP) |
+| `MCP_KNOWLEDGE_BASE_URL` | backend | URL MCP Knowledge Base (Streamable HTTP) |
 | `GITHUB_TOKEN` | github-explorer-mcp | Токен GitHub API (scope: public_repo) |
 | `DATABASE_URL` | github-explorer-mcp | PostgreSQL для хранения подписок |
+| `DATABASE_URL` | knowledge-base-mcp | PostgreSQL для отдельной БД `knowledge_base` |
 | `BACKEND_CALLBACK_URL` | github-explorer-mcp | URL callback endpoint бэкенда |
 | `MCP_CALLBACK_SECRET` | github-explorer-mcp, backend | Shared secret для авторизации callback'ов |
 | `FRONTEND_URL` | backend | CORS origin |

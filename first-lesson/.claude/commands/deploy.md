@@ -31,18 +31,18 @@ privateKeyPath: C:\Users\eger1\.ssh\main_key
 
 ## Стадии
 
-### 1. Pre-check
+### 1. Предпроверка
 
 1. `git status` — если есть незакоммиченные изменения, закоммить их (спроси commit message через `AskUserQuestion`)
 2. Запусти `npx tsc --noEmit` в backend и frontend — убедись что компиляция проходит
 
-### 2. Commit & Push
+### 2. Коммит и push
 
 1. Если были незакоммиченные изменения — закоммить, введи сообщение сам, не спрашивай меня.
 2. `git push origin develop`
 3. Убедись что push прошёл без ошибок
 
-### 3. Deploy на сервере
+### 3. Деплой на сервере
 
 1. Подключись через `mcp__ssh-mcp__ssh_open_session` с параметрами SSH выше
 2. Если добавлялись новые env-переменные — проверь/добавь их в `/srv/ai-chalange/first-lesson/.env`
@@ -55,12 +55,12 @@ privateKeyPath: C:\Users\eger1\.ssh\main_key
 3. `docker compose up -d --build`
 4. `docker compose ps`
 
-### 4. Verify
+### 4. Проверка
 
 1. `docker compose ps` — все контейнеры должны быть Up
 2. `docker compose logs --tail=20 backend` — нет ошибок в логах
 
-### 5. Report
+### 5. Отчёт
 
 Покажи пользователю итог:
 - Что задеплоено (коммиты)

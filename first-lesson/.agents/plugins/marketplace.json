@@ -1,0 +1,20 @@
+{
+  "name": "first-lesson-local",
+  "interface": {
+    "displayName": "First Lesson Local"
+  },
+  "plugins": [
+    {
+      "name": "first-lesson-local",
+      "source": {
+        "source": "local",
+        "path": "./plugins/first-lesson-local"
+      },
+      "policy": {
+        "installation": "INSTALLED_BY_DEFAULT",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Coding"
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+﻿{
+    "name":  "first-lesson-local",
+    "version":  "0.1.0",
+    "description":  "Локальные команды Codex, перенесённые из конфигурации Claude Code этого репозитория.",
+    "author":  {
+                   "name":  "Локальная миграция проекта"
+               },
+    "license":  "UNLICENSED",
+    "keywords":  [
+                     "локальный",
+                     "миграция",
+                     "проект",
+                     "процесс"
+                 ],
+    "skills":  "./skills/",
+    "interface":  {
+                      "displayName":  "Локальный First Lesson",
+                      "shortDescription":  "Локальные команды проекта",
+                      "longDescription":  "Локальный Codex-плагин репозитория, который сохраняет полезные проектные команды из прежней конфигурации Claude Code без изменения исходных файлов .claude.",
+                      "developerName":  "Локальная миграция проекта",
+                      "category":  "Coding",
+                      "capabilities":  [
+                                           "Interactive",
+                                           "Write"
+                                       ],
+                      "defaultPrompt":  [
+                                            "Запусти интервью по требованиям проекта",
+                                            "Подготовь деплой проекта",
+                                            "Используй локальные правила Codex для проекта"
+                                        ],
+                      "screenshots":  [
+
+                                      ]
+                  }
+}

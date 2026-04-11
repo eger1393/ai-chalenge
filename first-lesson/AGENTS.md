@@ -15,7 +15,18 @@
 
 ## Общий инструментарий
 
-1. Для просмотра данных в PostgreSQL используй `mcp__postgres__*`, в первую очередь проверь сконфигурирован ли он локально в .mcp.json
+1. Для просмотра данных в PostgreSQL используй `mcp__postgres__*`, в первую очередь проверь сконфигурирован ли он локально в `.mcp.json`
+
+## Локальные skills проекта Codex
+
+- В этом репозитории есть project-local skills внутри `.agents/plugins/plugins/first-lesson-local/skills/`.
+- На текущем рантайме Codex repo-local plugin marketplace может НЕ подхватываться автоматически на старте сессии, даже если `.agents/plugins/marketplace.json` оформлен корректно.
+- Поэтому отсутствие этих skills во встроенном списке доступных skills НЕ означает, что их нет в проекте.
+- Если запрос пользователя совпадает по смыслу с локальным skill, ОБЯЗАТЕЛЬНО вручную открыть соответствующий `SKILL.md` в `.agents/.../skills/` и использовать его как источник инструкций для этой задачи.
+- Минимум для этого проекта:
+  - `deploy` → `.agents/plugins/plugins/first-lesson-local/skills/deploy/SKILL.md`
+  - `interview` → `.agents/plugins/plugins/first-lesson-local/skills/interview/SKILL.md`
+- Если в новой сессии локальные skills не появились во встроенном списке, это нужно трактовать как ограничение discovery рантайма, а не как отсутствие skill-файлов в репозитории.
 
 ## Выбор профиля (STRICT)
 
@@ -92,6 +103,8 @@
 - **Язык:** Node.js + TypeScript
 - **Фреймворк:** Nest.js
 - **Executing субагент:** `voltagent-lang:typescript-pro`
+- **Codex skill для Executing:** `skillcreatorai/backend-development`
+- **Дополнительные Codex skills:** при SQL / schema-heavy задачах — `skillcreatorai/database-design`
 - **Предпочтительная БД:** Postgress
 - **особенности работы с БД:** все запросы к БД пишутся на sql без использования диалектов ОРМ
 
@@ -100,6 +113,8 @@
 - **Язык:** React + TypeScript
 - **UI-фреймворк:** React + Next.js
 - **Executing субагент:** `voltagent-lang:react-specialist`
+- **Codex skill для Executing:** `vercel-labs/react-best-practices`
+- **Дополнительные Codex skills:** `vercel-labs/next-best-practices`, для визуально сложных UI-задач — `anthropics/frontend-design`, для системных UI/UX правил — `vercel-labs/web-design-guidelines`
 
 ### Development Workflow (STRICT — нельзя игнорировать)
 
@@ -147,15 +162,19 @@ Report     -> Done
 
 Research выполняется НЕ одним агентом, а консилиумом. Все агенты запускаются **параллельно** через Task tool и каждый анализирует задачу со своей экспертизы:
 
-| Роль             | subagent_type                     | Зона ответственности               |
-| ---------------- | --------------------------------- | ---------------------------------- |
-| Архитектор       | `voltagent-qa-sec:code-reviewer`  | Архитектура, модули, зависимости   |
-| Фронтенд-эксперт | `voltagent-lang:react-specialist` | UI/UX со стороны фронта            |
-| UI-дизайнер      | `voltagent-core-dev:ui-designer`  | Визуал, UX, компоненты, макеты     |
+Для Codex это означает следующее правило выполнения: на стадии **Research** оркестратор должен по умолчанию запускать **субагентов** для параллельного анализа задачи, а не выполнять весь ресерч в одном потоке самостоятельно. Если для текущей задачи доступны субагенты, использовать их нужно автоматически как часть стандартного workflow.
+
+Для mixed backend/frontend задач по умолчанию запускать 3 lane'а параллельно. Если задача явно затрагивает только одну область, нерелевантные lane'ы можно не запускать.
+
+| Роль             | subagent_type в Codex | Skill / опора | Зона ответственности |
+| ---------------- | --------------------- | ------------- | -------------------- |
+| Архитектор       | `explorer`            | `backend-development`, при schema-heavy анализе — `database-design` | Архитектура, модули, зависимости, границы ответственности, БД |
+| Фронтенд-эксперт | `explorer`            | `react-best-practices`, при Next.js-специфике — `next-best-practices` | React/Next.js, data-flow, rendering, структура компонентов |
+| UI-дизайнер      | `explorer`            | `frontend-design`, для системных UI/UX правил — `web-design-guidelines` | Визуал, UX, компоненты, макеты, consistency интерфейса |
 
 **Порядок работы Research:**
 
-1. Оркестратор запускает всех 6 агентов **параллельно** с описанием задачи
+1. Оркестратор запускает всех релевантных агентов **параллельно** с описанием задачи
 2. Собирает результаты от каждого агента
 3. Формирует сводное резюме консилиума
 4. Использует `AskUserQuestion` для уточнения, пока весь контекст не собран
@@ -186,6 +205,8 @@ Research выполняется НЕ одним агентом, а консил�
 - **Язык:** Node.js + TypeScript
 - **Фреймворк:** Nest.js
 - **Executing субагент:** `voltagent-lang:typescript-pro`
+- **Codex skill для Executing:** `skillcreatorai/backend-development`
+- **Дополнительные Codex skills:** при SQL / schema-heavy задачах — `skillcreatorai/database-design`
 - **Предпочтительная БД:** Postgress
 - **особенности работы с БД:** все запросы к БД пишутся на sql без использования диалектов ОРМ
 
@@ -194,6 +215,8 @@ Research выполняется НЕ одним агентом, а консил�
 - **Язык:** React + TypeScript
 - **UI-фреймворк:** React + Next.js
 - **Executing субагент:** `voltagent-lang:react-specialist`
+- **Codex skill для Executing:** `vercel-labs/react-best-practices`
+- **Дополнительные Codex skills:** `vercel-labs/next-best-practices`, для визуально сложных UI-задач — `anthropics/frontend-design`, для системных UI/UX правил — `vercel-labs/web-design-guidelines`
 
 ### Bug Hunting Workflow (STRICT — нельзя игнорировать)
 
@@ -292,10 +315,14 @@ Report     -> Done
 
 Diagnose выполняется консилиумом. Все агенты запускаются **параллельно** через Task tool:
 
-| Роль         | subagent_type                       | Зона ответственности                         |
-| ------------ | ----------------------------------- | -------------------------------------------- |
-| Диагност     | `voltagent-qa-sec:error-detective`  | Логи, стектрейсы, инструментирование, анализ |
-| Архитектор   | `voltagent-qa-sec:code-reviewer `   | Архитектурные причины, зависимости модулей   |
+Для Codex это означает следующее правило выполнения: на стадии **Diagnose** оркестратор должен по умолчанию запускать **субагентов** для параллельной диагностики, а не сводить всю диагностику к одному агенту. Если для текущей задачи доступны субагенты, использовать их нужно автоматически как часть стандартного workflow.
+
+| Роль             | subagent_type в Codex | Skill / опора | Зона ответственности |
+| ---------------- | --------------------- | ------------- | -------------------- |
+| Диагност         | `explorer`            | `webapp-testing` для web/UI багов, `backend-development` для backend-поверхности | Воспроизведение, симптоматика, логи, регрессии |
+| Архитектор       | `explorer`            | `backend-development`, при БД-аномалиях — `database-design` | Архитектурные причины, зависимости модулей, root cause |
+| Фронтенд-эксперт | `explorer`            | `react-best-practices`, при Next.js-специфике — `next-best-practices` | React/Next.js причины бага, rendering/state/data-flow |
+| UI-дизайнер      | `explorer`            | `frontend-design`, `web-design-guidelines` | UX/UI-регрессии, визуальные дефекты, interaction issues |
 
 **Порядок работы Diagnose:**
 
@@ -303,7 +330,7 @@ Diagnose выполняется консилиумом. Все агенты за
    - Описание бага
    - Шаги воспроизведения (из Reproduce)
    - Stacktrace/логи (если есть)
-2. Запускает 4 агентов **параллельно**
+2. Запускает всех релевантных агентов **параллельно**
 3. Собирает гипотезы от каждого агента
 4. Формирует сводный диагноз:
    - Корневая причина (root cause)
@@ -321,4 +348,3 @@ Diagnose выполняется консилиумом. Все агенты за
 - Результаты Validation (тесты, платформы, регрессии)
 - Проблемы и откаты (если были)
 - Статус: Fixed / Not Reproducible / Partially Fixed / Won't Fix
-
