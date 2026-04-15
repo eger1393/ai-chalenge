@@ -31,6 +31,7 @@ export class ConversationService {
         maxTokens: dto.maxTokens,
         repetitionPenalty: dto.repetitionPenalty,
         contextLimit: dto.contextLimit,
+        ragEnabled: dto.ragEnabled,
       });
 
       const contextId = crypto.randomUUID();
@@ -83,6 +84,7 @@ export class ConversationService {
       maxTokens: number;
       repetitionPenalty: number;
       contextLimit: number;
+      ragEnabled: boolean;
     }>,
   ): Promise<Conversation> {
     return this.conversationRepository.update(id, params);

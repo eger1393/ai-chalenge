@@ -158,6 +158,7 @@ export async function createConversation(data: {
   maxTokens?: number;
   repetitionPenalty?: number;
   contextLimit?: number;
+  ragEnabled?: boolean;
 }) {
   return apiRequest<Conversation>('/conversations', {
     method: 'POST',
@@ -179,6 +180,7 @@ export async function updateConversation(id: string, data: {
   maxTokens?: number;
   repetitionPenalty?: number;
   contextLimit?: number;
+  ragEnabled?: boolean;
   systemPrompt?: string;
   model?: string;
 }) {
@@ -292,7 +294,8 @@ export function startMessages(
     if (params.temperature !== undefined) filtered.temperature = params.temperature;
     if (params.maxTokens !== undefined) filtered.maxTokens = params.maxTokens;
     if (params.systemPrompt) filtered.systemPrompt = params.systemPrompt;
-    if (params.contextLimit) filtered.contextLimit = params.contextLimit;
+    if (params.contextLimit !== undefined) filtered.contextLimit = params.contextLimit;
+    if (params.ragEnabled !== undefined) filtered.ragEnabled = params.ragEnabled;
     if (params.contextStrategy) filtered.contextStrategy = params.contextStrategy;
     if (Object.keys(filtered).length > 0) body.params = filtered;
   }

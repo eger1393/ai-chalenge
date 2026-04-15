@@ -10,6 +10,7 @@ interface ServerConfig {
   icon: string;
   color: string;
   enabled: boolean;
+  exposeTools?: boolean;
   hiddenTools?: string[];
 }
 
@@ -92,6 +93,11 @@ export class McpRegistryService implements OnModuleInit, OnModuleDestroy {
       }
 
       this.logger.log(`MCP server "${serverName}" provides ${tools.length} tool(s)`);
+
+      if (config.exposeTools === false) {
+        this.logger.log(`Инструменты MCP-сервера "${serverName}" скрыты от модели`);
+        continue;
+      }
 
       const hidden = new Set(config.hiddenTools || []);
 
@@ -191,7 +197,7 @@ export class McpRegistryService implements OnModuleInit, OnModuleDestroy {
         displayName: config.displayName,
         icon: config.icon,
         color: config.color,
-        connected: this.connections.has(serverName) && toolCount > 0,
+        connected: this.connections.has(serverName),
         toolCount,
       });
     }

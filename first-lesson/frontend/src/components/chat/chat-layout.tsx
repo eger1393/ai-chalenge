@@ -145,7 +145,7 @@ export function ChatLayout() {
         }
         const projectId = activeProject?.id || tasks[0]?.id;
         if (!projectId) return;
-        const conv = await conversations.create(projectId, params.model, params.systemPrompt);
+        const conv = await conversations.create(projectId, params.model, params.systemPrompt, params.ragEnabled);
         currentConvId = conv.id;
         chat.setConversationId(conv.id);
       }
@@ -202,7 +202,7 @@ export function ChatLayout() {
 
   const handleNewConversationInProject = useCallback(
     async (projectId: string) => {
-      const conv = await conversations.create(projectId, params.model, params.systemPrompt);
+      const conv = await conversations.create(projectId, params.model, params.systemPrompt, params.ragEnabled);
       conversations.select(conv.id);
       setSidebarOpen(false);
     },

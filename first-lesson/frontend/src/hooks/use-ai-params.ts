@@ -35,6 +35,7 @@ function loadFromStorage(): AIParams | null {
       repetitionPenalty: typeof parsed.repetitionPenalty === 'number' ? parsed.repetitionPenalty : DEFAULT_AI_PARAMS.repetitionPenalty,
       systemPrompt: typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : DEFAULT_AI_PARAMS.systemPrompt,
       contextLimit: typeof parsed.contextLimit === 'number' ? parsed.contextLimit : DEFAULT_AI_PARAMS.contextLimit,
+      ragEnabled: typeof parsed.ragEnabled === 'boolean' ? parsed.ragEnabled : DEFAULT_AI_PARAMS.ragEnabled,
       contextStrategy,
       slidingWindowKeepLast,
     };
@@ -84,6 +85,7 @@ export function useAIParams() {
     params.repetitionPenalty !== DEFAULT_AI_PARAMS.repetitionPenalty ||
     params.systemPrompt !== '' ||
     params.contextLimit !== DEFAULT_AI_PARAMS.contextLimit ||
+    params.ragEnabled !== DEFAULT_AI_PARAMS.ragEnabled ||
     params.contextStrategy !== DEFAULT_AI_PARAMS.contextStrategy ||
     params.slidingWindowKeepLast !== DEFAULT_AI_PARAMS.slidingWindowKeepLast;
 

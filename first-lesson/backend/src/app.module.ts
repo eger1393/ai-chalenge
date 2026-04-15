@@ -14,6 +14,7 @@ import { MessageProcessingModule } from './message-processing/message-processing
 import { McpModule } from './mcp/mcp.module';
 import { NotificationModule } from './notification/notification.module';
 import { SubscriptionModule } from './subscription/subscription.module';
+import { RagModule } from './rag/rag.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { SubscriptionModule } from './subscription/subscription.module';
     MessageProcessingModule,
     NotificationModule,
     SubscriptionModule,
+    RagModule,
   ],
 })
 export class AppModule {}

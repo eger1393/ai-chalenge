@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class CreateConversationDto {
   @IsUUID()
@@ -32,6 +32,10 @@ export class CreateConversationDto {
   @IsOptional()
   @IsNumber()
   contextLimit?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  ragEnabled?: boolean;
 
   @IsOptional()
   @IsString()

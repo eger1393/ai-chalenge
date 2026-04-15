@@ -2,3 +2,6 @@
 first-lesson/.claude/settings.local.json
 first-lesson/.env.example
 first-lesson/frontend/tsconfig.tsbuildinfo
+first-lesson/backend/.cache/huggingface/Xenova/bge-m3/onnx
+first-lesson/backend/.cache
+first-lesson/result.json

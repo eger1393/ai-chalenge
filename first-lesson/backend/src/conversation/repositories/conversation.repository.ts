@@ -13,6 +13,7 @@ export interface Conversation {
   maxTokens: number | null;
   repetitionPenalty: number | null;
   contextLimit: number | null;
+  ragEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -27,6 +28,7 @@ interface CreateConversationData {
   maxTokens?: number;
   repetitionPenalty?: number;
   contextLimit?: number;
+  ragEnabled?: boolean;
 }
 
 type UpdateConversationData = Partial<{
@@ -37,6 +39,7 @@ type UpdateConversationData = Partial<{
   maxTokens: number;
   repetitionPenalty: number;
   contextLimit: number;
+  ragEnabled: boolean;
 }>;
 
 const COLUMN_MAP: Record<string, string> = {
@@ -47,6 +50,7 @@ const COLUMN_MAP: Record<string, string> = {
   maxTokens: 'max_tokens',
   repetitionPenalty: 'repetition_penalty',
   contextLimit: 'context_limit',
+  ragEnabled: 'rag_enabled',
 };
 
 function mapRow(row: Record<string, unknown>): Conversation {
@@ -61,6 +65,7 @@ function mapRow(row: Record<string, unknown>): Conversation {
     maxTokens: (row.max_tokens as number) ?? null,
     repetitionPenalty: row.repetition_penalty != null ? parseFloat(String(row.repetition_penalty)) : null,
     contextLimit: (row.context_limit as number) ?? null,
+    ragEnabled: Boolean(row.rag_enabled),
     createdAt: row.created_at as Date,
     updatedAt: row.updated_at as Date,
   };
@@ -91,8 +96,8 @@ export class ConversationRepository extends BaseRepository<Conversation> {
   async create(data: CreateConversationData): Promise<Conversation> {
     const id = crypto.randomUUID();
     const { rows } = await this.db.query(
-      `INSERT INTO conversations (id, project_id, user_id, title, model, system_prompt, temperature, max_tokens, repetition_penalty, context_limit)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      `INSERT INTO conversations (id, project_id, user_id, title, model, system_prompt, temperature, max_tokens, repetition_penalty, context_limit, rag_enabled)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         id,
@@ -105,6 +110,7 @@ export class ConversationRepository extends BaseRepository<Conversation> {
         data.maxTokens ?? 16384,
         data.repetitionPenalty ?? 0,
         data.contextLimit ?? 128000,
+        data.ragEnabled ?? false,
       ],
     );
     return mapRow(rows[0]);

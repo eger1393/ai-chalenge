@@ -20,7 +20,8 @@
       "displayName": "Knowledge Base",
       "icon": "book-open",
       "color": "emerald",
-      "enabled": true
+      "enabled": true,
+      "exposeTools": false
     }
   }
 }

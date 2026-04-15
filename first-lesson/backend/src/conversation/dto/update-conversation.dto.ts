@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class UpdateConversationDto {
   @IsOptional()
@@ -28,4 +28,8 @@ export class UpdateConversationDto {
   @IsOptional()
   @IsNumber()
   contextLimit?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  ragEnabled?: boolean;
 }

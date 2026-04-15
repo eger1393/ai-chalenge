@@ -10,6 +10,8 @@ import { StepRunnerService, ValidationResult } from './step-runner.service';
 import { GuardService } from './guard.service';
 import { StepRepository } from '../repositories/step.repository';
 import { ALLOWED_MODELS, DEFAULT_MODEL } from '../../ai/dto/ai-params.dto';
+import { RagService } from '../../rag/rag.service';
+import { RagChunkMatch, RagDebugContext } from '../../rag/rag.types';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -38,6 +40,7 @@ export class StepOrchestratorService {
     private readonly guardService: GuardService,
     private readonly tokenService: TokenService,
     private readonly stepRepository: StepRepository,
+    private readonly ragService: RagService,
   ) {}
 
   // ── Public: process a message through the pipeline ────────────────
@@ -89,7 +92,14 @@ export class StepOrchestratorService {
       userSystemPrompt: conversation.systemPrompt?.trim()?.slice(0, 4000) || undefined,
       model: userModel,
     });
-    const assembledSystemPrompt = memoryResult.systemPrompt || undefined;
+    let assembledSystemPrompt = memoryResult.systemPrompt || undefined;
+
+    const ragResult = conversation.ragEnabled
+      ? await this.ragService.buildContextBlock(userContent)
+      : { block: '', matches: [] };
+    if (ragResult.block) {
+      assembledSystemPrompt = [assembledSystemPrompt, ragResult.block].filter(Boolean).join('\n\n---\n\n');
+    }
 
     // 5. Load invariants
     let invariants: string[] = [];
@@ -207,6 +217,7 @@ export class StepOrchestratorService {
             validationReason: s.validationReason,
           })),
         },
+        ragContext: buildRagDebugContext(conversation.ragEnabled, ragResult.matches),
       });
 
       // 10. Extract and apply facts if sticky_facts strategy
@@ -331,7 +342,14 @@ export class StepOrchestratorService {
       projectId: conversation.projectId || undefined,
       model: userModel,
     });
-    const assembledSystemPrompt = memoryResult.systemPrompt || undefined;
+    let assembledSystemPrompt = memoryResult.systemPrompt || undefined;
+
+    const ragResult = conversation.ragEnabled
+      ? await this.ragService.buildContextBlock(message.userContent)
+      : { block: '', matches: [] };
+    if (ragResult.block) {
+      assembledSystemPrompt = [assembledSystemPrompt, ragResult.block].filter(Boolean).join('\n\n---\n\n');
+    }
 
     // Load invariants
     let invariants: string[] = [];
@@ -396,6 +414,32 @@ export class StepOrchestratorService {
         completionTokens: result.totalCompletionTokens,
         totalTokens: result.totalPromptTokens + result.totalCompletionTokens,
         cost: result.totalCost,
+      });
+
+      const allSteps = await this.stepRepository.findByMessageId(messageId);
+      await this.messageRepository.saveDebug(messageId, {
+        strategyType: 'pipeline',
+        contextMessagesCount: contextResult.messages?.length ?? 0,
+        contextMessagesAfterTruncation: contextResult.messages?.length ?? 0,
+        strategyMetadata: {
+          messageId,
+          totalAttempts: result.finalAttempt,
+          totalCost: result.totalCost,
+          totalTokens: result.totalPromptTokens + result.totalCompletionTokens,
+          steps: allSteps.map((s) => ({
+            stepType: s.stepType,
+            attempt: s.attemptNumber,
+            status: s.status,
+            model: s.model,
+            promptTokens: s.promptTokens,
+            completionTokens: s.completionTokens,
+            cost: s.cost,
+            durationMs: s.durationMs,
+            validationPassed: s.validationPassed,
+            validationReason: s.validationReason,
+          })),
+        },
+        ragContext: buildRagDebugContext(conversation.ragEnabled, ragResult.matches),
       });
 
       onEvent({
@@ -684,13 +728,14 @@ export class StepOrchestratorService {
     maxTokens: number | null;
     contextLimit: number | null;
     systemPrompt: string | null;
+    ragEnabled: boolean;
   } | null> {
     // Use ConversationRepository via BaseRepository findById
     // ConversationService requires userId for auth, but on resume we may not have it.
     // MessageRepository has the conversationId, and we need the conversation data.
     // We access via the service's internal repository through a direct DB query.
     const result = await this.db.query(
-      `SELECT user_id, project_id, model, temperature, max_tokens, context_limit, system_prompt
+      `SELECT user_id, project_id, model, temperature, max_tokens, context_limit, system_prompt, rag_enabled
        FROM conversations WHERE id = $1`,
       [conversationId],
     );
@@ -704,6 +749,20 @@ export class StepOrchestratorService {
       maxTokens: row.max_tokens ?? null,
       contextLimit: row.context_limit ?? null,
       systemPrompt: row.system_prompt ?? null,
+      ragEnabled: Boolean(row.rag_enabled),
     };
   }
+}
+
+function buildRagDebugContext(enabled: boolean, matches: RagChunkMatch[]): RagDebugContext {
+  return {
+    enabled,
+    matchCount: matches.length,
+    matches: matches.map((match, index) => ({
+      rank: index + 1,
+      chunkId: match.chunkId,
+      documentId: match.documentId,
+      similarity: match.similarity,
+    })),
+  };
 }

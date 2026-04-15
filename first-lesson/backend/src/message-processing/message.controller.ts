@@ -7,6 +7,7 @@ import { StepOrchestratorService } from './services/step-orchestrator.service';
 import { MessageRepository } from '../conversation/repositories/message.repository';
 import { ConversationService } from '../conversation/conversation.service';
 import { StepRepository } from './repositories/step.repository';
+import { RagRepository } from '../rag/rag.repository';
 
 @Controller()
 export class MessageController {
@@ -17,6 +18,7 @@ export class MessageController {
     private readonly messageRepository: MessageRepository,
     private readonly conversationService: ConversationService,
     private readonly stepRepository: StepRepository,
+    private readonly ragRepository: RagRepository,
   ) {}
 
   @Post('conversations/:id/messages')
@@ -49,6 +51,7 @@ export class MessageController {
         if (dto.params.repetitionPenalty != null) updateData.repetitionPenalty = dto.params.repetitionPenalty;
         if (dto.params.systemPrompt != null) updateData.systemPrompt = dto.params.systemPrompt;
         if (dto.params.contextLimit != null) updateData.contextLimit = dto.params.contextLimit;
+        if (dto.params.ragEnabled != null) updateData.ragEnabled = dto.params.ragEnabled;
 
         if (Object.keys(updateData).length > 0) {
           await this.conversationService.updateParams(conversationId, updateData as Parameters<ConversationService['updateParams']>[1]);
@@ -156,6 +159,7 @@ export class MessageController {
     const totalCost = steps.reduce((sum, s) => sum + s.cost, 0);
     const totalTokens = steps.reduce((sum, s) => sum + s.promptTokens + s.completionTokens, 0);
     const totalAttempts = steps.length > 0 ? Math.max(...steps.map(s => s.attemptNumber)) : 0;
+    const rag = await this.buildRagDebug(debug?.ragContext);
 
     return {
       strategyType: debug?.strategyType || 'pipeline',
@@ -166,6 +170,7 @@ export class MessageController {
       branchInfo: debug?.branchInfo || null,
       summaryInfo: debug?.summaryInfo || null,
       strategyMetadata: debug?.strategyMetadata || null,
+      rag,
       memoryLayers: debug?.memoryLayers || null,
       meta: meta || null,
       pipelineData: {
@@ -174,6 +179,54 @@ export class MessageController {
         totalTokens,
         steps: pipelineSteps,
       },
+    };
+  }
+
+  private async buildRagDebug(rawRagContext: unknown) {
+    if (!isRecord(rawRagContext)) {
+      return null;
+    }
+
+    const rawMatches = Array.isArray(rawRagContext.matches) ? rawRagContext.matches : [];
+    const references = rawMatches
+      .filter(isRecord)
+      .map((match, index) => ({
+        rank: asNumber(match.rank) ?? index + 1,
+        chunkId: typeof match.chunkId === 'string' ? match.chunkId : '',
+        documentId: typeof match.documentId === 'string' ? match.documentId : '',
+        similarity: asNumber(match.similarity) ?? 0,
+      }))
+      .filter((match) => match.chunkId && match.documentId);
+
+    const details = await this.ragRepository.getDebugChunkDetails(references.map((match) => match.chunkId));
+    const detailsByChunkId = new Map(details.map((detail) => [detail.chunkId, detail]));
+
+    return {
+      enabled: Boolean(rawRagContext.enabled),
+      matchCount: asNumber(rawRagContext.matchCount) ?? references.length,
+      matches: references.map((reference) => {
+        const detail = detailsByChunkId.get(reference.chunkId);
+        return {
+          ...reference,
+          found: Boolean(detail),
+          chunkIndex: detail?.chunkIndex ?? null,
+          content: detail?.content ?? null,
+          charCount: detail?.charCount ?? null,
+          embeddingModel: detail?.embeddingModel ?? null,
+          chunkMetadata: detail?.chunkMetadata ?? null,
+          document: detail
+            ? {
+                id: detail.documentId,
+                externalId: detail.externalId,
+                sourceType: detail.sourceType,
+                sourceKey: detail.sourceKey,
+                publishedAt: detail.publishedAt?.toISOString() ?? null,
+                fullText: detail.fullText,
+                metadata: detail.documentMetadata,
+              }
+            : null,
+        };
+      }),
     };
   }
 
@@ -217,4 +270,21 @@ export class MessageController {
       })),
     };
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function asNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
 }

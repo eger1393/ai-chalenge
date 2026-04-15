@@ -7,6 +7,7 @@ export interface AIParams {
   repetitionPenalty: number;
   systemPrompt: string;
   contextLimit: number;
+  ragEnabled: boolean;
   contextStrategy: ContextStrategyType;
   slidingWindowKeepLast: number;
 }
@@ -48,6 +49,7 @@ export const DEFAULT_AI_PARAMS: AIParams = {
   repetitionPenalty: 0,
   systemPrompt: '',
   contextLimit: 0,
+  ragEnabled: false,
   contextStrategy: 'sliding_window',
   slidingWindowKeepLast: 10,
 };

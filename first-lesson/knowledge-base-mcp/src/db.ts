@@ -93,6 +93,12 @@ export async function initDb(): Promise<void> {
   pool = new Pool({ connectionString });
 
   await pool.query('CREATE EXTENSION IF NOT EXISTS pgcrypto');
+  try {
+    await pool.query('CREATE EXTENSION IF NOT EXISTS vector');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Неизвестная ошибка';
+    throw new Error(`Не удалось подключить расширение vector. Убедись, что PostgreSQL запущен с поддержкой pgvector. Детали: ${message}`);
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS knowledge_base_entries (
@@ -118,7 +124,48 @@ export async function initDb(): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS idx_knowledge_base_tags_entry
       ON knowledge_base_tags (entry_id);
+
+    CREATE TABLE IF NOT EXISTS telegram_channel_messages (
+      channel_id BIGINT NOT NULL,
+      channel_name TEXT NOT NULL,
+      message_id BIGINT NOT NULL,
+      message_type TEXT NOT NULL,
+      published_at TIMESTAMPTZ,
+      edited_at TIMESTAMPTZ,
+      full_text TEXT NOT NULL,
+      has_media BOOLEAN NOT NULL DEFAULT FALSE,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (channel_id, message_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_telegram_channel_messages_published_at
+      ON telegram_channel_messages (channel_id, published_at DESC);
+
+    CREATE TABLE IF NOT EXISTS telegram_message_chunks (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      channel_id BIGINT NOT NULL,
+      message_id BIGINT NOT NULL,
+      chunk_index INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      char_count INTEGER NOT NULL,
+      embedding_model TEXT NOT NULL,
+      embedding vector(1024) NOT NULL,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT fk_telegram_message_chunks_message
+        FOREIGN KEY (channel_id, message_id)
+        REFERENCES telegram_channel_messages(channel_id, message_id)
+        ON DELETE CASCADE,
+      CONSTRAINT uq_telegram_message_chunks
+        UNIQUE (channel_id, message_id, chunk_index)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_telegram_message_chunks_message
+      ON telegram_message_chunks (channel_id, message_id);
   `);
 
-  console.log('Database initialized: knowledge_base_entries and knowledge_base_tags tables ready');
+  console.log('База знаний и таблицы Telegram готовы к работе');
 }

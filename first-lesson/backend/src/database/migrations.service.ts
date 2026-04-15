@@ -19,6 +19,10 @@ export class MigrationsService {
   }
 
   private async createNewSchema(): Promise<void> {
+    await this.db.query(`
+      CREATE EXTENSION IF NOT EXISTS vector
+    `);
+
     // 1. users
     await this.db.query(`
       CREATE TABLE IF NOT EXISTS users (
@@ -93,9 +97,14 @@ export class MigrationsService {
         max_tokens INTEGER NOT NULL DEFAULT 16384,
         repetition_penalty DOUBLE PRECISION NOT NULL DEFAULT 0,
         context_limit INTEGER DEFAULT 0,
+        rag_enabled BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
+    `);
+    await this.db.query(`
+      ALTER TABLE conversations
+      ADD COLUMN IF NOT EXISTS rag_enabled BOOLEAN NOT NULL DEFAULT FALSE
     `);
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_conversations_project ON conversations(project_id)
@@ -167,6 +176,45 @@ export class MigrationsService {
       CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status)
     `);
 
+    // 8b. RAG documents and chunks
+    await this.db.query(`
+      CREATE TABLE IF NOT EXISTS rag_documents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        source_type VARCHAR(50) NOT NULL,
+        source_key TEXT NOT NULL,
+        external_id TEXT NOT NULL,
+        published_at TIMESTAMPTZ,
+        full_text TEXT NOT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (source_type, source_key, external_id)
+      )
+    `);
+    await this.db.query(`
+      CREATE INDEX IF NOT EXISTS idx_rag_documents_source
+      ON rag_documents(source_type, source_key, published_at DESC)
+    `);
+    await this.db.query(`
+      CREATE TABLE IF NOT EXISTS rag_chunks (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        document_id UUID NOT NULL REFERENCES rag_documents(id) ON DELETE CASCADE,
+        chunk_index INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        char_count INTEGER NOT NULL,
+        embedding_model VARCHAR(100) NOT NULL,
+        embedding vector(1024) NOT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (document_id, chunk_index)
+      )
+    `);
+    await this.db.query(`
+      CREATE INDEX IF NOT EXISTS idx_rag_chunks_document
+      ON rag_chunks(document_id)
+    `);
+
     // 9. message_steps
     await this.db.query(`
       CREATE TABLE IF NOT EXISTS message_steps (
@@ -230,9 +278,14 @@ export class MigrationsService {
         branch_info JSONB,
         summary_info JSONB,
         strategy_metadata JSONB,
+        rag_context JSONB,
         memory_layers JSONB,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
+    `);
+    await this.db.query(`
+      ALTER TABLE message_debug
+      ADD COLUMN IF NOT EXISTS rag_context JSONB
     `);
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_message_debug_message ON message_debug(message_id)

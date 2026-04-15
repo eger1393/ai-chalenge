@@ -42,6 +42,7 @@ export interface MessageDebugData {
   branchInfo?: unknown;
   summaryInfo?: unknown;
   strategyMetadata?: unknown;
+  ragContext?: unknown;
   memoryLayers?: unknown;
 }
 
@@ -56,6 +57,7 @@ export interface MessageDebug {
   branchInfo: unknown;
   summaryInfo: unknown;
   strategyMetadata: unknown;
+  ragContext: unknown;
   memoryLayers: unknown;
   createdAt: Date;
 }
@@ -89,6 +91,7 @@ function mapDebugRow(row: Record<string, unknown>): MessageDebug {
     branchInfo: row.branch_info ?? null,
     summaryInfo: row.summary_info ?? null,
     strategyMetadata: row.strategy_metadata ?? null,
+    ragContext: row.rag_context ?? null,
     memoryLayers: row.memory_layers ?? null,
     createdAt: row.created_at as Date,
   };
@@ -221,8 +224,8 @@ export class MessageRepository extends BaseRepository<Message> {
       `INSERT INTO message_debug (
         id, message_id, strategy_type, context_messages_count,
         context_messages_after_truncation, token_breakdown, facts_snapshot,
-        branch_info, summary_info, strategy_metadata, memory_layers
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        branch_info, summary_info, strategy_metadata, rag_context, memory_layers
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       ON CONFLICT (message_id) DO UPDATE SET
         strategy_type = EXCLUDED.strategy_type,
         context_messages_count = EXCLUDED.context_messages_count,
@@ -232,6 +235,7 @@ export class MessageRepository extends BaseRepository<Message> {
         branch_info = EXCLUDED.branch_info,
         summary_info = EXCLUDED.summary_info,
         strategy_metadata = EXCLUDED.strategy_metadata,
+        rag_context = EXCLUDED.rag_context,
         memory_layers = EXCLUDED.memory_layers`,
       [
         id,
@@ -244,6 +248,7 @@ export class MessageRepository extends BaseRepository<Message> {
         debug.branchInfo ? JSON.stringify(debug.branchInfo) : null,
         debug.summaryInfo ? JSON.stringify(debug.summaryInfo) : null,
         debug.strategyMetadata ? JSON.stringify(debug.strategyMetadata) : null,
+        debug.ragContext ? JSON.stringify(debug.ragContext) : null,
         debug.memoryLayers ? JSON.stringify(debug.memoryLayers) : null,
       ],
     );

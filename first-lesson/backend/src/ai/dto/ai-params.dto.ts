@@ -4,6 +4,7 @@ import {
   IsInt,
   IsString,
   IsIn,
+  IsBoolean,
   Min,
   Max,
   MaxLength,
@@ -66,6 +67,10 @@ export class AIParamsDto {
   @Min(0)
   @Max(1048576)
   contextLimit?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  ragEnabled?: boolean;
 
   @IsOptional()
   @IsInt()

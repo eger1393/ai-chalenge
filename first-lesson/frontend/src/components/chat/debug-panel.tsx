@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { ChevronDown, ChevronRight, Clock, Coins, Hash, Cpu, CheckCircle2, XCircle, FileText, MessageSquare, ArrowRight, Copy, Check, Wrench } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, Coins, Hash, Cpu, CheckCircle2, XCircle, FileText, MessageSquare, ArrowRight, Copy, Check, Wrench, Database, Search } from 'lucide-react';
 import { MessageDebugData } from '@/types/conversation';
 
 interface DebugPanelProps {
@@ -47,6 +47,23 @@ function formatTokens(n: number): string {
 function formatCost(n: number): string {
   if (n < 0.01) return `$${n.toFixed(4)}`;
   return `$${n.toFixed(2)}`;
+}
+
+function formatPercent(n: number): string {
+  return `${Math.round(n * 100)}%`;
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return 'без даты';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('ru-RU', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 // ── Copy Button ──────────────────────────────────────────────────────
@@ -322,7 +339,7 @@ function PipelineStepCard({ step, index, isExpanded, onToggle }: {
 
 // ── Tab definitions ──────────────────────────────────────────────────
 
-type TabId = 'pipeline' | 'memory' | 'tokens' | 'facts' | 'strategy';
+type TabId = 'pipeline' | 'rag' | 'memory' | 'tokens' | 'facts' | 'strategy';
 
 interface TabDef {
   id: TabId;
@@ -334,12 +351,20 @@ interface TabDef {
 export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
   const [expandedLayers, setExpandedLayers] = useState<Set<number>>(new Set());
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+  const [expandedRagChunks, setExpandedRagChunks] = useState<Set<number>>(new Set());
+  const [expandedRagDocuments, setExpandedRagDocuments] = useState<Set<number>>(new Set());
 
   const toggleLayer = (i: number) => {
     setExpandedLayers(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
   };
   const toggleStep = (i: number) => {
     setExpandedSteps(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
+  };
+  const toggleRagChunk = (i: number) => {
+    setExpandedRagChunks(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
+  };
+  const toggleRagDocument = (i: number) => {
+    setExpandedRagDocuments(prev => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; });
   };
 
   // Pipeline data comes from either pipelineData field or strategyMetadata (DB stores in strategy_metadata JSONB)
@@ -354,6 +379,9 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
     const tabs: TabDef[] = [];
     if (isPipeline) {
       tabs.push({ id: 'pipeline', label: 'Pipeline' });
+    }
+    if (debugData.rag) {
+      tabs.push({ id: 'rag', label: 'RAG' });
     }
     if (debugData.memoryLayers && debugData.memoryLayers.length > 0) {
       tabs.push({ id: 'memory', label: 'Память' });
@@ -436,6 +464,15 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
               )}
             </span>
           )}
+
+          {debugData.rag && (
+            <span className={`flex items-center gap-1 text-[10px] ${
+              debugData.rag.enabled ? 'text-emerald-600' : 'text-gray-400'
+            }`}>
+              <Database className="w-3 h-3" />
+              RAG: {debugData.rag.enabled ? `${debugData.rag.matchCount} фрагм.` : 'выключен'}
+            </span>
+          )}
         </div>
 
         {/* ── Tabs Bar ───────────────────────────────────────── */}
@@ -492,6 +529,129 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* ── RAG Context ───────────────────────────────── */}
+          {currentTab === 'rag' && debugData.rag && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <Stat
+                  icon={<Database className="w-3 h-3 text-emerald-500" />}
+                  label="Состояние"
+                  value={debugData.rag.enabled ? 'включён' : 'выключен'}
+                />
+                <Stat
+                  icon={<Search className="w-3 h-3 text-emerald-500" />}
+                  label="Найдено"
+                  value={String(debugData.rag.matchCount)}
+                />
+              </div>
+
+              {debugData.rag.matches.length > 0 ? (
+                <div className="space-y-2">
+                  {debugData.rag.matches.map((match, i) => {
+                    const metadata = match.document?.metadata || {};
+                    const channelName = typeof metadata.channel_name === 'string'
+                      ? metadata.channel_name
+                      : match.document?.sourceKey;
+                    const chunkExpanded = expandedRagChunks.has(i);
+                    const documentExpanded = expandedRagDocuments.has(i);
+                    const content = match.content || '';
+                    const fullText = match.document?.fullText || '';
+
+                    return (
+                      <div key={`${match.chunkId}-${i}`} className="rounded-lg border border-emerald-100 bg-emerald-50/30 overflow-hidden">
+                        <div className="px-3 py-2 bg-emerald-100/60 border-b border-emerald-100">
+                          <div className="flex items-center gap-2">
+                            <Database className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                            <span className="text-xs font-semibold text-emerald-700 flex-1">
+                              RAG #{match.rank}
+                            </span>
+                            <span className="text-[10px] font-mono text-emerald-700">
+                              {formatPercent(match.similarity)}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-emerald-700/80">
+                            <span>сообщение: <span className="font-mono">{match.document?.externalId || 'не найдено'}</span></span>
+                            <span>чанк: <span className="font-mono">{match.chunkIndex ?? '—'}</span></span>
+                            <span>дата: <span className="font-mono">{formatDate(match.document?.publishedAt)}</span></span>
+                            {channelName && <span>источник: <span className="font-medium">{channelName}</span></span>}
+                          </div>
+                        </div>
+
+                        {!match.found ? (
+                          <div className="px-3 py-2 text-[11px] text-amber-700 bg-amber-50">
+                            Чанк не найден в текущем RAG-индексе. В debug сохранены только идентификаторы: {match.chunkId}
+                          </div>
+                        ) : (
+                          <div className="bg-white">
+                            <button
+                              type="button"
+                              onClick={() => toggleRagChunk(i)}
+                              className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left hover:bg-emerald-50/50 transition-colors"
+                            >
+                              <FileText className="w-3 h-3 text-emerald-500" />
+                              <span className="text-[11px] font-medium text-emerald-700">Фрагмент</span>
+                              <span className="text-[10px] text-emerald-500 font-mono">{match.charCount ?? content.length} симв.</span>
+                              <span className="flex-1" />
+                              {content && <CopyButton text={content} />}
+                              {chunkExpanded
+                                ? <ChevronDown className="w-3 h-3 text-emerald-500" />
+                                : <ChevronRight className="w-3 h-3 text-emerald-500" />
+                              }
+                            </button>
+                            {chunkExpanded && (
+                              <div className="px-3 pb-2">
+                                <div className="text-[11px] text-gray-600 whitespace-pre-wrap leading-relaxed max-h-52 overflow-y-auto rounded-md bg-gray-50 p-2.5 border border-gray-100">
+                                  {content || 'Фрагмент пуст'}
+                                </div>
+                              </div>
+                            )}
+
+                            {fullText && (
+                              <div className="border-t border-gray-100">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleRagDocument(i)}
+                                  className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left hover:bg-gray-50 transition-colors"
+                                >
+                                  <MessageSquare className="w-3 h-3 text-gray-500" />
+                                  <span className="text-[11px] font-medium text-gray-600">Полное сообщение</span>
+                                  <span className="text-[10px] text-gray-400 font-mono">{fullText.length} симв.</span>
+                                  <span className="flex-1" />
+                                  <CopyButton text={fullText} />
+                                  {documentExpanded
+                                    ? <ChevronDown className="w-3 h-3 text-gray-400" />
+                                    : <ChevronRight className="w-3 h-3 text-gray-400" />
+                                  }
+                                </button>
+                                {documentExpanded && (
+                                  <div className="px-3 pb-2">
+                                    <div className="text-[11px] text-gray-600 whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto rounded-md bg-gray-50 p-2.5 border border-gray-100">
+                                      {fullText}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            <div className="border-t border-gray-100 px-3 py-1.5 text-[10px] text-gray-400 font-mono break-all">
+                              chunkId: {match.chunkId}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] text-gray-500">
+                  {debugData.rag.enabled
+                    ? 'RAG был включён, но релевантные фрагменты не прошли порог отбора'
+                    : 'RAG был выключен для этого сообщения'}
+                </div>
+              )}
             </div>
           )}
 

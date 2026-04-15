@@ -8,6 +8,7 @@ export interface Conversation {
   maxTokens: number;
   repetitionPenalty: number;
   contextLimit: number;
+  ragEnabled: boolean;
   createdAt: string;
   updatedAt: string;
   messageCount: number;
@@ -122,6 +123,31 @@ export interface MessageDebugData {
   branchInfo?: unknown;
   summaryInfo?: unknown;
   strategyMetadata?: Record<string, unknown>;
+  rag?: {
+    enabled: boolean;
+    matchCount: number;
+    matches: Array<{
+      rank: number;
+      chunkId: string;
+      documentId: string;
+      similarity: number;
+      found: boolean;
+      chunkIndex?: number | null;
+      content?: string | null;
+      charCount?: number | null;
+      embeddingModel?: string | null;
+      chunkMetadata?: Record<string, unknown> | null;
+      document?: {
+        id: string;
+        externalId: string;
+        sourceType: string;
+        sourceKey: string;
+        publishedAt?: string | null;
+        fullText: string;
+        metadata: Record<string, unknown>;
+      } | null;
+    }>;
+  } | null;
   memoryLayers?: Array<{
     type: 'long_term' | 'working' | 'short_term';
     label: string;

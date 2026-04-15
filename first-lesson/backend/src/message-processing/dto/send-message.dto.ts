@@ -14,6 +14,7 @@ export class SendMessageDto {
     repetitionPenalty?: number;
     systemPrompt?: string;
     contextLimit?: number;
+    ragEnabled?: boolean;
     contextStrategy?: string;
   };
 }

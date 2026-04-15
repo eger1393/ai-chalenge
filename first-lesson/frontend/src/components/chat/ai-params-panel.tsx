@@ -176,6 +176,33 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
           )}
         </div>
 
+        {/* RAG */}
+        <div className="border-t border-gray-200 pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-700 block">RAG</label>
+              <p className="text-[10px] text-gray-400 mt-1">
+                Если включён, бэкенд попытается подмешать релевантные фрагменты из проиндексированного корпуса сообщений
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={params.ragEnabled}
+              onClick={() => setParam('ragEnabled', !params.ragEnabled)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                params.ragEnabled ? 'bg-emerald-600' : 'bg-gray-300'
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                  params.ragEnabled ? 'translate-x-5' : 'translate-x-1'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
         {/* Repetition Penalty */}
         <div>
           <div className="flex items-center justify-between mb-1">

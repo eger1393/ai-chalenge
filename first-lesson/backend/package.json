@@ -4,9 +4,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main",
-    "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts"
+    "start:dev": "ts-node-dev --respawn --transpile-only src/main.ts",
+    "rag:import:telegram": "node dist/rag/import-telegram-dump.js"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.0.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@nestjs/common": "^10.3.0",
     "@nestjs/config": "^3.2.0",
