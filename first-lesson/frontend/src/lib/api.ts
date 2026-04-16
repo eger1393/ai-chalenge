@@ -159,6 +159,7 @@ export async function createConversation(data: {
   repetitionPenalty?: number;
   contextLimit?: number;
   ragEnabled?: boolean;
+  ragMode?: 'filter' | 'reranker';
 }) {
   return apiRequest<Conversation>('/conversations', {
     method: 'POST',
@@ -181,6 +182,7 @@ export async function updateConversation(id: string, data: {
   repetitionPenalty?: number;
   contextLimit?: number;
   ragEnabled?: boolean;
+  ragMode?: 'filter' | 'reranker';
   systemPrompt?: string;
   model?: string;
 }) {
@@ -296,6 +298,7 @@ export function startMessages(
     if (params.systemPrompt) filtered.systemPrompt = params.systemPrompt;
     if (params.contextLimit !== undefined) filtered.contextLimit = params.contextLimit;
     if (params.ragEnabled !== undefined) filtered.ragEnabled = params.ragEnabled;
+    if (params.ragMode !== undefined) filtered.ragMode = params.ragMode;
     if (params.contextStrategy) filtered.contextStrategy = params.contextStrategy;
     if (Object.keys(filtered).length > 0) body.params = filtered;
   }

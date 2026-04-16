@@ -10,8 +10,9 @@ import { StepRunnerService, ValidationResult } from './step-runner.service';
 import { GuardService } from './guard.service';
 import { StepRepository } from '../repositories/step.repository';
 import { ALLOWED_MODELS, DEFAULT_MODEL } from '../../ai/dto/ai-params.dto';
+import { normalizeRagMode, type RagMode } from '../../rag/constants';
 import { RagService } from '../../rag/rag.service';
-import { RagChunkMatch, RagDebugContext } from '../../rag/rag.types';
+import { RagContextResult, RagDebugContext } from '../../rag/rag.types';
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -95,8 +96,8 @@ export class StepOrchestratorService {
     let assembledSystemPrompt = memoryResult.systemPrompt || undefined;
 
     const ragResult = conversation.ragEnabled
-      ? await this.ragService.buildContextBlock(userContent)
-      : { block: '', matches: [] };
+      ? await this.ragService.buildContextBlock(userContent, conversation.ragMode)
+      : createEmptyRagResult(conversation.ragMode);
     if (ragResult.block) {
       assembledSystemPrompt = [assembledSystemPrompt, ragResult.block].filter(Boolean).join('\n\n---\n\n');
     }
@@ -217,7 +218,7 @@ export class StepOrchestratorService {
             validationReason: s.validationReason,
           })),
         },
-        ragContext: buildRagDebugContext(conversation.ragEnabled, ragResult.matches),
+        ragContext: buildRagDebugContext(conversation.ragEnabled, ragResult),
       });
 
       // 10. Extract and apply facts if sticky_facts strategy
@@ -345,8 +346,8 @@ export class StepOrchestratorService {
     let assembledSystemPrompt = memoryResult.systemPrompt || undefined;
 
     const ragResult = conversation.ragEnabled
-      ? await this.ragService.buildContextBlock(message.userContent)
-      : { block: '', matches: [] };
+      ? await this.ragService.buildContextBlock(message.userContent, conversation.ragMode)
+      : createEmptyRagResult(conversation.ragMode);
     if (ragResult.block) {
       assembledSystemPrompt = [assembledSystemPrompt, ragResult.block].filter(Boolean).join('\n\n---\n\n');
     }
@@ -439,7 +440,7 @@ export class StepOrchestratorService {
             validationReason: s.validationReason,
           })),
         },
-        ragContext: buildRagDebugContext(conversation.ragEnabled, ragResult.matches),
+        ragContext: buildRagDebugContext(conversation.ragEnabled, ragResult),
       });
 
       onEvent({
@@ -729,13 +730,14 @@ export class StepOrchestratorService {
     contextLimit: number | null;
     systemPrompt: string | null;
     ragEnabled: boolean;
+    ragMode: RagMode;
   } | null> {
     // Use ConversationRepository via BaseRepository findById
     // ConversationService requires userId for auth, but on resume we may not have it.
     // MessageRepository has the conversationId, and we need the conversation data.
     // We access via the service's internal repository through a direct DB query.
     const result = await this.db.query(
-      `SELECT user_id, project_id, model, temperature, max_tokens, context_limit, system_prompt, rag_enabled
+      `SELECT user_id, project_id, model, temperature, max_tokens, context_limit, system_prompt, rag_enabled, rag_mode
        FROM conversations WHERE id = $1`,
       [conversationId],
     );
@@ -750,19 +752,38 @@ export class StepOrchestratorService {
       contextLimit: row.context_limit ?? null,
       systemPrompt: row.system_prompt ?? null,
       ragEnabled: Boolean(row.rag_enabled),
+      ragMode: normalizeRagMode(row.rag_mode),
     };
   }
 }
 
-function buildRagDebugContext(enabled: boolean, matches: RagChunkMatch[]): RagDebugContext {
+function buildRagDebugContext(enabled: boolean, ragResult: RagContextResult): RagDebugContext {
   return {
     enabled,
-    matchCount: matches.length,
-    matches: matches.map((match, index) => ({
+    mode: ragResult.mode,
+    scoreType: ragResult.scoreType,
+    candidateCount: ragResult.candidateCount,
+    matchCount: ragResult.selectedCount,
+    selectedCount: ragResult.selectedCount,
+    matches: ragResult.matches.map((match, index) => ({
       rank: index + 1,
       chunkId: match.chunkId,
       documentId: match.documentId,
       similarity: match.similarity,
+      rankingScore: match.rankingScore,
+      tokenOverlapCount: match.tokenOverlapCount,
+      rerankerScore: match.rerankerScore,
     })),
+  };
+}
+
+function createEmptyRagResult(mode: RagMode): RagContextResult {
+  return {
+    block: '',
+    mode,
+    scoreType: mode === 'reranker' ? 'reranker' : 'heuristic',
+    candidateCount: 0,
+    selectedCount: 0,
+    matches: [],
   };
 }

@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { ChevronDown, ChevronRight, Clock, Coins, Hash, Cpu, CheckCircle2, XCircle, FileText, MessageSquare, ArrowRight, Copy, Check, Wrench, Database, Search } from 'lucide-react';
 import { MessageDebugData } from '@/types/conversation';
+import { RAG_MODE_LABELS } from '@/types/ai-params';
 
 interface DebugPanelProps {
   debugData: MessageDebugData;
@@ -51,6 +52,10 @@ function formatCost(n: number): string {
 
 function formatPercent(n: number): string {
   return `${Math.round(n * 100)}%`;
+}
+
+function formatScore(n: number): string {
+  return n.toFixed(3);
 }
 
 function formatDate(value?: string | null): string {
@@ -402,6 +407,7 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
   const currentTab = activeTab && availableTabs.some(t => t.id === activeTab) ? activeTab : (availableTabs[0]?.id ?? null);
 
   const meta = debugData.meta;
+  const ragData = debugData.rag;
 
   if (isLoading) {
     return (
@@ -465,12 +471,12 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
             </span>
           )}
 
-          {debugData.rag && (
+          {ragData && (
             <span className={`flex items-center gap-1 text-[10px] ${
-              debugData.rag.enabled ? 'text-emerald-600' : 'text-gray-400'
+              ragData.enabled ? 'text-emerald-600' : 'text-gray-400'
             }`}>
               <Database className="w-3 h-3" />
-              RAG: {debugData.rag.enabled ? `${debugData.rag.matchCount} фрагм.` : 'выключен'}
+              RAG: {ragData.enabled ? `${ragData.matchCount} фрагм.` : 'выключен'}
             </span>
           )}
         </div>
@@ -533,24 +539,34 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
           )}
 
           {/* ── RAG Context ───────────────────────────────── */}
-          {currentTab === 'rag' && debugData.rag && (
+          {currentTab === 'rag' && ragData && (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
                 <Stat
                   icon={<Database className="w-3 h-3 text-emerald-500" />}
                   label="Состояние"
-                  value={debugData.rag.enabled ? 'включён' : 'выключен'}
+                  value={ragData.enabled ? 'включён' : 'выключен'}
+                />
+                <Stat
+                  icon={<Cpu className="w-3 h-3 text-emerald-500" />}
+                  label="Режим"
+                  value={RAG_MODE_LABELS[ragData.mode]}
                 />
                 <Stat
                   icon={<Search className="w-3 h-3 text-emerald-500" />}
                   label="Найдено"
-                  value={String(debugData.rag.matchCount)}
+                  value={String(ragData.matchCount)}
+                />
+                <Stat
+                  icon={<Hash className="w-3 h-3 text-emerald-500" />}
+                  label="Кандидаты"
+                  value={String(ragData.candidateCount)}
                 />
               </div>
 
-              {debugData.rag.matches.length > 0 ? (
+              {ragData.matches.length > 0 ? (
                 <div className="space-y-2">
-                  {debugData.rag.matches.map((match, i) => {
+                  {ragData.matches.map((match, i) => {
                     const metadata = match.document?.metadata || {};
                     const channelName = typeof metadata.channel_name === 'string'
                       ? metadata.channel_name
@@ -577,6 +593,17 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
                             <span>чанк: <span className="font-mono">{match.chunkIndex ?? '—'}</span></span>
                             <span>дата: <span className="font-mono">{formatDate(match.document?.publishedAt)}</span></span>
                             {channelName && <span>источник: <span className="font-medium">{channelName}</span></span>}
+                            <span>
+                              {ragData.scoreType === 'reranker' ? 'reranker' : 'эвристика'}:{' '}
+                              <span className="font-mono">
+                                {ragData.scoreType === 'reranker'
+                                  ? formatPercent(match.rerankerScore ?? match.rankingScore ?? 0)
+                                  : formatScore(match.rankingScore ?? 0)}
+                              </span>
+                            </span>
+                            {ragData.scoreType === 'heuristic' && (
+                              <span>совпадения токенов: <span className="font-mono">{match.tokenOverlapCount ?? 0}</span></span>
+                            )}
                           </div>
                         </div>
 
@@ -647,7 +674,7 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
                 </div>
               ) : (
                 <div className="rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-[11px] text-gray-500">
-                  {debugData.rag.enabled
+                  {ragData.enabled
                     ? 'RAG был включён, но релевантные фрагменты не прошли порог отбора'
                     : 'RAG был выключен для этого сообщения'}
                 </div>

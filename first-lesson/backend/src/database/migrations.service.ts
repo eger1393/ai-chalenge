@@ -98,6 +98,7 @@ export class MigrationsService {
         repetition_penalty DOUBLE PRECISION NOT NULL DEFAULT 0,
         context_limit INTEGER DEFAULT 0,
         rag_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        rag_mode VARCHAR(20) NOT NULL DEFAULT 'filter',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
@@ -105,6 +106,28 @@ export class MigrationsService {
     await this.db.query(`
       ALTER TABLE conversations
       ADD COLUMN IF NOT EXISTS rag_enabled BOOLEAN NOT NULL DEFAULT FALSE
+    `);
+    await this.db.query(`
+      ALTER TABLE conversations
+      ADD COLUMN IF NOT EXISTS rag_mode VARCHAR(20) NOT NULL DEFAULT 'filter'
+    `);
+    await this.db.query(`
+      UPDATE conversations
+      SET rag_mode = 'filter'
+      WHERE rag_mode IS NULL OR rag_mode NOT IN ('filter', 'reranker')
+    `);
+    await this.db.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'chk_conversations_rag_mode'
+        ) THEN
+          ALTER TABLE conversations
+            ADD CONSTRAINT chk_conversations_rag_mode
+            CHECK (rag_mode IN ('filter', 'reranker'));
+        END IF;
+      END
+      $$;
     `);
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_conversations_project ON conversations(project_id)

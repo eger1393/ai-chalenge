@@ -9,6 +9,7 @@ import {
   Max,
   MaxLength,
 } from 'class-validator';
+import { ALLOWED_RAG_MODES } from '../../rag/constants';
 
 export const ALLOWED_MODELS = ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-nano', 'gpt-4.1-mini', 'gpt-4.1', 'gpt-5.4', 'gpt-5.4-mini'] as const;
 export const DEFAULT_MODEL = 'gpt-4o-mini';
@@ -71,6 +72,11 @@ export class AIParamsDto {
   @IsOptional()
   @IsBoolean()
   ragEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(ALLOWED_RAG_MODES as unknown as string[])
+  ragMode?: string;
 
   @IsOptional()
   @IsInt()

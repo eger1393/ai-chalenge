@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { AIParams, AVAILABLE_MODELS, DEFAULT_AI_PARAMS } from '@/types/ai-params';
+import { AIParams, AVAILABLE_MODELS, DEFAULT_AI_PARAMS, type RagMode } from '@/types/ai-params';
 
 const STORAGE_KEY = 'aiParams';
 
@@ -36,6 +36,7 @@ function loadFromStorage(): AIParams | null {
       systemPrompt: typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : DEFAULT_AI_PARAMS.systemPrompt,
       contextLimit: typeof parsed.contextLimit === 'number' ? parsed.contextLimit : DEFAULT_AI_PARAMS.contextLimit,
       ragEnabled: typeof parsed.ragEnabled === 'boolean' ? parsed.ragEnabled : DEFAULT_AI_PARAMS.ragEnabled,
+      ragMode: parsed.ragMode === 'reranker' ? 'reranker' : DEFAULT_AI_PARAMS.ragMode,
       contextStrategy,
       slidingWindowKeepLast,
     };
@@ -50,6 +51,21 @@ function saveToStorage(params: AIParams) {
   } catch {
     // storage full or unavailable
   }
+}
+
+function loadStoredRagConfig(): { ragEnabled: boolean; ragMode: RagMode } {
+  const stored = loadFromStorage();
+  if (!stored) {
+    return {
+      ragEnabled: DEFAULT_AI_PARAMS.ragEnabled,
+      ragMode: DEFAULT_AI_PARAMS.ragMode,
+    };
+  }
+
+  return {
+    ragEnabled: stored.ragEnabled,
+    ragMode: stored.ragMode,
+  };
 }
 
 export function useAIParams() {
@@ -78,6 +94,23 @@ export function useAIParams() {
     saveToStorage(DEFAULT_AI_PARAMS);
   }, []);
 
+  const setConversationRagConfig = useCallback((ragEnabled: boolean, ragMode: RagMode) => {
+    setParams((prev) => ({
+      ...prev,
+      ragEnabled,
+      ragMode,
+    }));
+  }, []);
+
+  const restoreStoredRagConfig = useCallback(() => {
+    const stored = loadStoredRagConfig();
+    setParams((prev) => ({
+      ...prev,
+      ragEnabled: stored.ragEnabled,
+      ragMode: stored.ragMode,
+    }));
+  }, []);
+
   const hasNonDefaults =
     params.model !== DEFAULT_AI_PARAMS.model ||
     params.temperature !== DEFAULT_AI_PARAMS.temperature ||
@@ -86,8 +119,16 @@ export function useAIParams() {
     params.systemPrompt !== '' ||
     params.contextLimit !== DEFAULT_AI_PARAMS.contextLimit ||
     params.ragEnabled !== DEFAULT_AI_PARAMS.ragEnabled ||
+    params.ragMode !== DEFAULT_AI_PARAMS.ragMode ||
     params.contextStrategy !== DEFAULT_AI_PARAMS.contextStrategy ||
     params.slidingWindowKeepLast !== DEFAULT_AI_PARAMS.slidingWindowKeepLast;
 
-  return { params, setParam, resetParams, hasNonDefaults };
+  return {
+    params,
+    setParam,
+    resetParams,
+    hasNonDefaults,
+    setConversationRagConfig,
+    restoreStoredRagConfig,
+  };
 }

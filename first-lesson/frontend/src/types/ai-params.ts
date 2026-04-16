@@ -1,4 +1,5 @@
 export type ContextStrategyType = 'sliding_window' | 'sticky_facts' | 'branching';
+export type RagMode = 'filter' | 'reranker';
 
 export interface AIParams {
   model: string;
@@ -8,6 +9,7 @@ export interface AIParams {
   systemPrompt: string;
   contextLimit: number;
   ragEnabled: boolean;
+  ragMode: RagMode;
   contextStrategy: ContextStrategyType;
   slidingWindowKeepLast: number;
 }
@@ -50,6 +52,7 @@ export const DEFAULT_AI_PARAMS: AIParams = {
   systemPrompt: '',
   contextLimit: 0,
   ragEnabled: false,
+  ragMode: 'filter',
   contextStrategy: 'sliding_window',
   slidingWindowKeepLast: 10,
 };
@@ -58,6 +61,11 @@ export const STRATEGY_LABELS: Record<ContextStrategyType, string> = {
   sliding_window: 'Окно',
   sticky_facts: 'Факты',
   branching: 'Ветки',
+};
+
+export const RAG_MODE_LABELS: Record<RagMode, string> = {
+  filter: 'Фильтр',
+  reranker: 'Reranker',
 };
 
 export interface Truncation {

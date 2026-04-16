@@ -8,6 +8,7 @@ import { MessageRepository } from '../conversation/repositories/message.reposito
 import { ConversationService } from '../conversation/conversation.service';
 import { StepRepository } from './repositories/step.repository';
 import { RagRepository } from '../rag/rag.repository';
+import { normalizeRagMode } from '../rag/constants';
 
 @Controller()
 export class MessageController {
@@ -52,6 +53,7 @@ export class MessageController {
         if (dto.params.systemPrompt != null) updateData.systemPrompt = dto.params.systemPrompt;
         if (dto.params.contextLimit != null) updateData.contextLimit = dto.params.contextLimit;
         if (dto.params.ragEnabled != null) updateData.ragEnabled = dto.params.ragEnabled;
+        if (dto.params.ragMode != null) updateData.ragMode = dto.params.ragMode;
 
         if (Object.keys(updateData).length > 0) {
           await this.conversationService.updateParams(conversationId, updateData as Parameters<ConversationService['updateParams']>[1]);
@@ -195,6 +197,9 @@ export class MessageController {
         chunkId: typeof match.chunkId === 'string' ? match.chunkId : '',
         documentId: typeof match.documentId === 'string' ? match.documentId : '',
         similarity: asNumber(match.similarity) ?? 0,
+        rankingScore: asNumber(match.rankingScore) ?? null,
+        tokenOverlapCount: asNumber(match.tokenOverlapCount) ?? null,
+        rerankerScore: asNumber(match.rerankerScore) ?? null,
       }))
       .filter((match) => match.chunkId && match.documentId);
 
@@ -203,7 +208,14 @@ export class MessageController {
 
     return {
       enabled: Boolean(rawRagContext.enabled),
+      mode: normalizeRagMode(rawRagContext.mode),
+      scoreType: rawRagContext.scoreType === 'reranker' ? 'reranker' : 'heuristic',
+      candidateCount: asNumber(rawRagContext.candidateCount) ?? references.length,
       matchCount: asNumber(rawRagContext.matchCount) ?? references.length,
+      selectedCount:
+        asNumber(rawRagContext.selectedCount) ??
+        asNumber(rawRagContext.matchCount) ??
+        references.length,
       matches: references.map((reference) => {
         const detail = detailsByChunkId.get(reference.chunkId);
         return {

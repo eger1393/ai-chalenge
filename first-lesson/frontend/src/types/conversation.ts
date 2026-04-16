@@ -9,6 +9,7 @@ export interface Conversation {
   repetitionPenalty: number;
   contextLimit: number;
   ragEnabled: boolean;
+  ragMode: 'filter' | 'reranker';
   createdAt: string;
   updatedAt: string;
   messageCount: number;
@@ -125,12 +126,19 @@ export interface MessageDebugData {
   strategyMetadata?: Record<string, unknown>;
   rag?: {
     enabled: boolean;
+    mode: 'filter' | 'reranker';
+    scoreType: 'heuristic' | 'reranker';
+    candidateCount: number;
     matchCount: number;
+    selectedCount: number;
     matches: Array<{
       rank: number;
       chunkId: string;
       documentId: string;
       similarity: number;
+      rankingScore?: number | null;
+      tokenOverlapCount?: number | null;
+      rerankerScore?: number | null;
       found: boolean;
       chunkIndex?: number | null;
       content?: string | null;

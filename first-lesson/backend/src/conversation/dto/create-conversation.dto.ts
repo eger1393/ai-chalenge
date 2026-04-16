@@ -1,4 +1,5 @@
-import { IsBoolean, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsBoolean, IsIn, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
+import { ALLOWED_RAG_MODES } from '../../rag/constants';
 
 export class CreateConversationDto {
   @IsUUID()
@@ -36,6 +37,11 @@ export class CreateConversationDto {
   @IsOptional()
   @IsBoolean()
   ragEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(ALLOWED_RAG_MODES as unknown as string[])
+  ragMode?: string;
 
   @IsOptional()
   @IsString()

@@ -35,7 +35,14 @@ export function ChatLayout() {
   const router = useRouter();
   const conversations = useConversations();
   const chat = useChat();
-  const { params, setParam, resetParams, hasNonDefaults } = useAIParams();
+  const {
+    params,
+    setParam,
+    resetParams,
+    hasNonDefaults,
+    setConversationRagConfig,
+    restoreStoredRagConfig,
+  } = useAIParams();
   const pipeline = usePipeline();
   const facts = useFacts(chat.conversationId);
   const branches = useBranches(chat.conversationId);
@@ -72,8 +79,10 @@ export function ChatLayout() {
 
     if (activeId) {
       chat.loadConversation(activeId).then((detail) => {
-        const hasMessages = detail && detail.messages && detail.messages.length > 0;
         setConversationStrategy(undefined);
+        if (detail) {
+          setConversationRagConfig(detail.ragEnabled, detail.ragMode);
+        }
         if (params.contextStrategy === 'sticky_facts') {
           facts.loadFacts(activeId);
         } else if (params.contextStrategy === 'branching') {
@@ -91,6 +100,7 @@ export function ChatLayout() {
     } else {
       chat.startNew();
       setConversationStrategy(undefined);
+      restoreStoredRagConfig();
       pipeline.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -131,8 +141,9 @@ export function ChatLayout() {
   const handleNewChat = useCallback(() => {
     conversations.select(null);
     setConversationStrategy(undefined);
+    restoreStoredRagConfig();
     setSidebarOpen(false);
-  }, [conversations]);
+  }, [conversations, restoreStoredRagConfig]);
 
   const handleSend = useCallback(
     async (text: string) => {
@@ -145,7 +156,13 @@ export function ChatLayout() {
         }
         const projectId = activeProject?.id || tasks[0]?.id;
         if (!projectId) return;
-        const conv = await conversations.create(projectId, params.model, params.systemPrompt, params.ragEnabled);
+        const conv = await conversations.create(
+          projectId,
+          params.model,
+          params.systemPrompt,
+          params.ragEnabled,
+          params.ragMode,
+        );
         currentConvId = conv.id;
         chat.setConversationId(conv.id);
       }
@@ -195,14 +212,21 @@ export function ChatLayout() {
       if (wasActive) {
         chat.startNew();
         setConversationStrategy(undefined);
+        restoreStoredRagConfig();
       }
     },
-    [conversations, chat],
+    [conversations, chat, restoreStoredRagConfig],
   );
 
   const handleNewConversationInProject = useCallback(
     async (projectId: string) => {
-      const conv = await conversations.create(projectId, params.model, params.systemPrompt, params.ragEnabled);
+      const conv = await conversations.create(
+        projectId,
+        params.model,
+        params.systemPrompt,
+        params.ragEnabled,
+        params.ragMode,
+      );
       conversations.select(conv.id);
       setSidebarOpen(false);
     },

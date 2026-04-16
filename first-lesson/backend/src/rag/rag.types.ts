@@ -1,3 +1,5 @@
+import type { RagMode } from './constants';
+
 export interface RagDocumentRecord {
   id: string;
   sourceType: string;
@@ -14,12 +16,19 @@ export interface RagChunkMatch {
   chunkIndex: number;
   content: string;
   similarity: number;
+  rankingScore?: number;
+  tokenOverlapCount?: number;
+  rerankerScore?: number;
   metadata: Record<string, unknown>;
   document: RagDocumentRecord;
 }
 
 export interface RagContextResult {
   block: string;
+  mode: RagMode;
+  scoreType: 'heuristic' | 'reranker';
+  candidateCount: number;
+  selectedCount: number;
   matches: RagChunkMatch[];
 }
 
@@ -28,11 +37,18 @@ export interface RagDebugReference {
   chunkId: string;
   documentId: string;
   similarity: number;
+  rankingScore?: number;
+  tokenOverlapCount?: number;
+  rerankerScore?: number;
 }
 
 export interface RagDebugContext {
   enabled: boolean;
+  mode: RagMode;
+  scoreType: 'heuristic' | 'reranker';
+  candidateCount: number;
   matchCount: number;
+  selectedCount: number;
   matches: RagDebugReference[];
 }
 

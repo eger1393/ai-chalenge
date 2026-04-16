@@ -1,7 +1,15 @@
 'use client';
 
 import { X, RotateCcw } from 'lucide-react';
-import { AIParams, AVAILABLE_MODELS, MODEL_LABELS, MODEL_CONTEXT_SIZES, STRATEGY_LABELS, ContextStrategyType } from '@/types/ai-params';
+import {
+  AIParams,
+  AVAILABLE_MODELS,
+  MODEL_LABELS,
+  MODEL_CONTEXT_SIZES,
+  STRATEGY_LABELS,
+  ContextStrategyType,
+  RAG_MODE_LABELS,
+} from '@/types/ai-params';
 import { StrategySelector } from './strategy-selector';
 
 interface AIParamsPanelProps {
@@ -201,6 +209,38 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
               />
             </button>
           </div>
+          {params.ragEnabled && (
+            <div className="mt-3">
+              <label className="text-xs font-medium text-gray-700 block mb-1">Режим отбора</label>
+              <p className="text-[10px] text-gray-400 mb-2">
+                Режим `Reranker` использует отдельную модель ранжирования. Режим `Фильтр` применяет встроенную эвристику релевантности.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {(['filter', 'reranker'] as const).map((mode) => {
+                  const isActive = params.ragMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setParam('ragMode', mode)}
+                      className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                        isActive
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <span className="block text-xs font-semibold">{RAG_MODE_LABELS[mode]}</span>
+                      <span className="block mt-1 text-[10px] opacity-80">
+                        {mode === 'reranker'
+                          ? 'Отдельная модель пересортировывает найденные кандидаты'
+                          : 'Кодовый фильтр отсеивает и переупорядочивает фрагменты'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Repetition Penalty */}

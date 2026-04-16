@@ -5,6 +5,7 @@ import { MessageRepository } from './repositories/message.repository';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 import { DatabaseService } from '../database/database.service';
+import { normalizeRagMode, type RagMode } from '../rag/constants';
 
 @Injectable()
 export class ConversationService {
@@ -32,6 +33,7 @@ export class ConversationService {
         repetitionPenalty: dto.repetitionPenalty,
         contextLimit: dto.contextLimit,
         ragEnabled: dto.ragEnabled,
+        ragMode: dto.ragMode ? normalizeRagMode(dto.ragMode) : undefined,
       });
 
       const contextId = crypto.randomUUID();
@@ -66,7 +68,11 @@ export class ConversationService {
     dto: UpdateConversationDto,
   ): Promise<Conversation> {
     await this.findOne(userId, id);
-    return this.conversationRepository.update(id, dto);
+
+    return this.conversationRepository.update(id, {
+      ...dto,
+      ragMode: dto.ragMode ? normalizeRagMode(dto.ragMode) : undefined,
+    });
   }
 
   async remove(userId: string, id: string): Promise<void> {
@@ -85,6 +91,7 @@ export class ConversationService {
       repetitionPenalty: number;
       contextLimit: number;
       ragEnabled: boolean;
+      ragMode: RagMode;
     }>,
   ): Promise<Conversation> {
     return this.conversationRepository.update(id, params);
