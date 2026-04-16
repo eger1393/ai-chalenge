@@ -9,6 +9,7 @@ export interface AIParams {
   systemPrompt: string;
   contextLimit: number;
   ragEnabled: boolean;
+  ragQueryRewriteEnabled: boolean;
   ragMode: RagMode;
   contextStrategy: ContextStrategyType;
   slidingWindowKeepLast: number;
@@ -52,6 +53,7 @@ export const DEFAULT_AI_PARAMS: AIParams = {
   systemPrompt: '',
   contextLimit: 0,
   ragEnabled: false,
+  ragQueryRewriteEnabled: false,
   ragMode: 'filter',
   contextStrategy: 'sliding_window',
   slidingWindowKeepLast: 10,

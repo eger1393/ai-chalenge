@@ -35,6 +35,10 @@ export class UpdateConversationDto {
   ragEnabled?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  ragQueryRewriteEnabled?: boolean;
+
+  @IsOptional()
   @IsString()
   @IsIn(ALLOWED_RAG_MODES as unknown as string[])
   ragMode?: string;

@@ -96,8 +96,12 @@ export class StepOrchestratorService {
     let assembledSystemPrompt = memoryResult.systemPrompt || undefined;
 
     const ragResult = conversation.ragEnabled
-      ? await this.ragService.buildContextBlock(userContent, conversation.ragMode)
-      : createEmptyRagResult(conversation.ragMode);
+      ? await this.ragService.buildContextBlock(
+          userContent,
+          conversation.ragMode,
+          conversation.ragQueryRewriteEnabled,
+        )
+      : createEmptyRagResult(userContent, conversation.ragMode, conversation.ragQueryRewriteEnabled);
     if (ragResult.block) {
       assembledSystemPrompt = [assembledSystemPrompt, ragResult.block].filter(Boolean).join('\n\n---\n\n');
     }
@@ -346,8 +350,16 @@ export class StepOrchestratorService {
     let assembledSystemPrompt = memoryResult.systemPrompt || undefined;
 
     const ragResult = conversation.ragEnabled
-      ? await this.ragService.buildContextBlock(message.userContent, conversation.ragMode)
-      : createEmptyRagResult(conversation.ragMode);
+      ? await this.ragService.buildContextBlock(
+          message.userContent,
+          conversation.ragMode,
+          conversation.ragQueryRewriteEnabled,
+        )
+      : createEmptyRagResult(
+          message.userContent,
+          conversation.ragMode,
+          conversation.ragQueryRewriteEnabled,
+        );
     if (ragResult.block) {
       assembledSystemPrompt = [assembledSystemPrompt, ragResult.block].filter(Boolean).join('\n\n---\n\n');
     }
@@ -730,6 +742,7 @@ export class StepOrchestratorService {
     contextLimit: number | null;
     systemPrompt: string | null;
     ragEnabled: boolean;
+    ragQueryRewriteEnabled: boolean;
     ragMode: RagMode;
   } | null> {
     // Use ConversationRepository via BaseRepository findById
@@ -737,7 +750,7 @@ export class StepOrchestratorService {
     // MessageRepository has the conversationId, and we need the conversation data.
     // We access via the service's internal repository through a direct DB query.
     const result = await this.db.query(
-      `SELECT user_id, project_id, model, temperature, max_tokens, context_limit, system_prompt, rag_enabled, rag_mode
+      `SELECT user_id, project_id, model, temperature, max_tokens, context_limit, system_prompt, rag_enabled, rag_query_rewrite_enabled, rag_mode
        FROM conversations WHERE id = $1`,
       [conversationId],
     );
@@ -752,6 +765,7 @@ export class StepOrchestratorService {
       contextLimit: row.context_limit ?? null,
       systemPrompt: row.system_prompt ?? null,
       ragEnabled: Boolean(row.rag_enabled),
+      ragQueryRewriteEnabled: Boolean(row.rag_query_rewrite_enabled),
       ragMode: normalizeRagMode(row.rag_mode),
     };
   }
@@ -765,6 +779,7 @@ function buildRagDebugContext(enabled: boolean, ragResult: RagContextResult): Ra
     candidateCount: ragResult.candidateCount,
     matchCount: ragResult.selectedCount,
     selectedCount: ragResult.selectedCount,
+    queryRewrite: ragResult.queryRewrite,
     matches: ragResult.matches.map((match, index) => ({
       rank: index + 1,
       chunkId: match.chunkId,
@@ -777,13 +792,25 @@ function buildRagDebugContext(enabled: boolean, ragResult: RagContextResult): Ra
   };
 }
 
-function createEmptyRagResult(mode: RagMode): RagContextResult {
+function createEmptyRagResult(
+  query: string,
+  mode: RagMode,
+  queryRewriteEnabled: boolean,
+): RagContextResult {
+  const normalizedQuery = query.trim();
   return {
     block: '',
     mode,
     scoreType: mode === 'reranker' ? 'reranker' : 'heuristic',
     candidateCount: 0,
     selectedCount: 0,
+    queryRewrite: {
+      enabled: queryRewriteEnabled,
+      applied: false,
+      originalQuery: normalizedQuery,
+      rewrittenQuery: normalizedQuery,
+      model: null,
+    },
     matches: [],
   };
 }

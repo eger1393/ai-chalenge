@@ -53,6 +53,7 @@ export class MessageController {
         if (dto.params.systemPrompt != null) updateData.systemPrompt = dto.params.systemPrompt;
         if (dto.params.contextLimit != null) updateData.contextLimit = dto.params.contextLimit;
         if (dto.params.ragEnabled != null) updateData.ragEnabled = dto.params.ragEnabled;
+        if (dto.params.ragQueryRewriteEnabled != null) updateData.ragQueryRewriteEnabled = dto.params.ragQueryRewriteEnabled;
         if (dto.params.ragMode != null) updateData.ragMode = dto.params.ragMode;
 
         if (Object.keys(updateData).length > 0) {
@@ -216,6 +217,7 @@ export class MessageController {
         asNumber(rawRagContext.selectedCount) ??
         asNumber(rawRagContext.matchCount) ??
         references.length,
+      queryRewrite: mapQueryRewrite(rawRagContext.queryRewrite),
       matches: references.map((reference) => {
         const detail = detailsByChunkId.get(reference.chunkId);
         return {
@@ -299,4 +301,28 @@ function asNumber(value: unknown): number | null {
   }
 
   return null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+function mapQueryRewrite(value: unknown) {
+  if (!isRecord(value)) {
+    return {
+      enabled: false,
+      applied: false,
+      originalQuery: '',
+      rewrittenQuery: '',
+      model: null,
+    };
+  }
+
+  return {
+    enabled: Boolean(value.enabled),
+    applied: Boolean(value.applied),
+    originalQuery: asString(value.originalQuery) ?? '',
+    rewrittenQuery: asString(value.rewrittenQuery) ?? '',
+    model: asString(value.model),
+  };
 }

@@ -36,6 +36,10 @@ function loadFromStorage(): AIParams | null {
       systemPrompt: typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : DEFAULT_AI_PARAMS.systemPrompt,
       contextLimit: typeof parsed.contextLimit === 'number' ? parsed.contextLimit : DEFAULT_AI_PARAMS.contextLimit,
       ragEnabled: typeof parsed.ragEnabled === 'boolean' ? parsed.ragEnabled : DEFAULT_AI_PARAMS.ragEnabled,
+      ragQueryRewriteEnabled:
+        typeof parsed.ragQueryRewriteEnabled === 'boolean'
+          ? parsed.ragQueryRewriteEnabled
+          : DEFAULT_AI_PARAMS.ragQueryRewriteEnabled,
       ragMode: parsed.ragMode === 'reranker' ? 'reranker' : DEFAULT_AI_PARAMS.ragMode,
       contextStrategy,
       slidingWindowKeepLast,
@@ -53,17 +57,19 @@ function saveToStorage(params: AIParams) {
   }
 }
 
-function loadStoredRagConfig(): { ragEnabled: boolean; ragMode: RagMode } {
+function loadStoredRagConfig(): { ragEnabled: boolean; ragMode: RagMode; ragQueryRewriteEnabled: boolean } {
   const stored = loadFromStorage();
   if (!stored) {
     return {
       ragEnabled: DEFAULT_AI_PARAMS.ragEnabled,
+      ragQueryRewriteEnabled: DEFAULT_AI_PARAMS.ragQueryRewriteEnabled,
       ragMode: DEFAULT_AI_PARAMS.ragMode,
     };
   }
 
   return {
     ragEnabled: stored.ragEnabled,
+    ragQueryRewriteEnabled: stored.ragQueryRewriteEnabled,
     ragMode: stored.ragMode,
   };
 }
@@ -94,10 +100,15 @@ export function useAIParams() {
     saveToStorage(DEFAULT_AI_PARAMS);
   }, []);
 
-  const setConversationRagConfig = useCallback((ragEnabled: boolean, ragMode: RagMode) => {
+  const setConversationRagConfig = useCallback((
+    ragEnabled: boolean,
+    ragMode: RagMode,
+    ragQueryRewriteEnabled: boolean,
+  ) => {
     setParams((prev) => ({
       ...prev,
       ragEnabled,
+      ragQueryRewriteEnabled,
       ragMode,
     }));
   }, []);
@@ -107,6 +118,7 @@ export function useAIParams() {
     setParams((prev) => ({
       ...prev,
       ragEnabled: stored.ragEnabled,
+      ragQueryRewriteEnabled: stored.ragQueryRewriteEnabled,
       ragMode: stored.ragMode,
     }));
   }, []);
@@ -119,6 +131,7 @@ export function useAIParams() {
     params.systemPrompt !== '' ||
     params.contextLimit !== DEFAULT_AI_PARAMS.contextLimit ||
     params.ragEnabled !== DEFAULT_AI_PARAMS.ragEnabled ||
+    params.ragQueryRewriteEnabled !== DEFAULT_AI_PARAMS.ragQueryRewriteEnabled ||
     params.ragMode !== DEFAULT_AI_PARAMS.ragMode ||
     params.contextStrategy !== DEFAULT_AI_PARAMS.contextStrategy ||
     params.slidingWindowKeepLast !== DEFAULT_AI_PARAMS.slidingWindowKeepLast;

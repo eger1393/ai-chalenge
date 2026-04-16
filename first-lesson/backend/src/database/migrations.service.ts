@@ -98,6 +98,7 @@ export class MigrationsService {
         repetition_penalty DOUBLE PRECISION NOT NULL DEFAULT 0,
         context_limit INTEGER DEFAULT 0,
         rag_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        rag_query_rewrite_enabled BOOLEAN NOT NULL DEFAULT FALSE,
         rag_mode VARCHAR(20) NOT NULL DEFAULT 'filter',
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -110,6 +111,10 @@ export class MigrationsService {
     await this.db.query(`
       ALTER TABLE conversations
       ADD COLUMN IF NOT EXISTS rag_mode VARCHAR(20) NOT NULL DEFAULT 'filter'
+    `);
+    await this.db.query(`
+      ALTER TABLE conversations
+      ADD COLUMN IF NOT EXISTS rag_query_rewrite_enabled BOOLEAN NOT NULL DEFAULT FALSE
     `);
     await this.db.query(`
       UPDATE conversations

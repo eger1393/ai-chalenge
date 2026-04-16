@@ -81,6 +81,7 @@ src/
 │   ├── rag.service.ts          # Retrieval и сборка RAG-блока для system prompt
 │   ├── rag.repository.ts       # Поиск релевантных чанков в PostgreSQL через pgvector
 │   ├── rag-embedding.service.ts # Embeddings `bge-m3` через Transformers.js
+│   ├── rag-query-rewrite.service.ts # LLM-переписывание поискового запроса перед retrieval
 │   ├── rag-reranker.service.ts # Cross-encoder reranker для режима `reranker`
 │   ├── constants.ts            # Модели и лимиты RAG
 │   └── import-telegram-dump.ts # CLI-переиндексация Telegram JSON в chatdb
@@ -122,7 +123,7 @@ users (id UUID PK, username, password_hash, role, created_at)
 user_profiles (id, user_id FK→users, response_language, dialogue_style, response_brevity, custom_prompt, preferences JSONB)
 projects (id, user_id FK→users, title, description, status, created_at, updated_at)
 project_invariants (id, project_id FK→projects ON DELETE CASCADE, content)
-conversations (id, project_id FK→projects, user_id FK→users, title, model, system_prompt, temperature, max_tokens, repetition_penalty, context_limit, rag_enabled, rag_mode, created_at, updated_at)
+conversations (id, project_id FK→projects, user_id FK→users, title, model, system_prompt, temperature, max_tokens, repetition_penalty, context_limit, rag_enabled, rag_query_rewrite_enabled, rag_mode, created_at, updated_at)
 conversation_contexts (id, conversation_id UNIQUE FK, strategy_type, strategy_data JSONB, summary, summary_up_to_index, active_branch_id FK→branches)
 conversation_branches (id, context_id FK→contexts, name, parent_branch_id, checkpoint_message_id)
 messages (id, conversation_id FK, branch_id FK, user_content, assistant_content, status, current_step, attempt_number, max_attempts, error_message)
@@ -170,7 +171,7 @@ src/
 │   ├── use-chat.ts             # messages (envelope→UI маппинг), send, loadConversation
 │   ├── use-conversations.ts    # conversations[], create(projectId), select, remove
 │   ├── use-tasks.ts            # projects[], addProject, removeProject
-│   ├── use-ai-params.ts        # AI params (local defaults + гидрация RAG-режима из active conversation)
+│   ├── use-ai-params.ts        # AI params (local defaults + гидрация RAG/rewrite-настроек из active conversation)
 │   ├── use-pipeline.ts         # Pipeline SSE: start, pause, resume, cancel (messageId)
 │   ├── use-invariants.ts, use-facts.ts, use-branches.ts, use-personalization.ts
 │   ├── use-notification-stream.ts  # Persistent SSE для push-уведомлений
@@ -188,15 +189,17 @@ src/
 
 - RAG работает напрямую внутри `backend`, без MCP
 - Векторы и проиндексированные документы хранятся в основном `chatdb`
-- Флаги `rag_enabled` и `rag_mode` живут в `conversations`
+- Флаги `rag_enabled`, `rag_query_rewrite_enabled` и `rag_mode` живут в `conversations`
 - `rag_mode` поддерживает режимы `filter` и `reranker`
 - `filter` использует кодовый эвристический фильтр поверх vector search
 - `reranker` использует отдельную модель `jinaai/jina-reranker-v2-base-multilingual`
+- `query rewrite` использует отдельный шаг на `gpt-4.1-nano` и переписывает только поисковый запрос для retrieval
 - Для загрузки reranker backend использует `XLMRobertaModel` через `Transformers.js`
 - Если reranker недоступен в режиме `reranker`, backend завершает запрос явной ошибкой
+- Если `query rewrite` включён и шаг rewrite завершается ошибкой или возвращает невалидный JSON, backend завершает запрос явной ошибкой
 - При включённом флаге backend ищет релевантные чанки и подмешивает их в system prompt
 - Debug-данные RAG хранятся отдельно в `message_debug.rag_context` как компактные ссылки на найденные чанки
-- В `message_debug.rag_context` дополнительно фиксируются режим, число кандидатов и mode-specific score
+- В `message_debug.rag_context` дополнительно фиксируются режим, число кандидатов, исходный и переписанный запрос, а также mode-specific score
 - `GET /api/messages/:id/debug` обогащает RAG-ссылки текстом чанка и полным текстом сообщения из `rag_chunks` / `rag_documents`
 - Переиндексация Telegram-дампа выполняется через `backend/src/rag/import-telegram-dump.ts`
 

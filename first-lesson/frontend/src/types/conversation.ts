@@ -9,6 +9,7 @@ export interface Conversation {
   repetitionPenalty: number;
   contextLimit: number;
   ragEnabled: boolean;
+  ragQueryRewriteEnabled: boolean;
   ragMode: 'filter' | 'reranker';
   createdAt: string;
   updatedAt: string;
@@ -131,6 +132,13 @@ export interface MessageDebugData {
     candidateCount: number;
     matchCount: number;
     selectedCount: number;
+    queryRewrite: {
+      enabled: boolean;
+      applied: boolean;
+      originalQuery: string;
+      rewrittenQuery: string;
+      model?: string | null;
+    };
     matches: Array<{
       rank: number;
       chunkId: string;

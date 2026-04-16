@@ -15,6 +15,7 @@ export interface Conversation {
   repetitionPenalty: number | null;
   contextLimit: number | null;
   ragEnabled: boolean;
+  ragQueryRewriteEnabled: boolean;
   ragMode: RagMode;
   createdAt: Date;
   updatedAt: Date;
@@ -31,6 +32,7 @@ interface CreateConversationData {
   repetitionPenalty?: number;
   contextLimit?: number;
   ragEnabled?: boolean;
+  ragQueryRewriteEnabled?: boolean;
   ragMode?: RagMode;
 }
 
@@ -43,6 +45,7 @@ type UpdateConversationData = Partial<{
   repetitionPenalty: number;
   contextLimit: number;
   ragEnabled: boolean;
+  ragQueryRewriteEnabled: boolean;
   ragMode: RagMode;
 }>;
 
@@ -55,6 +58,7 @@ const COLUMN_MAP: Record<string, string> = {
   repetitionPenalty: 'repetition_penalty',
   contextLimit: 'context_limit',
   ragEnabled: 'rag_enabled',
+  ragQueryRewriteEnabled: 'rag_query_rewrite_enabled',
   ragMode: 'rag_mode',
 };
 
@@ -71,6 +75,7 @@ function mapRow(row: Record<string, unknown>): Conversation {
     repetitionPenalty: row.repetition_penalty != null ? parseFloat(String(row.repetition_penalty)) : null,
     contextLimit: (row.context_limit as number) ?? null,
     ragEnabled: Boolean(row.rag_enabled),
+    ragQueryRewriteEnabled: Boolean(row.rag_query_rewrite_enabled),
     ragMode: normalizeRagMode(row.rag_mode),
     createdAt: row.created_at as Date,
     updatedAt: row.updated_at as Date,
@@ -102,8 +107,8 @@ export class ConversationRepository extends BaseRepository<Conversation> {
   async create(data: CreateConversationData): Promise<Conversation> {
     const id = crypto.randomUUID();
     const { rows } = await this.db.query(
-      `INSERT INTO conversations (id, project_id, user_id, title, model, system_prompt, temperature, max_tokens, repetition_penalty, context_limit, rag_enabled, rag_mode)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      `INSERT INTO conversations (id, project_id, user_id, title, model, system_prompt, temperature, max_tokens, repetition_penalty, context_limit, rag_enabled, rag_query_rewrite_enabled, rag_mode)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         id,
@@ -117,6 +122,7 @@ export class ConversationRepository extends BaseRepository<Conversation> {
         data.repetitionPenalty ?? 0,
         data.contextLimit ?? 128000,
         data.ragEnabled ?? false,
+        data.ragQueryRewriteEnabled ?? false,
         data.ragMode ?? DEFAULT_RAG_MODE,
       ],
     );

@@ -239,6 +239,32 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
                   );
                 })}
               </div>
+
+              <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 block">Query rewrite</label>
+                    <p className="text-[10px] text-gray-400 mt-1">
+                      Перед поиском бэкенд перепишет запрос в более поисковую формулировку, не меняя сам пользовательский вопрос для ответа
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={params.ragQueryRewriteEnabled}
+                    onClick={() => setParam('ragQueryRewriteEnabled', !params.ragQueryRewriteEnabled)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      params.ragQueryRewriteEnabled ? 'bg-emerald-600' : 'bg-gray-300'
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${
+                        params.ragQueryRewriteEnabled ? 'translate-x-5' : 'translate-x-1'
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

@@ -562,7 +562,53 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
                   label="Кандидаты"
                   value={String(ragData.candidateCount)}
                 />
+                <Stat
+                  icon={<ArrowRight className="w-3 h-3 text-emerald-500" />}
+                  label="Rewrite"
+                  value={
+                    ragData.queryRewrite.enabled
+                      ? ragData.queryRewrite.applied
+                        ? 'применён'
+                        : 'без изменений'
+                      : 'выключен'
+                  }
+                />
               </div>
+
+              {(ragData.queryRewrite.enabled || ragData.queryRewrite.originalQuery || ragData.queryRewrite.rewrittenQuery) && (
+                <div className="rounded-lg border border-sky-100 bg-sky-50/40 overflow-hidden">
+                  <div className="px-3 py-2 bg-sky-100/60 border-b border-sky-100">
+                    <div className="flex items-center gap-2">
+                      <Search className="w-4 h-4 text-sky-600 flex-shrink-0" />
+                      <span className="text-xs font-semibold text-sky-700 flex-1">Query rewrite</span>
+                      {ragData.queryRewrite.model && (
+                        <span className="text-[10px] font-mono text-sky-700">{ragData.queryRewrite.model}</span>
+                      )}
+                    </div>
+                    <div className="mt-1 text-[10px] text-sky-700/80">
+                      {ragData.queryRewrite.enabled
+                        ? ragData.queryRewrite.applied
+                          ? 'Запрос был переписан перед retrieval'
+                          : 'Rewrite был включён, но запрос остался без изменений'
+                        : 'Rewrite был выключен для этого сообщения'}
+                    </div>
+                  </div>
+                  <div className="grid gap-2 p-3 md:grid-cols-2">
+                    <div className="rounded-md border border-gray-100 bg-white p-2.5">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Исходный запрос</div>
+                      <div className="text-[11px] text-gray-700 whitespace-pre-wrap leading-relaxed">
+                        {ragData.queryRewrite.originalQuery || 'Пусто'}
+                      </div>
+                    </div>
+                    <div className="rounded-md border border-gray-100 bg-white p-2.5">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Запрос для поиска</div>
+                      <div className="text-[11px] text-gray-700 whitespace-pre-wrap leading-relaxed">
+                        {ragData.queryRewrite.rewrittenQuery || 'Пусто'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {ragData.matches.length > 0 ? (
                 <div className="space-y-2">

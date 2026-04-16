@@ -33,6 +33,7 @@ export class ConversationService {
         repetitionPenalty: dto.repetitionPenalty,
         contextLimit: dto.contextLimit,
         ragEnabled: dto.ragEnabled,
+        ragQueryRewriteEnabled: dto.ragQueryRewriteEnabled,
         ragMode: dto.ragMode ? normalizeRagMode(dto.ragMode) : undefined,
       });
 
@@ -91,6 +92,7 @@ export class ConversationService {
       repetitionPenalty: number;
       contextLimit: number;
       ragEnabled: boolean;
+      ragQueryRewriteEnabled: boolean;
       ragMode: RagMode;
     }>,
   ): Promise<Conversation> {

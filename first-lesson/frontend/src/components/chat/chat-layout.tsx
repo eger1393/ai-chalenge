@@ -81,7 +81,7 @@ export function ChatLayout() {
       chat.loadConversation(activeId).then((detail) => {
         setConversationStrategy(undefined);
         if (detail) {
-          setConversationRagConfig(detail.ragEnabled, detail.ragMode);
+          setConversationRagConfig(detail.ragEnabled, detail.ragMode, detail.ragQueryRewriteEnabled);
         }
         if (params.contextStrategy === 'sticky_facts') {
           facts.loadFacts(activeId);
@@ -161,6 +161,7 @@ export function ChatLayout() {
           params.model,
           params.systemPrompt,
           params.ragEnabled,
+          params.ragQueryRewriteEnabled,
           params.ragMode,
         );
         currentConvId = conv.id;
@@ -225,6 +226,7 @@ export function ChatLayout() {
         params.model,
         params.systemPrompt,
         params.ragEnabled,
+        params.ragQueryRewriteEnabled,
         params.ragMode,
       );
       conversations.select(conv.id);

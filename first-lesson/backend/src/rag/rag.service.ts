@@ -13,6 +13,7 @@ import {
   type RagMode,
 } from './constants';
 import { RagEmbeddingService } from './rag-embedding.service';
+import { RagQueryRewriteService } from './rag-query-rewrite.service';
 import { RagRerankerService } from './rag-reranker.service';
 import { RagRepository } from './rag.repository';
 import { RagChunkMatch, RagContextResult } from './rag.types';
@@ -24,10 +25,15 @@ export class RagService {
   constructor(
     private readonly ragEmbeddingService: RagEmbeddingService,
     private readonly ragRepository: RagRepository,
+    private readonly ragQueryRewriteService: RagQueryRewriteService,
     private readonly ragRerankerService: RagRerankerService,
   ) {}
 
-  async buildContextBlock(query: string, mode: RagMode = DEFAULT_RAG_MODE): Promise<RagContextResult> {
+  async buildContextBlock(
+    query: string,
+    mode: RagMode = DEFAULT_RAG_MODE,
+    queryRewriteEnabled = false,
+  ): Promise<RagContextResult> {
     const normalizedQuery = query.trim();
     if (!normalizedQuery) {
       return {
@@ -36,6 +42,7 @@ export class RagService {
         scoreType: mode === 'reranker' ? 'reranker' : 'heuristic',
         candidateCount: 0,
         selectedCount: 0,
+        queryRewrite: createQueryRewriteDebug(normalizedQuery, normalizedQuery, queryRewriteEnabled, null),
         matches: [],
       };
     }
@@ -51,6 +58,7 @@ export class RagService {
     this.logger.log(
       `[${traceId}] RAG retrieval start ${JSON.stringify({
         mode,
+        queryRewriteEnabled,
         queryChars: normalizedQuery.length,
         queryPreview: truncateForLog(normalizedQuery),
         topK: selectedTopK,
@@ -59,13 +67,18 @@ export class RagService {
       })}`,
     );
 
-    const queryEmbedding = await this.ragEmbeddingService.embedQuery(normalizedQuery);
+    const queryRewrite = queryRewriteEnabled
+      ? await this.ragQueryRewriteService.rewrite(normalizedQuery, traceId)
+      : null;
+    const retrievalQuery = queryRewrite?.rewrittenQuery ?? normalizedQuery;
+
+    const queryEmbedding = await this.ragEmbeddingService.embedQuery(retrievalQuery);
     const rawMatches = await this.ragRepository.searchRelevantChunks(queryEmbedding, candidatePool);
     this.logMatches(traceId, 'Vector search candidates', rawMatches);
     const rankedMatches =
       mode === 'reranker'
-        ? await this.applyReranker(normalizedQuery, rawMatches, traceId)
-        : this.applyHeuristicFilter(normalizedQuery, rawMatches);
+        ? await this.applyReranker(retrievalQuery, rawMatches, traceId)
+        : this.applyHeuristicFilter(retrievalQuery, rawMatches);
     const matches = this.limitMatchesPerDocument(
       traceId,
       rankedMatches,
@@ -87,6 +100,12 @@ export class RagService {
         scoreType: mode === 'reranker' ? 'reranker' : 'heuristic',
         candidateCount: rawMatches.length,
         selectedCount: 0,
+        queryRewrite: createQueryRewriteDebug(
+          normalizedQuery,
+          retrievalQuery,
+          queryRewriteEnabled,
+          queryRewrite?.model ?? null,
+        ),
         matches: [],
       };
     }
@@ -106,6 +125,12 @@ export class RagService {
       scoreType: mode === 'reranker' ? 'reranker' : 'heuristic',
       candidateCount: rawMatches.length,
       selectedCount: matches.length,
+      queryRewrite: createQueryRewriteDebug(
+        normalizedQuery,
+        retrievalQuery,
+        queryRewriteEnabled,
+        queryRewrite?.model ?? null,
+      ),
       matches,
     };
   }
@@ -304,6 +329,21 @@ export class RagService {
       '═══════════════════════════════════════════════════',
     ].join('\n');
   }
+}
+
+function createQueryRewriteDebug(
+  originalQuery: string,
+  rewrittenQuery: string,
+  enabled: boolean,
+  model: string | null,
+): RagContextResult['queryRewrite'] {
+  return {
+    enabled,
+    applied: enabled && originalQuery !== rewrittenQuery,
+    originalQuery,
+    rewrittenQuery,
+    model: enabled ? model : null,
+  };
 }
 
 function parseIntegerEnv(name: string, fallback: number): number {

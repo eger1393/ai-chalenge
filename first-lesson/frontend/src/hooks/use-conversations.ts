@@ -50,9 +50,17 @@ export function useConversations() {
       model?: string,
       systemPrompt?: string,
       ragEnabled?: boolean,
+      ragQueryRewriteEnabled?: boolean,
       ragMode?: 'filter' | 'reranker',
     ) => {
-      const conv = await createConversation({ projectId, model, systemPrompt, ragEnabled, ragMode });
+      const conv = await createConversation({
+        projectId,
+        model,
+        systemPrompt,
+        ragEnabled,
+        ragQueryRewriteEnabled,
+        ragMode,
+      });
       setConversations((prev) => [conv, ...prev]);
       setActiveId(conv.id);
       return conv;

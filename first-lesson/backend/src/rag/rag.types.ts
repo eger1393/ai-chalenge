@@ -1,5 +1,13 @@
 import type { RagMode } from './constants';
 
+export interface RagQueryRewriteDebug {
+  enabled: boolean;
+  applied: boolean;
+  originalQuery: string;
+  rewrittenQuery: string;
+  model: string | null;
+}
+
 export interface RagDocumentRecord {
   id: string;
   sourceType: string;
@@ -29,6 +37,7 @@ export interface RagContextResult {
   scoreType: 'heuristic' | 'reranker';
   candidateCount: number;
   selectedCount: number;
+  queryRewrite: RagQueryRewriteDebug;
   matches: RagChunkMatch[];
 }
 
@@ -49,6 +58,7 @@ export interface RagDebugContext {
   candidateCount: number;
   matchCount: number;
   selectedCount: number;
+  queryRewrite: RagQueryRewriteDebug;
   matches: RagDebugReference[];
 }
 
