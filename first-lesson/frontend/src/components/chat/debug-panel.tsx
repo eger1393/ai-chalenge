@@ -29,6 +29,14 @@ const STRATEGY_LABELS: Record<string, string> = {
   pipeline: 'Pipeline',
 };
 
+const QUERY_REWRITE_REASON_LABELS: Record<string, string> = {
+  normalized_colloquial: 'Нормализация разговорной формулировки',
+  canonicalized_entity: 'Канонизация сущности',
+  clarified_intent: 'Уточнение поискового намерения',
+  already_search_friendly: 'Запрос уже поисковый',
+  ambiguous_without_context: 'Недостаточно контекста для rewrite',
+};
+
 const LAYER_CONFIG = {
   long_term: { label: 'Долговременная', emoji: '\u{1F9E0}', bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
   working: { label: 'Рабочая', emoji: '\u{1F4CB}', bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
@@ -592,6 +600,11 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
                           : 'Rewrite был включён, но запрос остался без изменений'
                         : 'Rewrite был выключен для этого сообщения'}
                     </div>
+                    {ragData.queryRewrite.reason && (
+                      <div className="mt-1 text-[10px] text-sky-700/80">
+                        Причина: {QUERY_REWRITE_REASON_LABELS[ragData.queryRewrite.reason] ?? ragData.queryRewrite.reason}
+                      </div>
+                    )}
                   </div>
                   <div className="grid gap-2 p-3 md:grid-cols-2">
                     <div className="rounded-md border border-gray-100 bg-white p-2.5">
@@ -606,6 +619,9 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
                         {ragData.queryRewrite.rewrittenQuery || 'Пусто'}
                       </div>
                     </div>
+                  </div>
+                  <div className="border-t border-sky-100 px-3 py-2 text-[10px] text-sky-700/80">
+                    raw applied: <span className="font-mono">{String(ragData.queryRewrite.rawApplied)}</span>
                   </div>
                 </div>
               )}

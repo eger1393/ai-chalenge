@@ -321,8 +321,23 @@ function mapQueryRewrite(value: unknown) {
   return {
     enabled: Boolean(value.enabled),
     applied: Boolean(value.applied),
+    rawApplied: Boolean(value.rawApplied),
+    reason: asRewriteReason(value.reason),
     originalQuery: asString(value.originalQuery) ?? '',
     rewrittenQuery: asString(value.rewrittenQuery) ?? '',
     model: asString(value.model),
   };
+}
+
+function asRewriteReason(value: unknown) {
+  switch (value) {
+    case 'normalized_colloquial':
+    case 'canonicalized_entity':
+    case 'clarified_intent':
+    case 'already_search_friendly':
+    case 'ambiguous_without_context':
+      return value;
+    default:
+      return null;
+  }
 }

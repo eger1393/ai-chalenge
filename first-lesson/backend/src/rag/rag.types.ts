@@ -1,8 +1,17 @@
 import type { RagMode } from './constants';
 
+export type RagQueryRewriteReason =
+  | 'normalized_colloquial'
+  | 'canonicalized_entity'
+  | 'clarified_intent'
+  | 'already_search_friendly'
+  | 'ambiguous_without_context';
+
 export interface RagQueryRewriteDebug {
   enabled: boolean;
   applied: boolean;
+  rawApplied: boolean;
+  reason: RagQueryRewriteReason | null;
   originalQuery: string;
   rewrittenQuery: string;
   model: string | null;

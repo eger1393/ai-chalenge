@@ -199,7 +199,7 @@ src/
 - Если `query rewrite` включён и шаг rewrite завершается ошибкой или возвращает невалидный JSON, backend завершает запрос явной ошибкой
 - При включённом флаге backend ищет релевантные чанки и подмешивает их в system prompt
 - Debug-данные RAG хранятся отдельно в `message_debug.rag_context` как компактные ссылки на найденные чанки
-- В `message_debug.rag_context` дополнительно фиксируются режим, число кандидатов, исходный и переписанный запрос, а также mode-specific score
+- В `message_debug.rag_context` дополнительно фиксируются режим, число кандидатов, исходный и переписанный запрос, причина `rewrite`/`no-op`, а также mode-specific score
 - `GET /api/messages/:id/debug` обогащает RAG-ссылки текстом чанка и полным текстом сообщения из `rag_chunks` / `rag_documents`
 - Переиндексация Telegram-дампа выполняется через `backend/src/rag/import-telegram-dump.ts`
 

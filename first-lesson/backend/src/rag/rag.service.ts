@@ -105,6 +105,8 @@ export class RagService {
           retrievalQuery,
           queryRewriteEnabled,
           queryRewrite?.model ?? null,
+          queryRewrite?.rawApplied ?? false,
+          queryRewrite?.reason ?? null,
         ),
         matches: [],
       };
@@ -130,6 +132,8 @@ export class RagService {
         retrievalQuery,
         queryRewriteEnabled,
         queryRewrite?.model ?? null,
+        queryRewrite?.rawApplied ?? false,
+        queryRewrite?.reason ?? null,
       ),
       matches,
     };
@@ -336,10 +340,14 @@ function createQueryRewriteDebug(
   rewrittenQuery: string,
   enabled: boolean,
   model: string | null,
+  rawApplied = false,
+  reason: RagContextResult['queryRewrite']['reason'] = null,
 ): RagContextResult['queryRewrite'] {
   return {
     enabled,
     applied: enabled && originalQuery !== rewrittenQuery,
+    rawApplied: enabled ? rawApplied : false,
+    reason: enabled ? reason : null,
     originalQuery,
     rewrittenQuery,
     model: enabled ? model : null,

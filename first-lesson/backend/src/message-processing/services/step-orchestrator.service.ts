@@ -807,6 +807,8 @@ function createEmptyRagResult(
     queryRewrite: {
       enabled: queryRewriteEnabled,
       applied: false,
+      rawApplied: false,
+      reason: null,
       originalQuery: normalizedQuery,
       rewrittenQuery: normalizedQuery,
       model: null,

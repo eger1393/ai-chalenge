@@ -135,6 +135,8 @@ export interface MessageDebugData {
     queryRewrite: {
       enabled: boolean;
       applied: boolean;
+      rawApplied: boolean;
+      reason?: 'normalized_colloquial' | 'canonicalized_entity' | 'clarified_intent' | 'already_search_friendly' | 'ambiguous_without_context' | null;
       originalQuery: string;
       rewrittenQuery: string;
       model?: string | null;
