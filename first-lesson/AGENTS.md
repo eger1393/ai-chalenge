@@ -6,6 +6,22 @@
 описаны в **[PROJECT_MAP.md](./PROJECT_MAP.md)**.
 Перед началом работы над задачей сначала прочитать этот файл.
 
+## Иерархия AGENTS.md
+
+Корневой `AGENTS.md` задаёт общие правила для всего репозитория. Для работы в
+локальных зонах ответственности сначала читать ближайший вложенный
+`AGENTS.md`, если он есть.
+
+Действующая иерархия:
+
+- `./backend/AGENTS.md`
+- `./backend/src/message-processing/AGENTS.md`
+- `./backend/src/rag/AGENTS.md`
+- `./frontend/AGENTS.md`
+- `./frontend/src/components/chat/AGENTS.md`
+- `./github-explorer-mcp/AGENTS.md`
+- `./knowledge-base-mcp/AGENTS.md`
+
 ## Персонализация
 
 - Язык общения: русский
