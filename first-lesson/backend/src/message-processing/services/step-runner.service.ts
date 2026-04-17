@@ -126,10 +126,20 @@ const RAG_STRICT_EXECUTION_SYSTEM_PROMPT = `Ты — AI-исполнитель �
 
 Правила:
 - каждый фактический тезис должен быть подтверждён chunk_id и цитатой;
-- цитата должна дословно присутствовать в content соответствующего чанка;
+- цитата должна быть коротким непрерывным дословным фрагментом из content соответствующего чанка;
+- нельзя сокращать цитату через "..." или "…";
+- нельзя склеивать в одну цитату куски из разных предложений или пропускать середину фразы;
+- нельзя перефразировать цитату, даже если смысл сохраняется;
+- если длинная фраза не помещается целиком, выбери более короткий точный фрагмент без переписывания;
 - не используй chunk_id вне списка CHUNKS_USED;
 - не добавляй факты, оценки или связи, которых нет в RAG;
-- не возвращай markdown, заголовки, списки и свободный текст вне JSON`;
+- не возвращай markdown, заголовки, списки и свободный текст вне JSON
+
+Примеры:
+- допустимо: "Слепая зона на 2000 строк."
+- допустимо: "Ослепление Tools с результатами выше 50k символов."
+- недопустимо: "Слепая зона на 2000 строк... галлюцинировать обрезанный код"
+- недопустимо: "Ослепление Tools с результатами выше 50k символов. Может привести к неверным выводам."`;
 
 const RAG_STRICT_VALIDATION_SYSTEM_PROMPT = `Ты — AI-валидатор в строгом RAG-режиме.
 
@@ -165,6 +175,16 @@ const RETRY_PLANNING_ADDITION = (reason: string, attempt: number): string =>
   `\n\n⚠️ ВНИМАНИЕ: Это повторная попытка #${attempt}. Предыдущая версия не прошла валидацию.
 Причина отказа: ${reason}
 Учти эту обратную связь и улучши план.`;
+
+const RETRY_EXECUTION_ADDITION = (reason: string, attempt: number): string =>
+  `\n\n⚠️ ВНИМАНИЕ: Это повторная попытка #${attempt}. Предыдущая версия не прошла валидацию.
+Причина отказа: ${reason}
+
+Критично:
+- если ошибка связана с цитатой, возьми новый quote как короткий непрерывный дословный фрагмент из content;
+- не используй "..." и не склеивай разные части предложения;
+- если сомневаешься, выбери более короткую, но точную цитату.
+`;
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -593,6 +613,8 @@ export class StepRunnerService {
     assembledSystemPrompt: string | undefined,
     planResult: string,
     userMessage: string,
+    attempt: number,
+    lastValidationReason: string,
     invariants: string[],
     ragEvidencePrompt?: string,
     strictRagMode = false,
@@ -608,6 +630,9 @@ export class StepRunnerService {
     systemContent += '\n\n' + SECURITY_BLOCK;
     if (!strictRagMode) {
       systemContent += this.buildCapabilitiesBlock();
+    }
+    if (attempt > 1 && lastValidationReason) {
+      systemContent += RETRY_EXECUTION_ADDITION(lastValidationReason, attempt);
     }
     systemContent += `\n\nПлан:\n${planResult}\n\nЗадача пользователя:\n${userMessage}`;
 
@@ -834,7 +859,7 @@ export class StepRunnerService {
       if (!containsNormalizedQuote(match.content, reference.quote)) {
         return {
           ok: false,
-          reason: `Цитата не найдена в content соответствующего чанка: ${reference.chunkId}`,
+          reason: `Цитата не найдена в content соответствующего чанка: ${reference.chunkId}; quote="${truncateStrictRagText(reference.quote, 160)}"`,
           audit,
         };
       }
@@ -1040,7 +1065,7 @@ export class StepRunnerService {
       if (!containsNormalizedQuote(match.content, reference.quote)) {
         return {
           ok: false,
-          reason: `Цитата не найдена в content соответствующего чанка: ${reference.chunkId}`,
+          reason: `Цитата не найдена в content соответствующего чанка: ${reference.chunkId}; quote="${truncateStrictRagText(reference.quote, 160)}"`,
           audit,
         };
       }
@@ -1243,7 +1268,22 @@ function readEnumField<const T extends readonly string[]>(
 }
 
 function normalizeComparisonText(value: string): string {
-  return value.replace(/\s+/g, ' ').trim();
+  return value
+    .normalize('NFKC')
+    .replace(/[«»“”]/g, '"')
+    .replace(/[’]/g, "'")
+    .replace(/[–—]/g, '-')
+    .replace(/…/g, '...')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function truncateStrictRagText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength - 1)}…`;
 }
 
 function extractStrictPlanningField(text: string, fieldName: string): string {

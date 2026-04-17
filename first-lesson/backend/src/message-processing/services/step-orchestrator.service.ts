@@ -625,6 +625,8 @@ export class StepOrchestratorService {
           memorySystemPrompt,
           currentPlanResult,
           userContent,
+          attempt,
+          lastValidationReason,
           invariants,
           ragEvidencePrompt,
           strictRagMode,
