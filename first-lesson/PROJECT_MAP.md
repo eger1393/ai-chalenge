@@ -6,6 +6,8 @@ ChatGPT-клиент с аутентификацией, историей диа�
 
 ```
 first-lesson/
+├── GLOBAL_AGENTS_CONTEXT.md    # Снимок глобального AGENTS из /home/unix/.codex/AGENTS.md
+├── AGENTS.md                   # Корневые правила проекта + карта вложенных AGENTS.md
 ├── backend/                    # NestJS API
 ├── frontend/                   # Next.js 14 SPA
 ├── github-explorer-mcp/        # MCP-сервер GitHub (stdio + supergateway)
@@ -18,6 +20,19 @@ first-lesson/
 ├── swarm-report/               # Отчёты задач
 └── PROJECT_MAP.md              # ← этот файл
 ```
+
+---
+
+## Иерархия AGENTS.md
+
+- `AGENTS.md` — общие правила репозитория
+- `backend/AGENTS.md` — backend-модуль целиком
+- `backend/src/message-processing/AGENTS.md` — pipeline и строгий RAG-режим
+- `backend/src/rag/AGENTS.md` — retrieval, rewrite, reranker и импорт
+- `frontend/AGENTS.md` — SPA и клиентские контракты
+- `frontend/src/components/chat/AGENTS.md` — чатовый интерфейс, pipeline UI и debug
+- `github-explorer-mcp/AGENTS.md` — MCP GitHub Explorer
+- `knowledge-base-mcp/AGENTS.md` — MCP базы знаний и её Telegram-import
 
 ---
 
@@ -98,8 +113,8 @@ src/
 │
 ├── message-processing/         # Pipeline обработки сообщений
 │   ├── message.controller.ts   # POST /conversations/:id/messages (SSE), pause/resume/cancel, GET /messages/:id/debug
-│   ├── services/step-orchestrator.service.ts  # State machine, retry loop, SSE events
-│   ├── services/step-runner.service.ts        # Запуск шагов, streaming, system prompts, runStepWithTools (function calling)
+│   ├── services/step-orchestrator.service.ts  # State machine, retry loop, SSE events, строгий RAG-режим
+│   ├── services/step-runner.service.ts        # Запуск шагов, streaming, system prompts, strict RAG verdict/parser
 │   ├── services/guard.service.ts              # Injection detection, stage integrity
 │   └── repositories/step.repository.ts        # message_steps table
 │
@@ -197,9 +212,20 @@ src/
 - Для загрузки reranker backend использует `XLMRobertaModel` через `Transformers.js`
 - Если reranker недоступен в режиме `reranker`, backend завершает запрос явной ошибкой
 - Если `query rewrite` включён и шаг rewrite завершается ошибкой или возвращает невалидный JSON, backend завершает запрос явной ошибкой
-- При включённом флаге backend ищет релевантные чанки и подмешивает их в system prompt
+- При включённом флаге backend собирает отдельный `RAG evidence` system message, а не вклеивает RAG в общий memory prompt
+- Каждый RAG-чанк в evidence-блоке содержит `chunk_id`, `message_id`, `document_id`, источник, дату и `content`
+- В строгом RAG-режиме planning и execution работают по структурированному JSON-контракту, а backend парсит и валидирует его кодом
+- В строгом RAG-режиме planning сначала решает, хватает ли данных в RAG, и выставляет `ragVerdict` / `responseMode` / `chunkIds`
+- Backend дополнительно отклоняет ложный `INSUFFICIENT`, если planning пытается отказаться при уже выбранных сильных прямых чанках для обобщающего вопроса
+- Если planning нарушил формат или ошибочно выбрал `REFUSE`, backend может применить явный `policy_repair` и синтезировать канонический strict RAG-план; это отражается в логах и debug-метаданных
+- Если planning считает данные недостаточными, execution возвращает явный отказ и не отвечает по существу
+- Если planning считает данные достаточными, execution отвечает только по RAG и обязан возвращать `chunk_id`, цитаты и пояснения в структурированном виде
+- После успешной проверки backend нормализует итоговый strict RAG-ответ в единый формат с разделом `Источники и цитаты`, где для каждого доказательства выводятся `chunk_id`, `source_ref`, `source`, `message_id`, `published_at` и дословная цитата
+- В строгом RAG-режиме execution запускается без tools и не использует MCP как источник фактов
+- Backend дополнительно кодом проверяет, что `chunk_id` из ответа входят в `CHUNKS_USED`, а цитаты реально содержатся в соответствующих чанках
 - Debug-данные RAG хранятся отдельно в `message_debug.rag_context` как компактные ссылки на найденные чанки
 - В `message_debug.rag_context` дополнительно фиксируются режим, число кандидатов, исходный и переписанный запрос, причина `rewrite`/`no-op`, а также mode-specific score
+- В `message_debug.strategy_metadata.ragPipeline` сохраняются planning verdict, response mode, выбранные `chunk_id`, источник плана (`model` или `policy_repair`) и число цитат из финального ответа
 - `GET /api/messages/:id/debug` обогащает RAG-ссылки текстом чанка и полным текстом сообщения из `rag_chunks` / `rag_documents`
 - Переиндексация Telegram-дампа выполняется через `backend/src/rag/import-telegram-dump.ts`
 

@@ -82,19 +82,20 @@ const RAG_STRICT_PLANNING_SYSTEM_PROMPT = `Ты — AI-планировщик в
 - Запрос: "а он что про это говорил?"
   Если из текущего RAG-блока нельзя понять, что такое "это", это INSUFFICIENT.
 
-Ответь СТРОГО в формате:
-RAG_VERDICT: SUFFICIENT или RAG_VERDICT: INSUFFICIENT
-RESPONSE_MODE: ANSWER или RESPONSE_MODE: REFUSE
-CHUNKS_USED: <chunk_id через запятую> или CHUNKS_USED: NONE
-MISSING_INFO: <чего не хватает> или MISSING_INFO: NONE
-PLAN:
-1. ...
-2. ...
-3. ...
+Ответь ТОЛЬКО валидным JSON без markdown и без пояснений:
+{
+  "ragVerdict": "SUFFICIENT" | "INSUFFICIENT",
+  "responseMode": "ANSWER" | "REFUSE",
+  "chunkIds": ["<chunk_id>", "..."],
+  "missingInfo": "NONE" | "<чего не хватает>",
+  "planSteps": ["<шаг 1>", "<шаг 2>", "<шаг 3>"]
+}
 
 Правила:
 - не отвечай на вопрос по существу;
 - не придумывай chunk_id;
+- если answer, chunkIds должны содержать только chunk_id из RAG;
+- если refuse, chunkIds должен быть пустым массивом;
 - если ответ нужно домысливать, это INSUFFICIENT;
 - если в RAG-доказательствах нет ни одного подходящего чанка, это INSUFFICIENT`;
 
@@ -103,44 +104,41 @@ const RAG_STRICT_EXECUTION_SYSTEM_PROMPT = `Ты — AI-исполнитель �
 Факты разрешено брать только из отдельного системного сообщения с RAG-доказательствами и только из chunk_id, которые перечислены в плане.
 Запрещено использовать историю диалога, память, внешние инструменты и общие знания как источник фактов.
 
-Если RESPONSE_MODE = REFUSE, ответь ТОЛЬКО по шаблону:
-## Статус
-Недостаточно данных в RAG
+Если RESPONSE_MODE = REFUSE, ответь ТОЛЬКО валидным JSON без markdown и без пояснений:
+{
+  "mode": "REFUSE",
+  "reason": "<краткое объяснение>",
+  "missingInfo": "<чего не хватает>"
+}
 
-## Почему не могу ответить
-<краткое объяснение>
-
-## Чего не хватает
-<краткий список или абзац>
-
-## Использованный режим
-Ответы в этом режиме строятся только по данным из RAG
-
-Если RESPONSE_MODE = ANSWER, ответь ТОЛЬКО по шаблону:
-## Краткий ответ
-<краткий ответ без фактов вне RAG>
-
-## Подтверждение по чанкам
-1. chunk_id: <uuid>
-   Цитата: "<короткая дословная цитата без переноса строки>"
-   Как это подтверждает ответ: <пояснение>
-2. chunk_id: <uuid>
-   Цитата: "<короткая дословная цитата без переноса строки>"
-   Как это подтверждает ответ: <пояснение>
+Если RESPONSE_MODE = ANSWER, ответь ТОЛЬКО валидным JSON без markdown и без пояснений:
+{
+  "mode": "ANSWER",
+  "summary": "<краткий ответ без фактов вне RAG>",
+  "references": [
+    {
+      "chunkId": "<uuid>",
+      "quote": "<короткая дословная цитата без переноса строки>",
+      "explanation": "<как это подтверждает ответ>"
+    }
+  ]
+}
 
 Правила:
 - каждый фактический тезис должен быть подтверждён chunk_id и цитатой;
 - цитата должна дословно присутствовать в content соответствующего чанка;
 - не используй chunk_id вне списка CHUNKS_USED;
-- не добавляй факты, оценки или связи, которых нет в RAG`;
+- не добавляй факты, оценки или связи, которых нет в RAG;
+- не возвращай markdown, заголовки, списки и свободный текст вне JSON`;
 
 const RAG_STRICT_VALIDATION_SYSTEM_PROMPT = `Ты — AI-валидатор в строгом RAG-режиме.
 
 Источник истины для фактов — только отдельное системное сообщение с RAG-доказательствами.
 Тебе даны запрос пользователя, план и результат выполнения.
+План и результат выполнения могут быть представлены в структурированном JSON — это корректный формат.
 
 Проверь:
-1. План выдан в машиночитаемом формате и содержит RAG_VERDICT, RESPONSE_MODE, CHUNKS_USED и MISSING_INFO
+1. План выдан в машиночитаемом формате и содержит ragVerdict/responseMode/chunkIds/missingInfo или их legacy-эквиваленты
 2. Если RAG_VERDICT = INSUFFICIENT, execution действительно отказался отвечать по существу
 3. Если RAG_VERDICT = SUFFICIENT, execution отвечает только по RAG
 4. Для каждого фактического тезиса указан chunk_id
@@ -185,6 +183,8 @@ export interface RagPlanningAssessment {
   chunkIds: string[];
   missingInfo: string;
   planText: string;
+  source: 'model' | 'policy_repair';
+  repairReason: string | null;
   raw: string;
 }
 
@@ -199,6 +199,8 @@ export interface RagExecutionAudit {
   summary: string | null;
   referencedChunkIds: string[];
   quoteCount: number;
+  refusalReason: string | null;
+  missingInfo: string | null;
   references: RagExecutionReference[];
 }
 
@@ -662,6 +664,11 @@ export class StepRunnerService {
 
   parseRagPlanningAssessment(text: string): RagPlanningAssessment {
     const safeText = text || '';
+    const parsedJson = tryParseRagPlanningJson(safeText);
+    if (parsedJson) {
+      return parsedJson;
+    }
+
     const rawVerdict = extractStrictPlanningField(safeText, 'RAG_VERDICT');
     const rawResponseMode = extractStrictPlanningField(safeText, 'RESPONSE_MODE');
     const rawChunksValue = extractStrictPlanningField(safeText, 'CHUNKS_USED');
@@ -707,8 +714,27 @@ export class StepRunnerService {
       chunkIds,
       missingInfo,
       planText,
+      source: 'model',
+      repairReason: null,
       raw: safeText,
     };
+  }
+
+  serializeRagPlanningAssessment(assessment: RagPlanningAssessment): string {
+    return JSON.stringify(
+      {
+        ragVerdict: assessment.ragVerdict,
+        responseMode: assessment.responseMode,
+        chunkIds: assessment.chunkIds,
+        missingInfo: assessment.missingInfo,
+        planSteps: assessment.planText
+          .split('\n')
+          .map((step) => step.trim())
+          .filter(Boolean),
+      },
+      null,
+      2,
+    );
   }
 
   verifyRagExecutionOutput(
@@ -717,6 +743,10 @@ export class StepRunnerService {
     ragResult: RagContextResult,
   ): { ok: boolean; reason?: string; audit: RagExecutionAudit } {
     const safeResult = execResult || '';
+    const jsonExecution = tryParseRagExecutionJson(safeResult);
+    if (jsonExecution) {
+      return this.verifyStructuredRagExecution(jsonExecution, planning, ragResult, safeResult);
+    }
 
     if (planning.responseMode === 'REFUSE') {
       const normalized = safeResult.toLowerCase();
@@ -728,6 +758,8 @@ export class StepRunnerService {
         summary: null,
         referencedChunkIds: [],
         quoteCount: 0,
+        refusalReason: null,
+        missingInfo: planning.missingInfo,
         references: [],
       };
 
@@ -757,6 +789,8 @@ export class StepRunnerService {
       summary,
       referencedChunkIds: Array.from(new Set(references.map((reference) => reference.chunkId))),
       quoteCount: references.length,
+      refusalReason: null,
+      missingInfo: null,
       references,
     };
 
@@ -820,10 +854,11 @@ export class StepRunnerService {
         'Недостаточно данных в RAG',
         '',
         '## Почему не могу ответить',
-        'В текущем наборе RAG-доказательств недостаточно подтверждённых данных для надёжного ответа.',
+        audit.refusalReason ||
+          'В текущем наборе RAG-доказательств недостаточно подтверждённых данных для надёжного ответа.',
         '',
         '## Чего не хватает',
-        planning.missingInfo,
+        audit.missingInfo || planning.missingInfo,
         '',
         '## Использованный режим',
         'Ответы в этом режиме строятся только по данным из RAG',
@@ -901,13 +936,310 @@ export class StepRunnerService {
 
     return { passed, score, reason, injection };
   }
+
+  private verifyStructuredRagExecution(
+    payload: ParsedRagExecutionPayload,
+    planning: RagPlanningAssessment,
+    ragResult: RagContextResult,
+    rawResult: string,
+  ): { ok: boolean; reason?: string; audit: RagExecutionAudit } {
+    if (payload.mode === 'REFUSE') {
+      const audit: RagExecutionAudit = {
+        mode: 'REFUSE',
+        summary: null,
+        referencedChunkIds: [],
+        quoteCount: 0,
+        refusalReason: payload.reason,
+        missingInfo: payload.missingInfo,
+        references: [],
+      };
+
+      if (planning.responseMode !== 'REFUSE') {
+        return {
+          ok: false,
+          reason: 'Execution вернул REFUSE, хотя план требовал ANSWER',
+          audit,
+        };
+      }
+
+      if (!payload.reason.trim()) {
+        return {
+          ok: false,
+          reason: 'Execution вернул пустое поле reason в REFUSE-ответе',
+          audit,
+        };
+      }
+
+      if (!payload.missingInfo.trim()) {
+        return {
+          ok: false,
+          reason: 'Execution вернул пустое поле missingInfo в REFUSE-ответе',
+          audit,
+        };
+      }
+
+      return { ok: true, audit };
+    }
+
+    const references = payload.references;
+    const audit: RagExecutionAudit = {
+      mode: 'ANSWER',
+      summary: payload.summary,
+      referencedChunkIds: Array.from(new Set(references.map((reference) => reference.chunkId))),
+      quoteCount: references.length,
+      refusalReason: null,
+      missingInfo: null,
+      references,
+    };
+
+    if (planning.responseMode !== 'ANSWER') {
+      return {
+        ok: false,
+        reason: 'Execution вернул ANSWER, хотя план требовал REFUSE',
+        audit,
+      };
+    }
+
+    if (!payload.summary.trim()) {
+      return {
+        ok: false,
+        reason: 'Execution не заполнил summary в структурированном strict RAG-ответе',
+        audit,
+      };
+    }
+
+    if (references.length === 0) {
+      return {
+        ok: false,
+        reason: 'Execution не указал ни одной ссылки на chunk_id в структурированном strict RAG-ответе',
+        audit,
+      };
+    }
+
+    const allowedChunkIds = new Set(planning.chunkIds);
+    const matchesByChunkId = new Map(ragResult.matches.map((match) => [match.chunkId, match]));
+
+    for (const reference of references) {
+      if (!allowedChunkIds.has(reference.chunkId)) {
+        return {
+          ok: false,
+          reason: `Execution использовал chunk_id вне CHUNKS_USED: ${reference.chunkId}`,
+          audit,
+        };
+      }
+
+      const match = matchesByChunkId.get(reference.chunkId);
+      if (!match) {
+        return {
+          ok: false,
+          reason: `Execution сослался на chunk_id, которого нет в текущем RAG-блоке: ${reference.chunkId}`,
+          audit,
+        };
+      }
+
+      if (!containsNormalizedQuote(match.content, reference.quote)) {
+        return {
+          ok: false,
+          reason: `Цитата не найдена в content соответствующего чанка: ${reference.chunkId}`,
+          audit,
+        };
+      }
+
+      if (!reference.explanation.trim()) {
+        return {
+          ok: false,
+          reason: `Execution вернул пустое explanation для chunk_id: ${reference.chunkId}`,
+          audit,
+        };
+      }
+    }
+
+    if (rawResult.includes('## ') || rawResult.includes('chunk_id:')) {
+      return {
+        ok: false,
+        reason: 'Execution в strict RAG должен возвращать только структурированный JSON без markdown',
+        audit,
+      };
+    }
+
+    return { ok: true, audit };
+  }
 }
+
+interface ParsedRagExecutionAnswerPayload {
+  mode: 'ANSWER';
+  summary: string;
+  references: RagExecutionReference[];
+}
+
+interface ParsedRagExecutionRefusePayload {
+  mode: 'REFUSE';
+  reason: string;
+  missingInfo: string;
+}
+
+type ParsedRagExecutionPayload = ParsedRagExecutionAnswerPayload | ParsedRagExecutionRefusePayload;
 
 function containsNormalizedQuote(content: string, quote: string): boolean {
   const normalizedContent = normalizeComparisonText(content);
   const normalizedQuote = normalizeComparisonText(quote);
 
   return normalizedQuote.length > 0 && normalizedContent.includes(normalizedQuote);
+}
+
+function tryParseRagPlanningJson(text: string): RagPlanningAssessment | null {
+  const parsed = tryParseJsonObject(text);
+  if (!parsed) {
+    return null;
+  }
+
+  const ragVerdict = readEnumField(parsed, 'ragVerdict', ['SUFFICIENT', 'INSUFFICIENT']);
+  const responseMode = readEnumField(parsed, 'responseMode', ['ANSWER', 'REFUSE']);
+  const chunkIds = readStringArrayField(parsed, 'chunkIds');
+  const missingInfo = readStringField(parsed, 'missingInfo');
+  const planSteps = readStringArrayField(parsed, 'planSteps');
+
+  if (ragVerdict === 'SUFFICIENT' && responseMode !== 'ANSWER') {
+    throw new Error('Planning output has inconsistent SUFFICIENT/REFUSE combination');
+  }
+
+  if (ragVerdict === 'INSUFFICIENT' && responseMode !== 'REFUSE') {
+    throw new Error('Planning output has inconsistent INSUFFICIENT/ANSWER combination');
+  }
+
+  if (responseMode === 'ANSWER' && chunkIds.length === 0) {
+    throw new Error('Planning output selected ANSWER without any chunk_id');
+  }
+
+  if (responseMode === 'REFUSE' && chunkIds.length > 0) {
+    throw new Error('Planning output selected REFUSE with non-empty chunkIds');
+  }
+
+  if (planSteps.length === 0) {
+    throw new Error('Planning output does not contain non-empty planSteps');
+  }
+
+  return {
+    ragVerdict,
+    responseMode,
+    chunkIds,
+    missingInfo,
+    planText: planSteps.map((step, index) => `${index + 1}. ${step}`).join('\n'),
+    source: 'model',
+    repairReason: null,
+    raw: text,
+  };
+}
+
+function tryParseRagExecutionJson(text: string): ParsedRagExecutionPayload | null {
+  const parsed = tryParseJsonObject(text);
+  if (!parsed) {
+    return null;
+  }
+
+  const mode = readEnumField(parsed, 'mode', ['ANSWER', 'REFUSE']);
+  if (mode === 'REFUSE') {
+    return {
+      mode,
+      reason: readStringField(parsed, 'reason'),
+      missingInfo: readStringField(parsed, 'missingInfo'),
+    };
+  }
+
+  const summary = readStringField(parsed, 'summary');
+  const rawReferences = parsed.references;
+  if (!Array.isArray(rawReferences) || rawReferences.length === 0) {
+    throw new Error('Execution output does not contain non-empty references array');
+  }
+
+  const references = rawReferences.map((value, index) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error(`Execution reference at index ${index} has invalid shape`);
+    }
+
+    const record = value as Record<string, unknown>;
+    return {
+      chunkId: readStringField(record, 'chunkId'),
+      quote: readStringField(record, 'quote'),
+      explanation: readStringField(record, 'explanation'),
+    };
+  });
+
+  return {
+    mode,
+    summary,
+    references,
+  };
+}
+
+function tryParseJsonObject(text: string): Record<string, unknown> | null {
+  const normalized = unwrapJsonCodeFence(text.trim());
+  if (!normalized.startsWith('{')) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(normalized);
+  } catch (error) {
+    throw new Error(
+      `Structured strict RAG payload contains invalid JSON: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    );
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Structured strict RAG payload must be a JSON object');
+  }
+
+  return parsed as Record<string, unknown>;
+}
+
+function unwrapJsonCodeFence(value: string): string {
+  if (!value.startsWith('```')) {
+    return value;
+  }
+
+  return value.replace(/^```(?:json)?\s*/iu, '').replace(/\s*```$/u, '').trim();
+}
+
+function readStringField(record: Record<string, unknown>, fieldName: string): string {
+  const value = record[fieldName];
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`Structured strict RAG payload has invalid field "${fieldName}"`);
+  }
+
+  return value.trim();
+}
+
+function readStringArrayField(record: Record<string, unknown>, fieldName: string): string[] {
+  const value = record[fieldName];
+  if (!Array.isArray(value)) {
+    throw new Error(`Structured strict RAG payload has invalid field "${fieldName}"`);
+  }
+
+  return value.map((item, index) => {
+    if (typeof item !== 'string' || !item.trim()) {
+      throw new Error(
+        `Structured strict RAG payload has invalid string element in "${fieldName}" at index ${index}`,
+      );
+    }
+    return item.trim();
+  });
+}
+
+function readEnumField<const T extends readonly string[]>(
+  record: Record<string, unknown>,
+  fieldName: string,
+  allowedValues: T,
+): T[number] {
+  const rawValue = readStringField(record, fieldName).toUpperCase();
+  if (!(allowedValues as readonly string[]).includes(rawValue)) {
+    throw new Error(
+      `Structured strict RAG payload has invalid field "${fieldName}": ${rawValue}`,
+    );
+  }
+
+  return rawValue as T[number];
 }
 
 function normalizeComparisonText(value: string): string {

@@ -397,11 +397,15 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
               chunkIds?: string[];
               missingInfo?: string;
               planText?: string;
+              source?: 'model' | 'policy_repair';
+              repairReason?: string | null;
             } | null;
             execution?: {
               mode?: 'ANSWER' | 'REFUSE';
               referencedChunkIds?: string[];
               quoteCount?: number;
+              refusalReason?: string | null;
+              missingInfo?: string | null;
             } | null;
           } | null;
         }
@@ -569,6 +573,11 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
                         value={ragPipeline.planning?.responseMode ?? '—'}
                       />
                       <Stat
+                        icon={<Cpu className="w-3 h-3 text-emerald-500" />}
+                        label="Источник плана"
+                        value={ragPipeline.planning?.source === 'policy_repair' ? 'repair' : 'model'}
+                      />
+                      <Stat
                         icon={<FileText className="w-3 h-3 text-emerald-500" />}
                         label="Цитат"
                         value={String(ragPipeline.execution?.quoteCount ?? 0)}
@@ -599,6 +608,15 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
                         <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Чего не хватает</div>
                         <div className="text-[11px] text-gray-700 whitespace-pre-wrap leading-relaxed">
                           {ragPipeline.planning.missingInfo}
+                        </div>
+                      </div>
+                    )}
+
+                    {ragPipeline.planning?.repairReason && (
+                      <div className="rounded-md border border-amber-100 bg-amber-50 p-2.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 mb-1">Причина repair</div>
+                        <div className="text-[11px] text-amber-800 whitespace-pre-wrap leading-relaxed">
+                          {ragPipeline.planning.repairReason}
                         </div>
                       </div>
                     )}

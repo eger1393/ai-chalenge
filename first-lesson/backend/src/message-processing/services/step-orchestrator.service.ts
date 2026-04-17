@@ -40,6 +40,12 @@ interface RetryLoopResult {
   ragExecutionAudit: RagExecutionAudit | null;
 }
 
+interface ResolvedStrictRagPlanning {
+  assessment: RagPlanningAssessment;
+  serializedPlan: string;
+  repaired: boolean;
+}
+
 // ── Service ───────────────────────────────────────────────────────────
 
 @Injectable()
@@ -525,6 +531,7 @@ export class StepOrchestratorService {
     let totalCost = 0;
     let currentRagPlanningAssessment: RagPlanningAssessment | null = null;
     let currentRagExecutionAudit: RagExecutionAudit | null = null;
+    let currentPlanningStep: MessageStep | null = null;
 
     while (attempt <= maxAttempts) {
       this.logger.log(`Message ${messageId}: attempt ${attempt}/${maxAttempts}`);
@@ -560,6 +567,7 @@ export class StepOrchestratorService {
         });
 
         currentPlanResult = planStepResult.output;
+        currentPlanningStep = planStepResult.step;
         totalPromptTokens += planStepResult.step.promptTokens;
         totalCompletionTokens += planStepResult.step.completionTokens;
         totalCost += planStepResult.step.cost;
@@ -567,16 +575,29 @@ export class StepOrchestratorService {
 
       if (strictRagMode) {
         try {
-          currentRagPlanningAssessment = this.stepRunnerService.parseRagPlanningAssessment(
+          const resolvedPlanning = this.resolveStrictRagPlanning(
             currentPlanResult,
-          );
-          const planningAssessmentError = validateRagPlanningAssessment(
-            currentRagPlanningAssessment,
             ragResult,
             userContent,
           );
-          if (planningAssessmentError) {
-            throw new Error(planningAssessmentError);
+          currentRagPlanningAssessment = resolvedPlanning.assessment;
+          currentPlanResult = resolvedPlanning.serializedPlan;
+
+          if (currentPlanningStep) {
+            await this.stepRepository.updateStep(currentPlanningStep.id, {
+              outputResult: {
+                text: currentPlanResult,
+                rawText: currentRagPlanningAssessment.raw,
+                source: currentRagPlanningAssessment.source,
+                repairReason: currentRagPlanningAssessment.repairReason,
+              },
+            });
+          }
+
+          if (resolvedPlanning.repaired) {
+            this.logger.warn(
+              `Message ${messageId}: strict RAG planning repaired on attempt ${attempt}: ${currentRagPlanningAssessment.repairReason}`,
+            );
           }
         } catch (err: unknown) {
           lastValidationReason = err instanceof Error ? err.message : 'Invalid strict RAG planning output';
@@ -799,6 +820,65 @@ export class StepOrchestratorService {
     return message?.status === 'paused';
   }
 
+  private resolveStrictRagPlanning(
+    rawPlanResult: string,
+    ragResult: RagContextResult,
+    userContent: string,
+  ): ResolvedStrictRagPlanning {
+    try {
+      const parsedAssessment = this.stepRunnerService.parseRagPlanningAssessment(rawPlanResult);
+      const planningAssessmentError = validateRagPlanningAssessment(
+        parsedAssessment,
+        ragResult,
+        userContent,
+      );
+
+      if (!planningAssessmentError) {
+        return {
+          assessment: parsedAssessment,
+          serializedPlan: this.stepRunnerService.serializeRagPlanningAssessment(parsedAssessment),
+          repaired: false,
+        };
+      }
+
+      const repairedAssessment = tryRepairStrictRagPlanning(
+        rawPlanResult,
+        planningAssessmentError,
+        ragResult,
+        userContent,
+      );
+
+      if (!repairedAssessment) {
+        throw new Error(planningAssessmentError);
+      }
+
+      return {
+        assessment: repairedAssessment,
+        serializedPlan: this.stepRunnerService.serializeRagPlanningAssessment(repairedAssessment),
+        repaired: true,
+      };
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : 'Invalid strict RAG planning output';
+      const repairedAssessment = tryRepairStrictRagPlanning(
+        rawPlanResult,
+        errorMessage,
+        ragResult,
+        userContent,
+      );
+
+      if (!repairedAssessment) {
+        throw err;
+      }
+
+      return {
+        assessment: repairedAssessment,
+        serializedPlan: this.stepRunnerService.serializeRagPlanningAssessment(repairedAssessment),
+        repaired: true,
+      };
+    }
+  }
+
   private async loadConversationDirect(conversationId: string): Promise<{
     userId: string;
     projectId: string;
@@ -915,6 +995,8 @@ function buildPipelineStrategyMetadata(
                 chunkIds: result.ragPlanningAssessment.chunkIds,
                 missingInfo: result.ragPlanningAssessment.missingInfo,
                 planText: result.ragPlanningAssessment.planText,
+                source: result.ragPlanningAssessment.source,
+                repairReason: result.ragPlanningAssessment.repairReason,
               }
             : null,
           execution: result.ragExecutionAudit
@@ -922,6 +1004,8 @@ function buildPipelineStrategyMetadata(
                 mode: result.ragExecutionAudit.mode,
                 referencedChunkIds: result.ragExecutionAudit.referencedChunkIds,
                 quoteCount: result.ragExecutionAudit.quoteCount,
+                refusalReason: result.ragExecutionAudit.refusalReason,
+                missingInfo: result.ragExecutionAudit.missingInfo,
               }
             : null,
         }
@@ -974,15 +1058,7 @@ function detectFalseInsufficientPlanning(
   ragResult: RagContextResult,
   userContent: string,
 ): string | null {
-  const effectiveQuery = (ragResult.queryRewrite.rewrittenQuery || userContent).trim();
-  if (!looksLikeBroadAnswerableQuestion(effectiveQuery)) {
-    return null;
-  }
-
-  const strongMatches = ragResult.matches.filter((match) =>
-    isStrongDirectEvidenceMatch(match, effectiveQuery),
-  );
-
+  const strongMatches = findStrongDirectEvidenceMatches(ragResult, userContent);
   if (strongMatches.length === 0) {
     return null;
   }
@@ -993,6 +1069,52 @@ function detectFalseInsufficientPlanning(
     .join(', ');
 
   return `Planning выбрал ${assessment.responseMode}, хотя в текущем RAG-блоке уже есть прямые релевантные чанки для ответа: ${chunkIds}`;
+}
+
+function tryRepairStrictRagPlanning(
+  rawPlanResult: string,
+  originalReason: string,
+  ragResult: RagContextResult,
+  userContent: string,
+): RagPlanningAssessment | null {
+  const strongMatches = findStrongDirectEvidenceMatches(ragResult, userContent);
+  if (strongMatches.length === 0) {
+    return null;
+  }
+
+  const repairedChunkIds = strongMatches
+    .slice(0, Math.min(3, strongMatches.length))
+    .map((match) => match.chunkId);
+
+  return {
+    ragVerdict: 'SUFFICIENT',
+    responseMode: 'ANSWER',
+    chunkIds: repairedChunkIds,
+    missingInfo: 'NONE',
+    planText: [
+      '1. Использовать только перечисленные chunk_id как источник фактов по запросу пользователя.',
+      '2. Сформулировать краткий ответ без внешних знаний и без домысливания.',
+      '3. Для каждого тезиса привести короткую дословную цитату и пояснение, как она подтверждает ответ.',
+    ].join('\n'),
+    source: 'policy_repair',
+    repairReason: originalReason,
+    raw: rawPlanResult,
+  };
+}
+
+function findStrongDirectEvidenceMatches(
+  ragResult: RagContextResult,
+  userContent: string,
+): RagContextResult['matches'] {
+  const effectiveQuery = (ragResult.queryRewrite.rewrittenQuery || userContent).trim();
+  if (!looksLikeBroadAnswerableQuestion(effectiveQuery)) {
+    return [];
+  }
+
+  const strongMatches = ragResult.matches.filter((match) =>
+    isStrongDirectEvidenceMatch(match, effectiveQuery),
+  );
+  return strongMatches;
 }
 
 function looksLikeBroadAnswerableQuestion(query: string): boolean {
