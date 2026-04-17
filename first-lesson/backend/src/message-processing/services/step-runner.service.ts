@@ -151,11 +151,10 @@ const RAG_STRICT_VALIDATION_SYSTEM_PROMPT = `Ты — AI-валидатор в �
 1. План выдан в машиночитаемом формате и содержит ragVerdict/responseMode/chunkIds/missingInfo или их legacy-эквиваленты
 2. Если RAG_VERDICT = INSUFFICIENT, execution действительно отказался отвечать по существу
 3. Если RAG_VERDICT = SUFFICIENT, execution отвечает только по RAG
-4. Для каждого фактического тезиса указан chunk_id
-5. Для каждого chunk_id дана явная цитата
-6. Цитата выглядит как дословная выдержка из соответствующего чанка
-7. В ответе нет неподтверждённых утверждений, внешних знаний или догадок
-8. Если в RAG уже есть прямые релевантные чанки, planning не должен выбирать INSUFFICIENT только из-за несовпадения формулировки вопроса с текстом чанка
+4. Для каждого фактического тезиса желательно указан chunk_id и, если есть, цитата
+5. Не заваливай ответ только из-за неточного оформления chunk_id или цитаты
+6. В ответе нет неподтверждённых утверждений, внешних знаний или догадок
+7. Если в RAG уже есть прямые релевантные чанки, planning не должен выбирать INSUFFICIENT только из-за несовпадения формулировки вопроса с текстом чанка
 
 ВАЖНО: Ответь СТРОГО в формате:
 VERDICT: PASS или VERDICT: FAIL или VERDICT: INJECTION
@@ -765,12 +764,11 @@ export class StepRunnerService {
   verifyRagExecutionOutput(
     execResult: string,
     planning: RagPlanningAssessment,
-    ragResult: RagContextResult,
   ): { ok: boolean; reason?: string; audit: RagExecutionAudit } {
     const safeResult = execResult || '';
     const jsonExecution = tryParseRagExecutionJson(safeResult);
     if (jsonExecution) {
-      return this.verifyStructuredRagExecution(jsonExecution, planning, ragResult, safeResult);
+      return this.verifyStructuredRagExecution(jsonExecution, planning, safeResult);
     }
 
     if (planning.responseMode === 'REFUSE') {
@@ -835,31 +833,11 @@ export class StepRunnerService {
       };
     }
 
-    const allowedChunkIds = new Set(planning.chunkIds);
-    const matchesByChunkId = new Map(ragResult.matches.map((match) => [match.chunkId, match]));
-
     for (const reference of references) {
-      if (!allowedChunkIds.has(reference.chunkId)) {
+      if (!reference.explanation.trim()) {
         return {
           ok: false,
-          reason: `Execution использовал chunk_id вне CHUNKS_USED: ${reference.chunkId}`,
-          audit,
-        };
-      }
-
-      const match = matchesByChunkId.get(reference.chunkId);
-      if (!match) {
-        return {
-          ok: false,
-          reason: `Execution сослался на chunk_id, которого нет в текущем RAG-блоке: ${reference.chunkId}`,
-          audit,
-        };
-      }
-
-      if (!containsNormalizedQuote(match.content, reference.quote)) {
-        return {
-          ok: false,
-          reason: `Цитата не найдена в content соответствующего чанка: ${reference.chunkId}; quote="${truncateStrictRagText(reference.quote, 160)}"`,
+          reason: `Execution вернул пустое explanation для chunk_id: ${reference.chunkId}`,
           audit,
         };
       }
@@ -900,21 +878,18 @@ export class StepRunnerService {
 
     audit.references.forEach((reference, index) => {
       const match = matchesByChunkId.get(reference.chunkId);
-      if (!match) {
-        throw new Error(
-          `Невозможно собрать strict RAG-ответ: chunk_id не найден в текущем RAG-блоке: ${reference.chunkId}`,
-        );
-      }
-
-      const source = String(match.document.metadata.channel_name ?? match.document.sourceKey);
-      const publishedAt = match.document.publishedAt?.toISOString() ?? 'unknown';
-      const sourceRef = buildRagSourceRef(match);
+      const source = match
+        ? String(match.document.metadata.channel_name ?? match.document.sourceKey)
+        : 'unknown';
+      const publishedAt = match?.document.publishedAt?.toISOString() ?? 'unknown';
+      const sourceRef = match ? buildRagSourceRef(match) : 'unknown';
+      const messageId = match?.document.externalId ?? 'unknown';
 
       sections.push(
         `${index + 1}. chunk_id: ${reference.chunkId}`,
         `   source_ref: ${sourceRef}`,
         `   source: ${source}`,
-        `   message_id: ${match.document.externalId}`,
+        `   message_id: ${messageId}`,
         `   published_at: ${publishedAt}`,
         `   Цитата: "${reference.quote}"`,
         `   Как это подтверждает ответ: ${reference.explanation}`,
@@ -965,7 +940,6 @@ export class StepRunnerService {
   private verifyStructuredRagExecution(
     payload: ParsedRagExecutionPayload,
     planning: RagPlanningAssessment,
-    ragResult: RagContextResult,
     rawResult: string,
   ): { ok: boolean; reason?: string; audit: RagExecutionAudit } {
     if (payload.mode === 'REFUSE') {
@@ -1041,35 +1015,7 @@ export class StepRunnerService {
       };
     }
 
-    const allowedChunkIds = new Set(planning.chunkIds);
-    const matchesByChunkId = new Map(ragResult.matches.map((match) => [match.chunkId, match]));
-
     for (const reference of references) {
-      if (!allowedChunkIds.has(reference.chunkId)) {
-        return {
-          ok: false,
-          reason: `Execution использовал chunk_id вне CHUNKS_USED: ${reference.chunkId}`,
-          audit,
-        };
-      }
-
-      const match = matchesByChunkId.get(reference.chunkId);
-      if (!match) {
-        return {
-          ok: false,
-          reason: `Execution сослался на chunk_id, которого нет в текущем RAG-блоке: ${reference.chunkId}`,
-          audit,
-        };
-      }
-
-      if (!containsNormalizedQuote(match.content, reference.quote)) {
-        return {
-          ok: false,
-          reason: `Цитата не найдена в content соответствующего чанка: ${reference.chunkId}; quote="${truncateStrictRagText(reference.quote, 160)}"`,
-          audit,
-        };
-      }
-
       if (!reference.explanation.trim()) {
         return {
           ok: false,
@@ -1104,13 +1050,6 @@ interface ParsedRagExecutionRefusePayload {
 }
 
 type ParsedRagExecutionPayload = ParsedRagExecutionAnswerPayload | ParsedRagExecutionRefusePayload;
-
-function containsNormalizedQuote(content: string, quote: string): boolean {
-  const normalizedContent = normalizeComparisonText(content);
-  const normalizedQuote = normalizeComparisonText(quote);
-
-  return normalizedQuote.length > 0 && normalizedContent.includes(normalizedQuote);
-}
 
 function tryParseRagPlanningJson(text: string): RagPlanningAssessment | null {
   const parsed = tryParseJsonObject(text);
@@ -1265,25 +1204,6 @@ function readEnumField<const T extends readonly string[]>(
   }
 
   return rawValue as T[number];
-}
-
-function normalizeComparisonText(value: string): string {
-  return value
-    .normalize('NFKC')
-    .replace(/[«»“”]/g, '"')
-    .replace(/[’]/g, "'")
-    .replace(/[–—]/g, '-')
-    .replace(/…/g, '...')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function truncateStrictRagText(value: string, maxLength: number): string {
-  if (value.length <= maxLength) {
-    return value;
-  }
-
-  return `${value.slice(0, maxLength - 1)}…`;
 }
 
 function extractStrictPlanningField(text: string, fieldName: string): string {

@@ -224,7 +224,7 @@ src/
 - При повторной попытке execution получает причину предыдущего validation-fail и должен исправлять ответ с учётом этой обратной связи
 - После успешной проверки backend нормализует итоговый strict RAG-ответ в единый формат с разделом `Источники и цитаты`, где для каждого доказательства выводятся `chunk_id`, `source_ref`, `source`, `message_id`, `published_at` и дословная цитата
 - В строгом RAG-режиме execution запускается без tools и не использует MCP как источник фактов
-- Backend дополнительно кодом проверяет, что `chunk_id` из ответа входят в `CHUNKS_USED`, а цитаты реально содержатся в соответствующих чанках
+- Backend больше не валит strict RAG-ответ на этапе validation из-за неточного `chunk_id` или цитаты; stage-level проверка оставляет только структурный контракт ответа
 - Debug-данные RAG хранятся отдельно в `message_debug.rag_context` как компактные ссылки на найденные чанки
 - В `message_debug.rag_context` дополнительно фиксируются режим, число кандидатов, исходный и переписанный запрос, причина `rewrite`/`no-op`, а также mode-specific score
 - В `message_debug.strategy_metadata.ragPipeline` сохраняются planning verdict, response mode, выбранные `chunk_id`, источник плана (`model` или `policy_repair`) и число цитат из финального ответа

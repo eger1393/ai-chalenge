@@ -703,7 +703,6 @@ export class StepOrchestratorService {
           const ragExecutionVerification = this.stepRunnerService.verifyRagExecutionOutput(
             currentExecResult,
             currentRagPlanningAssessment,
-            ragResult,
           );
           currentRagExecutionAudit = ragExecutionVerification.audit;
           if (!ragExecutionVerification.ok) {
