@@ -573,6 +573,7 @@ export class StepOrchestratorService {
           const planningAssessmentError = validateRagPlanningAssessment(
             currentRagPlanningAssessment,
             ragResult,
+            userContent,
           );
           if (planningAssessmentError) {
             throw new Error(planningAssessmentError);
@@ -931,6 +932,7 @@ function buildPipelineStrategyMetadata(
 function validateRagPlanningAssessment(
   assessment: RagPlanningAssessment,
   ragResult: RagContextResult,
+  userContent: string,
 ): string | null {
   const availableChunkIds = new Set(ragResult.matches.map((match) => match.chunkId));
 
@@ -953,5 +955,123 @@ function validateRagPlanningAssessment(
     return 'Planning выбрал REFUSE, но не указал чего не хватает в MISSING_INFO';
   }
 
+  if (assessment.responseMode === 'REFUSE') {
+    const falseInsufficientReason = detectFalseInsufficientPlanning(
+      assessment,
+      ragResult,
+      userContent,
+    );
+    if (falseInsufficientReason) {
+      return falseInsufficientReason;
+    }
+  }
+
   return null;
+}
+
+function detectFalseInsufficientPlanning(
+  assessment: RagPlanningAssessment,
+  ragResult: RagContextResult,
+  userContent: string,
+): string | null {
+  const effectiveQuery = (ragResult.queryRewrite.rewrittenQuery || userContent).trim();
+  if (!looksLikeBroadAnswerableQuestion(effectiveQuery)) {
+    return null;
+  }
+
+  const strongMatches = ragResult.matches.filter((match) =>
+    isStrongDirectEvidenceMatch(match, effectiveQuery),
+  );
+
+  if (strongMatches.length === 0) {
+    return null;
+  }
+
+  const chunkIds = strongMatches
+    .slice(0, 3)
+    .map((match) => match.chunkId)
+    .join(', ');
+
+  return `Planning выбрал ${assessment.responseMode}, хотя в текущем RAG-блоке уже есть прямые релевантные чанки для ответа: ${chunkIds}`;
+}
+
+function looksLikeBroadAnswerableQuestion(query: string): boolean {
+  const normalized = normalizePlanningText(query);
+  return /(?:^|\s)(какие|что|какой|какова|каковы|в чем|в чём|перечисли|назови|опиши|что не так|проблем|трабл|ошиб|огранич|что писал|что говорил|что знает|что думает|what|which|problems?|issues?)(?:\s|$)/iu.test(
+    normalized,
+  );
+}
+
+function isStrongDirectEvidenceMatch(
+  match: RagContextResult['matches'][number],
+  query: string,
+): boolean {
+  const score = match.rerankerScore ?? match.rankingScore ?? match.similarity;
+  const normalizedQuery = normalizePlanningText(query);
+  const normalizedContent = normalizePlanningText(match.content);
+  const signalTokens = extractPlanningSignalTokens(normalizedQuery);
+  const tokenHits = signalTokens.filter((token) => normalizedContent.includes(token)).length;
+  const longEnough = match.content.trim().length >= 140;
+  const scoreStrong = score >= 0.45 || match.similarity >= 0.5;
+  const hasIssueSignal = /(?:проблем|трабл|ошиб|сбой|лимит|огранич|галлюцин|сжат|теря|потер|ослеп|слеп|утроил|расход|ложнополож|ast|tool|context|контекст)/iu.test(
+    normalizedContent,
+  );
+
+  if (isProblemStyleQuestion(normalizedQuery)) {
+    return longEnough && scoreStrong && tokenHits >= 1 && hasIssueSignal;
+  }
+
+  return longEnough && scoreStrong && tokenHits >= 1;
+}
+
+function isProblemStyleQuestion(query: string): boolean {
+  return /(?:проблем|трабл|что не так|ошиб|сбой|лимит|огранич|issue|problem)/iu.test(query);
+}
+
+function extractPlanningSignalTokens(query: string): string[] {
+  const stopwords = new Set([
+    'какие',
+    'какой',
+    'какова',
+    'каковы',
+    'что',
+    'где',
+    'когда',
+    'были',
+    'было',
+    'есть',
+    'про',
+    'это',
+    'эти',
+    'those',
+    'what',
+    'which',
+    'were',
+    'with',
+    'about',
+    'проблемы',
+    'problem',
+    'problems',
+    'issues',
+    'issue',
+    'траблы',
+    'ошибки',
+  ]);
+
+  return Array.from(
+    new Set(
+      query
+        .split(/[^a-zа-я0-9#+.-]+/iu)
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 3 && !stopwords.has(token)),
+    ),
+  );
+}
+
+function normalizePlanningText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/\s+/g, ' ')
+    .trim();
 }

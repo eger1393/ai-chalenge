@@ -72,6 +72,16 @@ const RAG_STRICT_PLANNING_SYSTEM_PROMPT = `Ты — AI-планировщик в
 Если данных недостаточно хотя бы для одного ключевого тезиса, нужно выбрать отказ.
 Используй только chunk_id из RAG-доказательств.
 
+Считай данные ДОСТАТОЧНЫМИ, если в чанках уже есть прямые утверждения, перечисления, ограничения, проблемы, наблюдения или выводы по теме вопроса.
+Не требуй буквального совпадения формулировки вопроса с формулировкой чанка.
+Если вопрос просит кратко перечислить проблемы, ограничения, мнения, что автор писал или что известно по теме, и такие сведения уже есть в чанках, нужно выбрать SUFFICIENT.
+
+Примеры:
+- Запрос: "че-каво, какие траблы с клод кодом были?"
+  Если в чанках перечислены ограничения, сбои, лимиты или другие проблемы Claude Code, это SUFFICIENT.
+- Запрос: "а он что про это говорил?"
+  Если из текущего RAG-блока нельзя понять, что такое "это", это INSUFFICIENT.
+
 Ответь СТРОГО в формате:
 RAG_VERDICT: SUFFICIENT или RAG_VERDICT: INSUFFICIENT
 RESPONSE_MODE: ANSWER или RESPONSE_MODE: REFUSE
@@ -137,6 +147,7 @@ const RAG_STRICT_VALIDATION_SYSTEM_PROMPT = `Ты — AI-валидатор в �
 5. Для каждого chunk_id дана явная цитата
 6. Цитата выглядит как дословная выдержка из соответствующего чанка
 7. В ответе нет неподтверждённых утверждений, внешних знаний или догадок
+8. Если в RAG уже есть прямые релевантные чанки, planning не должен выбирать INSUFFICIENT только из-за несовпадения формулировки вопроса с текстом чанка
 
 ВАЖНО: Ответь СТРОГО в формате:
 VERDICT: PASS или VERDICT: FAIL или VERDICT: INJECTION
@@ -651,17 +662,23 @@ export class StepRunnerService {
 
   parseRagPlanningAssessment(text: string): RagPlanningAssessment {
     const safeText = text || '';
-    const verdictMatch = safeText.match(/RAG_VERDICT:\s*(SUFFICIENT|INSUFFICIENT)/i);
-    const responseModeMatch = safeText.match(/RESPONSE_MODE:\s*(ANSWER|REFUSE)/i);
-    const chunksMatch = safeText.match(/CHUNKS_USED:\s*(.+)/i);
-    const missingInfoMatch = safeText.match(/MISSING_INFO:\s*(.+)/i);
-    const planMatch = safeText.match(/PLAN:\s*([\s\S]+)/i);
+    const rawVerdict = extractStrictPlanningField(safeText, 'RAG_VERDICT');
+    const rawResponseMode = extractStrictPlanningField(safeText, 'RESPONSE_MODE');
+    const rawChunksValue = extractStrictPlanningField(safeText, 'CHUNKS_USED');
+    const missingInfo = extractStrictPlanningField(safeText, 'MISSING_INFO');
+    const planText = extractStrictPlanningPlan(safeText);
 
-    if (!verdictMatch || !responseModeMatch || !chunksMatch || !missingInfoMatch || !planMatch) {
-      throw new Error('Planning output is not in strict RAG format');
+    const verdict = rawVerdict.toUpperCase();
+    const responseModeValue = rawResponseMode.toUpperCase();
+
+    if (verdict !== 'SUFFICIENT' && verdict !== 'INSUFFICIENT') {
+      throw new Error(`Planning output has invalid RAG_VERDICT: ${rawVerdict}`);
     }
 
-    const rawChunksValue = chunksMatch[1].trim();
+    if (responseModeValue !== 'ANSWER' && responseModeValue !== 'REFUSE') {
+      throw new Error(`Planning output has invalid RESPONSE_MODE: ${rawResponseMode}`);
+    }
+
     const chunkIds =
       rawChunksValue.toUpperCase() === 'NONE'
         ? []
@@ -669,15 +686,8 @@ export class StepRunnerService {
             .split(',')
             .map((value) => value.trim())
             .filter(Boolean);
-    const missingInfo = missingInfoMatch[1].trim();
-    const planText = planMatch[1].trim();
-
-    if (!planText) {
-      throw new Error('Planning output does not contain a non-empty PLAN section');
-    }
-
-    const ragVerdict = verdictMatch[1].toUpperCase() as 'SUFFICIENT' | 'INSUFFICIENT';
-    const responseMode = responseModeMatch[1].toUpperCase() as 'ANSWER' | 'REFUSE';
+    const ragVerdict = verdict as 'SUFFICIENT' | 'INSUFFICIENT';
+    const responseMode = responseModeValue as 'ANSWER' | 'REFUSE';
 
     if (ragVerdict === 'SUFFICIENT' && responseMode !== 'ANSWER') {
       throw new Error('Planning output has inconsistent SUFFICIENT/REFUSE combination');
@@ -902,6 +912,51 @@ function containsNormalizedQuote(content: string, quote: string): boolean {
 
 function normalizeComparisonText(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
+}
+
+function extractStrictPlanningField(text: string, fieldName: string): string {
+  const regex = new RegExp(`^${fieldName}:\\s*(.*)$`, 'gim');
+  const matches = Array.from(text.matchAll(regex));
+
+  if (matches.length === 0) {
+    throw new Error(`Planning output does not contain ${fieldName}`);
+  }
+
+  if (matches.length > 1) {
+    throw new Error(`Planning output contains duplicate ${fieldName}`);
+  }
+
+  const value = matches[0][1]?.trim() ?? '';
+  if (!value) {
+    throw new Error(`Planning output contains empty ${fieldName}`);
+  }
+
+  return value;
+}
+
+function extractStrictPlanningPlan(text: string): string {
+  const regex = /^PLAN:\s*(.*)$/gim;
+  const matches = Array.from(text.matchAll(regex));
+
+  if (matches.length === 0) {
+    throw new Error('Planning output does not contain PLAN');
+  }
+
+  if (matches.length > 1) {
+    throw new Error('Planning output contains duplicate PLAN');
+  }
+
+  const match = matches[0];
+  const sameLinePlan = match[1]?.trim() ?? '';
+  const suffixStart = (match.index ?? 0) + match[0].length;
+  const remainingPlan = text.slice(suffixStart).trim();
+  const planText = [sameLinePlan, remainingPlan].filter(Boolean).join('\n').trim();
+
+  if (!planText) {
+    throw new Error('Planning output does not contain a non-empty PLAN section');
+  }
+
+  return planText;
 }
 
 function buildRagSourceRef(match: RagContextResult['matches'][number]): string {
