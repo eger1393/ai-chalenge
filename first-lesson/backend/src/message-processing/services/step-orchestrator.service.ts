@@ -6,9 +6,14 @@ import { ContextService } from '../../context/context.service';
 import { MemoryAssemblerService } from '../../memory/memory-assembler.service';
 import { ProjectService } from '../../project/project.service';
 import { TokenService } from '../../ai/token.service';
-import { StepRunnerService, ValidationResult } from './step-runner.service';
+import {
+  StepRunnerService,
+  ValidationResult,
+  RagExecutionAudit,
+  RagPlanningAssessment,
+} from './step-runner.service';
 import { GuardService } from './guard.service';
-import { StepRepository } from '../repositories/step.repository';
+import { StepRepository, MessageStep } from '../repositories/step.repository';
 import { ALLOWED_MODELS, DEFAULT_MODEL } from '../../ai/dto/ai-params.dto';
 import { normalizeRagMode, type RagMode } from '../../rag/constants';
 import { RagService } from '../../rag/rag.service';
@@ -22,6 +27,17 @@ export interface ProcessMessageParams {
   userId: string;
   projectId?: string;
   onEvent: (event: Record<string, unknown>) => void;
+}
+
+interface RetryLoopResult {
+  execResult: string;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
+  totalCost: number;
+  finalAttempt: number;
+  strictRagMode: boolean;
+  ragPlanningAssessment: RagPlanningAssessment | null;
+  ragExecutionAudit: RagExecutionAudit | null;
 }
 
 // ── Service ───────────────────────────────────────────────────────────
@@ -93,7 +109,7 @@ export class StepOrchestratorService {
       userSystemPrompt: conversation.systemPrompt?.trim()?.slice(0, 4000) || undefined,
       model: userModel,
     });
-    let assembledSystemPrompt = memoryResult.systemPrompt || undefined;
+    const memorySystemPrompt = memoryResult.systemPrompt || undefined;
 
     const ragResult = conversation.ragEnabled
       ? await this.ragService.buildContextBlock(
@@ -102,9 +118,7 @@ export class StepOrchestratorService {
           conversation.ragQueryRewriteEnabled,
         )
       : createEmptyRagResult(userContent, conversation.ragMode, conversation.ragQueryRewriteEnabled);
-    if (ragResult.block) {
-      assembledSystemPrompt = [assembledSystemPrompt, ragResult.block].filter(Boolean).join('\n\n---\n\n');
-    }
+    const ragEvidencePrompt = ragResult.block || undefined;
 
     // 5. Load invariants
     let invariants: string[] = [];
@@ -115,8 +129,11 @@ export class StepOrchestratorService {
 
     // 6. Prepare context
     const systemMessages: Array<{ role: string; content: string }> = [];
-    if (assembledSystemPrompt) {
-      systemMessages.push({ role: 'system', content: assembledSystemPrompt });
+    if (memorySystemPrompt) {
+      systemMessages.push({ role: 'system', content: memorySystemPrompt });
+    }
+    if (ragEvidencePrompt) {
+      systemMessages.push({ role: 'system', content: ragEvidencePrompt });
     }
 
     const contextLimit = conversation.contextLimit ?? 128000;
@@ -128,7 +145,7 @@ export class StepOrchestratorService {
       contextLimit,
     );
 
-    const historyMessages = contextResult.messages;
+    const historyMessages = contextResult.messages.filter((msg) => msg.role !== 'system');
 
     // 7. Emit: message_started
     onEvent({ type: 'message_started', messageId });
@@ -149,7 +166,10 @@ export class StepOrchestratorService {
         messageId,
         userContent,
         historyMessages,
-        assembledSystemPrompt,
+        memorySystemPrompt,
+        ragEvidencePrompt,
+        ragResult,
+        strictRagMode: conversation.ragEnabled,
         invariants,
         planningModel,
         validationModel,
@@ -204,24 +224,7 @@ export class StepOrchestratorService {
         strategyType: 'pipeline',
         contextMessagesCount: contextResult.messages?.length ?? 0,
         contextMessagesAfterTruncation: contextResult.messages?.length ?? 0,
-        strategyMetadata: {
-          messageId,
-          totalAttempts: result.finalAttempt,
-          totalCost,
-          totalTokens: totalPromptTokens + totalCompletionTokens,
-          steps: allSteps.map((s) => ({
-            stepType: s.stepType,
-            attempt: s.attemptNumber,
-            status: s.status,
-            model: s.model,
-            promptTokens: s.promptTokens,
-            completionTokens: s.completionTokens,
-            cost: s.cost,
-            durationMs: s.durationMs,
-            validationPassed: s.validationPassed,
-            validationReason: s.validationReason,
-          })),
-        },
+        strategyMetadata: buildPipelineStrategyMetadata(messageId, result, allSteps),
         ragContext: buildRagDebugContext(conversation.ragEnabled, ragResult),
       });
 
@@ -347,7 +350,7 @@ export class StepOrchestratorService {
       projectId: conversation.projectId || undefined,
       model: userModel,
     });
-    let assembledSystemPrompt = memoryResult.systemPrompt || undefined;
+    const memorySystemPrompt = memoryResult.systemPrompt || undefined;
 
     const ragResult = conversation.ragEnabled
       ? await this.ragService.buildContextBlock(
@@ -360,9 +363,7 @@ export class StepOrchestratorService {
           conversation.ragMode,
           conversation.ragQueryRewriteEnabled,
         );
-    if (ragResult.block) {
-      assembledSystemPrompt = [assembledSystemPrompt, ragResult.block].filter(Boolean).join('\n\n---\n\n');
-    }
+    const ragEvidencePrompt = ragResult.block || undefined;
 
     // Load invariants
     let invariants: string[] = [];
@@ -373,8 +374,11 @@ export class StepOrchestratorService {
 
     // Prepare context
     const systemMessages: Array<{ role: string; content: string }> = [];
-    if (assembledSystemPrompt) {
-      systemMessages.push({ role: 'system', content: assembledSystemPrompt });
+    if (memorySystemPrompt) {
+      systemMessages.push({ role: 'system', content: memorySystemPrompt });
+    }
+    if (ragEvidencePrompt) {
+      systemMessages.push({ role: 'system', content: ragEvidencePrompt });
     }
 
     const contextLimit = conversation.contextLimit ?? 128000;
@@ -386,14 +390,17 @@ export class StepOrchestratorService {
       contextLimit,
     );
 
-    const historyMessages = contextResult.messages;
+    const historyMessages = contextResult.messages.filter((msg) => msg.role !== 'system');
 
     try {
       const result = await this.executeRetryLoop({
         messageId,
         userContent: message.userContent,
         historyMessages,
-        assembledSystemPrompt,
+        memorySystemPrompt,
+        ragEvidencePrompt,
+        ragResult,
+        strictRagMode: conversation.ragEnabled,
         invariants,
         planningModel,
         validationModel,
@@ -434,24 +441,7 @@ export class StepOrchestratorService {
         strategyType: 'pipeline',
         contextMessagesCount: contextResult.messages?.length ?? 0,
         contextMessagesAfterTruncation: contextResult.messages?.length ?? 0,
-        strategyMetadata: {
-          messageId,
-          totalAttempts: result.finalAttempt,
-          totalCost: result.totalCost,
-          totalTokens: result.totalPromptTokens + result.totalCompletionTokens,
-          steps: allSteps.map((s) => ({
-            stepType: s.stepType,
-            attempt: s.attemptNumber,
-            status: s.status,
-            model: s.model,
-            promptTokens: s.promptTokens,
-            completionTokens: s.completionTokens,
-            cost: s.cost,
-            durationMs: s.durationMs,
-            validationPassed: s.validationPassed,
-            validationReason: s.validationReason,
-          })),
-        },
+        strategyMetadata: buildPipelineStrategyMetadata(messageId, result, allSteps),
         ragContext: buildRagDebugContext(conversation.ragEnabled, ragResult),
       });
 
@@ -485,7 +475,10 @@ export class StepOrchestratorService {
     messageId: string;
     userContent: string;
     historyMessages: Array<{ role: string; content: string }>;
-    assembledSystemPrompt: string | undefined;
+    memorySystemPrompt: string | undefined;
+    ragEvidencePrompt: string | undefined;
+    ragResult: RagContextResult;
+    strictRagMode: boolean;
     invariants: string[];
     planningModel: string;
     validationModel: string;
@@ -500,18 +493,15 @@ export class StepOrchestratorService {
     onEvent: (event: Record<string, unknown>) => void;
     conversationId?: string;
     userId?: string;
-  }): Promise<{
-    execResult: string;
-    totalPromptTokens: number;
-    totalCompletionTokens: number;
-    totalCost: number;
-    finalAttempt: number;
-  } | null> {
+  }): Promise<RetryLoopResult | null> {
     const {
       messageId,
       userContent,
       historyMessages,
-      assembledSystemPrompt,
+      memorySystemPrompt,
+      ragEvidencePrompt,
+      ragResult,
+      strictRagMode,
       invariants,
       planningModel,
       validationModel,
@@ -533,6 +523,8 @@ export class StepOrchestratorService {
     let totalPromptTokens = 0;
     let totalCompletionTokens = 0;
     let totalCost = 0;
+    let currentRagPlanningAssessment: RagPlanningAssessment | null = null;
+    let currentRagExecutionAudit: RagExecutionAudit | null = null;
 
     while (attempt <= maxAttempts) {
       this.logger.log(`Message ${messageId}: attempt ${attempt}/${maxAttempts}`);
@@ -546,12 +538,14 @@ export class StepOrchestratorService {
       // ── PLANNING ──
       if (!completedStepTypes.has('planning') || attempt > startAttempt) {
         const planningMessages = this.stepRunnerService.buildPlanningMessages(
-          assembledSystemPrompt,
+          memorySystemPrompt,
           historyMessages,
           userContent,
           attempt,
           lastValidationReason,
           invariants,
+          ragEvidencePrompt,
+          strictRagMode,
         );
 
         const planStepResult = await this.stepRunnerService.runStep({
@@ -571,6 +565,33 @@ export class StepOrchestratorService {
         totalCost += planStepResult.step.cost;
       }
 
+      if (strictRagMode) {
+        try {
+          currentRagPlanningAssessment = this.stepRunnerService.parseRagPlanningAssessment(
+            currentPlanResult,
+          );
+          const planningAssessmentError = validateRagPlanningAssessment(
+            currentRagPlanningAssessment,
+            ragResult,
+          );
+          if (planningAssessmentError) {
+            throw new Error(planningAssessmentError);
+          }
+        } catch (err: unknown) {
+          lastValidationReason = err instanceof Error ? err.message : 'Invalid strict RAG planning output';
+          this.logger.warn(
+            `Message ${messageId}: strict RAG planning rejected on attempt ${attempt}: ${lastValidationReason}`,
+          );
+
+          completedStepTypes = new Set();
+          attempt++;
+          if (attempt <= maxAttempts) {
+            await this.messageRepository.incrementAttempt(messageId);
+          }
+          continue;
+        }
+      }
+
       if (await this.isMessagePaused(messageId)) {
         onEvent({ type: 'step_complete', step: 'paused', result: 'Message paused after planning' });
         break;
@@ -579,26 +600,40 @@ export class StepOrchestratorService {
       // ── EXECUTION ──
       if (!completedStepTypes.has('execution') || attempt > startAttempt) {
         const executionMessages = this.stepRunnerService.buildExecutionMessages(
-          assembledSystemPrompt,
+          memorySystemPrompt,
           currentPlanResult,
           userContent,
           invariants,
+          ragEvidencePrompt,
+          strictRagMode,
         );
 
-        const execStepResult = await this.stepRunnerService.runStepWithTools({
-          messageId,
-          stepType: 'execution',
-          attempt,
-          model: userModel,
-          temperature,
-          maxTokens,
-          messages: executionMessages,
-          onEvent,
-          conversationId,
-          userId,
-        });
+        const execStepResult = strictRagMode
+          ? await this.stepRunnerService.runStep({
+              messageId,
+              stepType: 'execution',
+              attempt,
+              model: userModel,
+              temperature,
+              maxTokens,
+              messages: executionMessages,
+              onEvent,
+            })
+          : await this.stepRunnerService.runStepWithTools({
+              messageId,
+              stepType: 'execution',
+              attempt,
+              model: userModel,
+              temperature,
+              maxTokens,
+              messages: executionMessages,
+              onEvent,
+              conversationId,
+              userId,
+            });
 
         currentExecResult = execStepResult.output;
+        currentRagExecutionAudit = null;
         totalPromptTokens += execStepResult.step.promptTokens;
         totalCompletionTokens += execStepResult.step.completionTokens;
         totalCost += execStepResult.step.cost;
@@ -612,9 +647,13 @@ export class StepOrchestratorService {
       // ── VALIDATION ──
       if (!completedStepTypes.has('validation') || attempt > startAttempt) {
         const validationMessages = this.stepRunnerService.buildValidationMessages(
+          memorySystemPrompt,
+          userContent,
           currentPlanResult,
           currentExecResult,
           invariants,
+          ragEvidencePrompt,
+          strictRagMode,
         );
 
         const validStepResult = await this.stepRunnerService.runStep({
@@ -635,6 +674,21 @@ export class StepOrchestratorService {
         const validation: ValidationResult = this.stepRunnerService.parseValidation(
           validStepResult.output,
         );
+
+        if (validation.passed && strictRagMode && currentRagPlanningAssessment) {
+          const ragExecutionVerification = this.stepRunnerService.verifyRagExecutionOutput(
+            currentExecResult,
+            currentRagPlanningAssessment,
+            ragResult,
+          );
+          currentRagExecutionAudit = ragExecutionVerification.audit;
+          if (!ragExecutionVerification.ok) {
+            validation.passed = false;
+            validation.reason =
+              ragExecutionVerification.reason ??
+              'Execution не прошёл кодовую проверку строгого RAG-режима';
+          }
+        }
 
         // Update validation result on step
         await this.stepRepository.updateStep(validStepResult.step.id, {
@@ -661,6 +715,14 @@ export class StepOrchestratorService {
         }
 
         if (validation.passed) {
+          if (strictRagMode && currentRagPlanningAssessment && currentRagExecutionAudit) {
+            currentExecResult = this.stepRunnerService.renderStrictRagResponse(
+              currentRagPlanningAssessment,
+              currentRagExecutionAudit,
+              ragResult,
+            );
+          }
+
           // Final gate: verify all 3 stages completed
           const integrityOk = await this.guardService.verifyStageIntegrity(
             messageId,
@@ -686,6 +748,9 @@ export class StepOrchestratorService {
             totalCompletionTokens,
             totalCost,
             finalAttempt: attempt,
+            strictRagMode,
+            ragPlanningAssessment: currentRagPlanningAssessment,
+            ragExecutionAudit: currentRagExecutionAudit,
           };
         }
 
@@ -815,4 +880,78 @@ function createEmptyRagResult(
     },
     matches: [],
   };
+}
+
+function buildPipelineStrategyMetadata(
+  messageId: string,
+  result: RetryLoopResult,
+  allSteps: MessageStep[],
+) {
+  return {
+    messageId,
+    totalAttempts: result.finalAttempt,
+    totalCost: result.totalCost,
+    totalTokens: result.totalPromptTokens + result.totalCompletionTokens,
+    steps: allSteps.map((step) => ({
+      stepType: step.stepType,
+      attempt: step.attemptNumber,
+      status: step.status,
+      model: step.model,
+      promptTokens: step.promptTokens,
+      completionTokens: step.completionTokens,
+      cost: step.cost,
+      durationMs: step.durationMs,
+      validationPassed: step.validationPassed,
+      validationReason: step.validationReason,
+    })),
+    ragPipeline: result.strictRagMode
+      ? {
+          strictMode: true,
+          planning: result.ragPlanningAssessment
+            ? {
+                ragVerdict: result.ragPlanningAssessment.ragVerdict,
+                responseMode: result.ragPlanningAssessment.responseMode,
+                chunkIds: result.ragPlanningAssessment.chunkIds,
+                missingInfo: result.ragPlanningAssessment.missingInfo,
+                planText: result.ragPlanningAssessment.planText,
+              }
+            : null,
+          execution: result.ragExecutionAudit
+            ? {
+                mode: result.ragExecutionAudit.mode,
+                referencedChunkIds: result.ragExecutionAudit.referencedChunkIds,
+                quoteCount: result.ragExecutionAudit.quoteCount,
+              }
+            : null,
+        }
+      : null,
+  };
+}
+
+function validateRagPlanningAssessment(
+  assessment: RagPlanningAssessment,
+  ragResult: RagContextResult,
+): string | null {
+  const availableChunkIds = new Set(ragResult.matches.map((match) => match.chunkId));
+
+  for (const chunkId of assessment.chunkIds) {
+    if (!availableChunkIds.has(chunkId)) {
+      return `Planning выбрал chunk_id вне текущего RAG-блока: ${chunkId}`;
+    }
+  }
+
+  if (assessment.responseMode === 'ANSWER') {
+    if (assessment.missingInfo.toUpperCase() !== 'NONE') {
+      return 'Planning выбрал ANSWER, хотя MISSING_INFO не равно NONE';
+    }
+    if (assessment.chunkIds.length === 0) {
+      return 'Planning выбрал ANSWER без CHUNKS_USED';
+    }
+  }
+
+  if (assessment.responseMode === 'REFUSE' && assessment.missingInfo.toUpperCase() === 'NONE') {
+    return 'Planning выбрал REFUSE, но не указал чего не хватает в MISSING_INFO';
+  }
+
+  return null;
 }

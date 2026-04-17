@@ -386,6 +386,27 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
       ? debugData.strategyMetadata as unknown as NonNullable<MessageDebugData['pipelineData']>
       : null);
   const isPipeline = debugData.strategyType === 'pipeline' && pipelineData;
+  const ragPipeline = isPipeline && debugData.strategyMetadata && typeof debugData.strategyMetadata === 'object'
+    ? (
+        debugData.strategyMetadata as {
+          ragPipeline?: {
+            strictMode?: boolean;
+            planning?: {
+              ragVerdict?: 'SUFFICIENT' | 'INSUFFICIENT';
+              responseMode?: 'ANSWER' | 'REFUSE';
+              chunkIds?: string[];
+              missingInfo?: string;
+              planText?: string;
+            } | null;
+            execution?: {
+              mode?: 'ANSWER' | 'REFUSE';
+              referencedChunkIds?: string[];
+              quoteCount?: number;
+            } | null;
+          } | null;
+        }
+      ).ragPipeline ?? null
+    : null;
 
   // Build available tabs
   const availableTabs = useMemo(() => {
@@ -524,6 +545,75 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
                 <Stat icon={<Coins className="w-3 h-3 text-gray-400" />} label="Стоимость" value={formatCost(pipelineData.totalCost)} />
                 <Stat icon={<Hash className="w-3 h-3 text-gray-400" />} label="Токены" value={formatTokens(pipelineData.totalTokens)} />
               </div>
+
+              {ragPipeline?.strictMode && (
+                <div className="mb-3 rounded-lg border border-emerald-100 bg-emerald-50/40 overflow-hidden">
+                  <div className="px-3 py-2 bg-emerald-100/60 border-b border-emerald-100">
+                    <div className="flex items-center gap-2">
+                      <Database className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                      <span className="text-xs font-semibold text-emerald-700 flex-1">Строгий RAG-режим</span>
+                      <span className="text-[10px] font-medium text-emerald-700">факты только из чанков</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 space-y-2">
+                    <div className="flex flex-wrap gap-2">
+                      <Stat
+                        icon={<CheckCircle2 className="w-3 h-3 text-emerald-500" />}
+                        label="Verdict"
+                        value={ragPipeline.planning?.ragVerdict ?? '—'}
+                      />
+                      <Stat
+                        icon={<ArrowRight className="w-3 h-3 text-emerald-500" />}
+                        label="Режим ответа"
+                        value={ragPipeline.planning?.responseMode ?? '—'}
+                      />
+                      <Stat
+                        icon={<FileText className="w-3 h-3 text-emerald-500" />}
+                        label="Цитат"
+                        value={String(ragPipeline.execution?.quoteCount ?? 0)}
+                      />
+                    </div>
+
+                    <div className="grid gap-2 md:grid-cols-2">
+                      <div className="rounded-md border border-gray-100 bg-white p-2.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Планирование: chunk_id</div>
+                        <div className="text-[11px] text-gray-700 whitespace-pre-wrap break-all leading-relaxed">
+                          {ragPipeline.planning?.chunkIds && ragPipeline.planning.chunkIds.length > 0
+                            ? ragPipeline.planning.chunkIds.join(', ')
+                            : 'NONE'}
+                        </div>
+                      </div>
+                      <div className="rounded-md border border-gray-100 bg-white p-2.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Выполнение: chunk_id</div>
+                        <div className="text-[11px] text-gray-700 whitespace-pre-wrap break-all leading-relaxed">
+                          {ragPipeline.execution?.referencedChunkIds && ragPipeline.execution.referencedChunkIds.length > 0
+                            ? ragPipeline.execution.referencedChunkIds.join(', ')
+                            : 'NONE'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {ragPipeline.planning?.missingInfo && (
+                      <div className="rounded-md border border-gray-100 bg-white p-2.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Чего не хватает</div>
+                        <div className="text-[11px] text-gray-700 whitespace-pre-wrap leading-relaxed">
+                          {ragPipeline.planning.missingInfo}
+                        </div>
+                      </div>
+                    )}
+
+                    {ragPipeline.planning?.planText && (
+                      <div className="rounded-md border border-gray-100 bg-white p-2.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">План strict RAG</div>
+                        <div className="text-[11px] text-gray-700 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
+                          {ragPipeline.planning.planText}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Timeline layout */}
               <div className="relative">

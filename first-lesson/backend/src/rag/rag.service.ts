@@ -289,12 +289,14 @@ export class RagService {
       const publishedAt = match.document.publishedAt?.toISOString() ?? 'unknown';
       const snippet = match.content.trim();
       const section =
-        `[RAG ${index + 1}]\n` +
-        `Источник: ${sourceLabel}\n` +
-        `Сообщение: ${match.document.externalId}\n` +
-        `Дата: ${publishedAt}\n` +
-        `Релевантность: ${match.similarity.toFixed(3)}\n` +
-        `Фрагмент:\n${snippet}`;
+        `[RAG_CHUNK ${index + 1}]\n` +
+        `chunk_id: ${match.chunkId}\n` +
+        `message_id: ${match.document.externalId}\n` +
+        `document_id: ${match.documentId}\n` +
+        `source: ${sourceLabel}\n` +
+        `published_at: ${publishedAt}\n` +
+        `similarity: ${match.similarity.toFixed(3)}\n` +
+        `content:\n${snippet}`;
 
       if (usedChars > 0 && usedChars + section.length > maxContextChars) {
         this.logger.log(
@@ -324,10 +326,11 @@ export class RagService {
     );
 
     return [
-      '═══ RAG-КОНТЕКСТ ИЗ ИНДЕКСИРОВАННЫХ МАТЕРИАЛОВ ═══',
-      'Ниже приведены релевантные фрагменты из внешнего корпуса сообщений.',
-      'Используй их только если они реально помогают ответить на текущий запрос пользователя.',
-      'Если фрагменты не относятся к вопросу, не делай выводов на их основе.',
+      '═══ RAG-ДОКАЗАТЕЛЬСТВА ИЗ ИНДЕКСИРОВАННЫХ МАТЕРИАЛОВ ═══',
+      'Ниже приведены релевантные чанки, которые разрешено использовать как фактический источник ответа.',
+      'Для каждого фактического утверждения нужно ссылаться на конкретный chunk_id из этого блока.',
+      'Если в этих чанках нет нужных данных, нужно явно отказаться отвечать по существу.',
+      'Цитаты должны быть короткими дословными выдержками из поля content соответствующего чанка.',
       '',
       sections.join('\n\n'),
       '═══════════════════════════════════════════════════',

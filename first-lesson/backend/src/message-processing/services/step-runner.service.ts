@@ -4,6 +4,7 @@ import { OpenAIService } from '../../ai/openai.service';
 import { TokenService } from '../../ai/token.service';
 import { McpRegistryService } from '../../mcp/mcp-registry.service';
 import { McpToolRouter } from '../../mcp/mcp-tool-router.service';
+import { RagContextResult } from '../../rag/rag.types';
 import { StepRepository, MessageStep } from '../repositories/step.repository';
 import { PIPELINE_SECURITY_BLOCK, VALIDATION_INJECTION_CHECK } from './guard.service';
 
@@ -57,6 +58,98 @@ ISSUES: список проблем (если FAIL)
 
 Будь строгим, но справедливым. Не пропускай ответы с явными недостатками.`;
 
+const RAG_STRICT_PLANNING_SYSTEM_PROMPT = `Ты — AI-планировщик в строгом RAG-режиме.
+
+Источник фактов для ответа — только отдельное системное сообщение с RAG-доказательствами.
+Запрещено использовать как источник фактов:
+- историю диалога;
+- память;
+- общие знания модели;
+- внешние инструменты;
+- предположения.
+
+Твоя задача — определить, хватает ли данных в RAG, чтобы ответить на запрос пользователя.
+Если данных недостаточно хотя бы для одного ключевого тезиса, нужно выбрать отказ.
+Используй только chunk_id из RAG-доказательств.
+
+Ответь СТРОГО в формате:
+RAG_VERDICT: SUFFICIENT или RAG_VERDICT: INSUFFICIENT
+RESPONSE_MODE: ANSWER или RESPONSE_MODE: REFUSE
+CHUNKS_USED: <chunk_id через запятую> или CHUNKS_USED: NONE
+MISSING_INFO: <чего не хватает> или MISSING_INFO: NONE
+PLAN:
+1. ...
+2. ...
+3. ...
+
+Правила:
+- не отвечай на вопрос по существу;
+- не придумывай chunk_id;
+- если ответ нужно домысливать, это INSUFFICIENT;
+- если в RAG-доказательствах нет ни одного подходящего чанка, это INSUFFICIENT`;
+
+const RAG_STRICT_EXECUTION_SYSTEM_PROMPT = `Ты — AI-исполнитель в строгом RAG-режиме.
+
+Факты разрешено брать только из отдельного системного сообщения с RAG-доказательствами и только из chunk_id, которые перечислены в плане.
+Запрещено использовать историю диалога, память, внешние инструменты и общие знания как источник фактов.
+
+Если RESPONSE_MODE = REFUSE, ответь ТОЛЬКО по шаблону:
+## Статус
+Недостаточно данных в RAG
+
+## Почему не могу ответить
+<краткое объяснение>
+
+## Чего не хватает
+<краткий список или абзац>
+
+## Использованный режим
+Ответы в этом режиме строятся только по данным из RAG
+
+Если RESPONSE_MODE = ANSWER, ответь ТОЛЬКО по шаблону:
+## Краткий ответ
+<краткий ответ без фактов вне RAG>
+
+## Подтверждение по чанкам
+1. chunk_id: <uuid>
+   Цитата: "<короткая дословная цитата без переноса строки>"
+   Как это подтверждает ответ: <пояснение>
+2. chunk_id: <uuid>
+   Цитата: "<короткая дословная цитата без переноса строки>"
+   Как это подтверждает ответ: <пояснение>
+
+Правила:
+- каждый фактический тезис должен быть подтверждён chunk_id и цитатой;
+- цитата должна дословно присутствовать в content соответствующего чанка;
+- не используй chunk_id вне списка CHUNKS_USED;
+- не добавляй факты, оценки или связи, которых нет в RAG`;
+
+const RAG_STRICT_VALIDATION_SYSTEM_PROMPT = `Ты — AI-валидатор в строгом RAG-режиме.
+
+Источник истины для фактов — только отдельное системное сообщение с RAG-доказательствами.
+Тебе даны запрос пользователя, план и результат выполнения.
+
+Проверь:
+1. План выдан в машиночитаемом формате и содержит RAG_VERDICT, RESPONSE_MODE, CHUNKS_USED и MISSING_INFO
+2. Если RAG_VERDICT = INSUFFICIENT, execution действительно отказался отвечать по существу
+3. Если RAG_VERDICT = SUFFICIENT, execution отвечает только по RAG
+4. Для каждого фактического тезиса указан chunk_id
+5. Для каждого chunk_id дана явная цитата
+6. Цитата выглядит как дословная выдержка из соответствующего чанка
+7. В ответе нет неподтверждённых утверждений, внешних знаний или догадок
+
+ВАЖНО: Ответь СТРОГО в формате:
+VERDICT: PASS или VERDICT: FAIL или VERDICT: INJECTION
+SCORE: число от 1 до 10
+REASON: краткое объяснение вердикта
+ISSUES: список проблем (если FAIL)`;
+
+const EMPTY_RAG_EVIDENCE_SYSTEM_PROMPT = `═══ RAG-ДОКАЗАТЕЛЬСТВА ИЗ ИНДЕКСИРОВАННЫХ МАТЕРИАЛОВ ═══
+В текущем запросе retrieval не выбрал ни одного релевантного чанка.
+Доступных chunk_id для ответа нет.
+Если ответ требует фактов, planning обязан выбрать INSUFFICIENT и RESPONSE_MODE: REFUSE.
+═══════════════════════════════════════════════════`;
+
 const SECURITY_BLOCK = PIPELINE_SECURITY_BLOCK;
 
 const RETRY_PLANNING_ADDITION = (reason: string, attempt: number): string =>
@@ -73,6 +166,29 @@ export interface ValidationResult {
   score: number;
   reason: string;
   injection: boolean;
+}
+
+export interface RagPlanningAssessment {
+  ragVerdict: 'SUFFICIENT' | 'INSUFFICIENT';
+  responseMode: 'ANSWER' | 'REFUSE';
+  chunkIds: string[];
+  missingInfo: string;
+  planText: string;
+  raw: string;
+}
+
+export interface RagExecutionReference {
+  chunkId: string;
+  quote: string;
+  explanation: string;
+}
+
+export interface RagExecutionAudit {
+  mode: 'ANSWER' | 'REFUSE';
+  summary: string | null;
+  referencedChunkIds: string[];
+  quoteCount: number;
+  references: RagExecutionReference[];
 }
 
 export interface StepRunParams {
@@ -405,6 +521,19 @@ export class StepRunnerService {
     return this.mcpRegistry.buildCapabilitiesBlock();
   }
 
+  private buildBaseSystemMessage(
+    assembledSystemPrompt: string | undefined,
+    invariants: string[],
+  ): string | null {
+    let content = '';
+    content += this.buildInvariantsBlock(invariants);
+    if (assembledSystemPrompt) {
+      content += assembledSystemPrompt;
+    }
+
+    return content.trim() ? content : null;
+  }
+
   buildPlanningMessages(
     assembledSystemPrompt: string | undefined,
     historyMessages: Array<{ role: string; content: string }>,
@@ -412,23 +541,33 @@ export class StepRunnerService {
     attempt: number,
     lastValidationReason: string,
     invariants: string[],
+    ragEvidencePrompt?: string,
+    strictRagMode = false,
   ): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
-    let systemContent = '';
-    systemContent += this.buildInvariantsBlock(invariants);
-    if (assembledSystemPrompt) {
-      systemContent += assembledSystemPrompt + '\n\n';
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+
+    const baseSystemMessage = this.buildBaseSystemMessage(assembledSystemPrompt, invariants);
+    if (baseSystemMessage) {
+      messages.push({ role: 'system', content: baseSystemMessage });
     }
-    systemContent += PLANNING_SYSTEM_PROMPT;
+
+    let systemContent = strictRagMode ? RAG_STRICT_PLANNING_SYSTEM_PROMPT : PLANNING_SYSTEM_PROMPT;
     systemContent += '\n\n' + SECURITY_BLOCK;
-    systemContent += this.buildCapabilitiesBlock();
+    if (!strictRagMode) {
+      systemContent += this.buildCapabilitiesBlock();
+    }
 
     if (attempt > 1 && lastValidationReason) {
       systemContent += RETRY_PLANNING_ADDITION(lastValidationReason, attempt);
     }
 
-    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
-      { role: 'system', content: systemContent },
-    ];
+    messages.push({ role: 'system', content: systemContent });
+
+    const effectiveRagEvidencePrompt =
+      strictRagMode ? ragEvidencePrompt ?? EMPTY_RAG_EVIDENCE_SYSTEM_PROMPT : ragEvidencePrompt;
+    if (effectiveRagEvidencePrompt) {
+      messages.push({ role: 'system', content: effectiveRagEvidencePrompt });
+    }
 
     for (const msg of historyMessages) {
       messages.push({ role: msg.role as 'user' | 'assistant', content: msg.content });
@@ -442,31 +581,55 @@ export class StepRunnerService {
     planResult: string,
     userMessage: string,
     invariants: string[],
+    ragEvidencePrompt?: string,
+    strictRagMode = false,
   ): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
-    let systemContent = '';
-    systemContent += this.buildInvariantsBlock(invariants);
-    if (assembledSystemPrompt) {
-      systemContent += assembledSystemPrompt + '\n\n';
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+
+    const baseSystemMessage = this.buildBaseSystemMessage(assembledSystemPrompt, invariants);
+    if (baseSystemMessage) {
+      messages.push({ role: 'system', content: baseSystemMessage });
     }
-    systemContent += EXECUTION_SYSTEM_PROMPT;
+
+    let systemContent = strictRagMode ? RAG_STRICT_EXECUTION_SYSTEM_PROMPT : EXECUTION_SYSTEM_PROMPT;
     systemContent += '\n\n' + SECURITY_BLOCK;
-    systemContent += this.buildCapabilitiesBlock();
+    if (!strictRagMode) {
+      systemContent += this.buildCapabilitiesBlock();
+    }
     systemContent += `\n\nПлан:\n${planResult}\n\nЗадача пользователя:\n${userMessage}`;
 
-    return [{ role: 'system', content: systemContent }];
+    messages.push({ role: 'system', content: systemContent });
+    const effectiveRagEvidencePrompt =
+      strictRagMode ? ragEvidencePrompt ?? EMPTY_RAG_EVIDENCE_SYSTEM_PROMPT : ragEvidencePrompt;
+    if (effectiveRagEvidencePrompt) {
+      messages.push({ role: 'system', content: effectiveRagEvidencePrompt });
+    }
+
+    return messages;
   }
 
   buildValidationMessages(
+    assembledSystemPrompt: string | undefined,
+    userMessage: string,
     planResult: string,
     execResult: string,
     invariants: string[],
+    ragEvidencePrompt?: string,
+    strictRagMode = false,
   ): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
-    let content = '';
-    content += this.buildInvariantsBlock(invariants);
-    content += VALIDATION_SYSTEM_PROMPT;
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
+
+    const baseSystemMessage = this.buildBaseSystemMessage(assembledSystemPrompt, invariants);
+    if (baseSystemMessage) {
+      messages.push({ role: 'system', content: baseSystemMessage });
+    }
+
+    let content = strictRagMode ? RAG_STRICT_VALIDATION_SYSTEM_PROMPT : VALIDATION_SYSTEM_PROMPT;
     content += '\n\n' + VALIDATION_INJECTION_CHECK + '\n\n' + SECURITY_BLOCK;
-    content += this.buildCapabilitiesBlock();
-    content += `\n\nПлан:\n${planResult}\n\nРезультат выполнения:\n${execResult}`;
+    if (!strictRagMode) {
+      content += this.buildCapabilitiesBlock();
+    }
+    content += `\n\nЗапрос пользователя:\n${userMessage}\n\nПлан:\n${planResult}\n\nРезультат выполнения:\n${execResult}`;
 
     if (invariants.length > 0) {
       content += '\n\nОБЯЗАТЕЛЬНО проверь соблюдение каждого инварианта:';
@@ -476,7 +639,241 @@ export class StepRunnerService {
       content += '\nЕсли хотя бы один инвариант нарушен — VERDICT: FAIL';
     }
 
-    return [{ role: 'system', content }];
+    messages.push({ role: 'system', content });
+    const effectiveRagEvidencePrompt =
+      strictRagMode ? ragEvidencePrompt ?? EMPTY_RAG_EVIDENCE_SYSTEM_PROMPT : ragEvidencePrompt;
+    if (effectiveRagEvidencePrompt) {
+      messages.push({ role: 'system', content: effectiveRagEvidencePrompt });
+    }
+
+    return messages;
+  }
+
+  parseRagPlanningAssessment(text: string): RagPlanningAssessment {
+    const safeText = text || '';
+    const verdictMatch = safeText.match(/RAG_VERDICT:\s*(SUFFICIENT|INSUFFICIENT)/i);
+    const responseModeMatch = safeText.match(/RESPONSE_MODE:\s*(ANSWER|REFUSE)/i);
+    const chunksMatch = safeText.match(/CHUNKS_USED:\s*(.+)/i);
+    const missingInfoMatch = safeText.match(/MISSING_INFO:\s*(.+)/i);
+    const planMatch = safeText.match(/PLAN:\s*([\s\S]+)/i);
+
+    if (!verdictMatch || !responseModeMatch || !chunksMatch || !missingInfoMatch || !planMatch) {
+      throw new Error('Planning output is not in strict RAG format');
+    }
+
+    const rawChunksValue = chunksMatch[1].trim();
+    const chunkIds =
+      rawChunksValue.toUpperCase() === 'NONE'
+        ? []
+        : rawChunksValue
+            .split(',')
+            .map((value) => value.trim())
+            .filter(Boolean);
+    const missingInfo = missingInfoMatch[1].trim();
+    const planText = planMatch[1].trim();
+
+    if (!planText) {
+      throw new Error('Planning output does not contain a non-empty PLAN section');
+    }
+
+    const ragVerdict = verdictMatch[1].toUpperCase() as 'SUFFICIENT' | 'INSUFFICIENT';
+    const responseMode = responseModeMatch[1].toUpperCase() as 'ANSWER' | 'REFUSE';
+
+    if (ragVerdict === 'SUFFICIENT' && responseMode !== 'ANSWER') {
+      throw new Error('Planning output has inconsistent SUFFICIENT/REFUSE combination');
+    }
+
+    if (ragVerdict === 'INSUFFICIENT' && responseMode !== 'REFUSE') {
+      throw new Error('Planning output has inconsistent INSUFFICIENT/ANSWER combination');
+    }
+
+    if (responseMode === 'ANSWER' && chunkIds.length === 0) {
+      throw new Error('Planning output selected ANSWER without any chunk_id');
+    }
+
+    return {
+      ragVerdict,
+      responseMode,
+      chunkIds,
+      missingInfo,
+      planText,
+      raw: safeText,
+    };
+  }
+
+  verifyRagExecutionOutput(
+    execResult: string,
+    planning: RagPlanningAssessment,
+    ragResult: RagContextResult,
+  ): { ok: boolean; reason?: string; audit: RagExecutionAudit } {
+    const safeResult = execResult || '';
+
+    if (planning.responseMode === 'REFUSE') {
+      const normalized = safeResult.toLowerCase();
+      const refusalDetected =
+        normalized.includes('недостаточно данных в rag') &&
+        normalized.includes('ответы в этом режиме строятся только по данным из rag');
+      const audit: RagExecutionAudit = {
+        mode: 'REFUSE',
+        summary: null,
+        referencedChunkIds: [],
+        quoteCount: 0,
+        references: [],
+      };
+
+      if (!refusalDetected) {
+        return {
+          ok: false,
+          reason: 'Execution не вернул явный отказ по шаблону строгого RAG-режима',
+          audit,
+        };
+      }
+
+      if (/chunk_id:\s*/i.test(safeResult)) {
+        return {
+          ok: false,
+          reason: 'Execution в режиме отказа не должен ссылаться на chunk_id как на полноценный ответ',
+          audit,
+        };
+      }
+
+      return { ok: true, audit };
+    }
+
+    const references = this.parseRagExecutionReferences(safeResult);
+    const summary = this.parseRagExecutionSummary(safeResult);
+    const audit: RagExecutionAudit = {
+      mode: 'ANSWER',
+      summary,
+      referencedChunkIds: Array.from(new Set(references.map((reference) => reference.chunkId))),
+      quoteCount: references.length,
+      references,
+    };
+
+    if (!summary) {
+      return {
+        ok: false,
+        reason: 'Execution не заполнил секцию "Краткий ответ" в строгом RAG-режиме',
+        audit,
+      };
+    }
+
+    if (references.length === 0) {
+      return {
+        ok: false,
+        reason: 'Execution не указал ни одного chunk_id с цитатой',
+        audit,
+      };
+    }
+
+    const allowedChunkIds = new Set(planning.chunkIds);
+    const matchesByChunkId = new Map(ragResult.matches.map((match) => [match.chunkId, match]));
+
+    for (const reference of references) {
+      if (!allowedChunkIds.has(reference.chunkId)) {
+        return {
+          ok: false,
+          reason: `Execution использовал chunk_id вне CHUNKS_USED: ${reference.chunkId}`,
+          audit,
+        };
+      }
+
+      const match = matchesByChunkId.get(reference.chunkId);
+      if (!match) {
+        return {
+          ok: false,
+          reason: `Execution сослался на chunk_id, которого нет в текущем RAG-блоке: ${reference.chunkId}`,
+          audit,
+        };
+      }
+
+      if (!containsNormalizedQuote(match.content, reference.quote)) {
+        return {
+          ok: false,
+          reason: `Цитата не найдена в content соответствующего чанка: ${reference.chunkId}`,
+          audit,
+        };
+      }
+    }
+
+    return { ok: true, audit };
+  }
+
+  renderStrictRagResponse(
+    planning: RagPlanningAssessment,
+    audit: RagExecutionAudit,
+    ragResult: RagContextResult,
+  ): string {
+    if (planning.responseMode === 'REFUSE' || audit.mode === 'REFUSE') {
+      return [
+        '## Статус',
+        'Недостаточно данных в RAG',
+        '',
+        '## Почему не могу ответить',
+        'В текущем наборе RAG-доказательств недостаточно подтверждённых данных для надёжного ответа.',
+        '',
+        '## Чего не хватает',
+        planning.missingInfo,
+        '',
+        '## Использованный режим',
+        'Ответы в этом режиме строятся только по данным из RAG',
+      ].join('\n');
+    }
+
+    const matchesByChunkId = new Map(ragResult.matches.map((match) => [match.chunkId, match]));
+    const sections = [
+      '## Краткий ответ',
+      audit.summary ?? '',
+      '',
+      '## Источники и цитаты',
+    ];
+
+    audit.references.forEach((reference, index) => {
+      const match = matchesByChunkId.get(reference.chunkId);
+      if (!match) {
+        throw new Error(
+          `Невозможно собрать strict RAG-ответ: chunk_id не найден в текущем RAG-блоке: ${reference.chunkId}`,
+        );
+      }
+
+      const source = String(match.document.metadata.channel_name ?? match.document.sourceKey);
+      const publishedAt = match.document.publishedAt?.toISOString() ?? 'unknown';
+      const sourceRef = buildRagSourceRef(match);
+
+      sections.push(
+        `${index + 1}. chunk_id: ${reference.chunkId}`,
+        `   source_ref: ${sourceRef}`,
+        `   source: ${source}`,
+        `   message_id: ${match.document.externalId}`,
+        `   published_at: ${publishedAt}`,
+        `   Цитата: "${reference.quote}"`,
+        `   Как это подтверждает ответ: ${reference.explanation}`,
+      );
+    });
+
+    return sections.join('\n');
+  }
+
+  private parseRagExecutionReferences(text: string): RagExecutionReference[] {
+    const matches = Array.from(
+      text.matchAll(
+        /(?:^|\n)(?:\d+\.\s*)?chunk_id:\s*([0-9a-f-]+)\s*\n\s*Цитата:\s*"([^"\n]+)"\s*\n\s*Как это подтверждает ответ:\s*([\s\S]*?)(?=(?:\n(?:\d+\.\s*)?chunk_id:)|$)/gim,
+      ),
+    );
+
+    return matches.map((match) => ({
+      chunkId: match[1].trim(),
+      quote: match[2].trim(),
+      explanation: match[3].trim(),
+    }));
+  }
+
+  private parseRagExecutionSummary(text: string): string | null {
+    const match = text.match(
+      /##\s*Краткий ответ\s*\n([\s\S]*?)(?=\n##\s*(?:Подтверждение по чанкам|Источники и цитаты)\b|$)/i,
+    );
+    const summary = match?.[1]?.trim() ?? '';
+    return summary || null;
   }
 
   // ── Validation parser ─────────────────────────────────────────────
@@ -494,4 +891,19 @@ export class StepRunnerService {
 
     return { passed, score, reason, injection };
   }
+}
+
+function containsNormalizedQuote(content: string, quote: string): boolean {
+  const normalizedContent = normalizeComparisonText(content);
+  const normalizedQuote = normalizeComparisonText(quote);
+
+  return normalizedQuote.length > 0 && normalizedContent.includes(normalizedQuote);
+}
+
+function normalizeComparisonText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function buildRagSourceRef(match: RagContextResult['matches'][number]): string {
+  return `${match.document.sourceType}:${match.document.sourceKey}/message:${match.document.externalId}#chunk:${match.chunkIndex}`;
 }
