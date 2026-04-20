@@ -78,13 +78,11 @@ src/
 │   ├── repositories/conversation.repository.ts
 │   └── repositories/message.repository.ts  # envelope CRUD, meta, debug, getForContext, getMetaByMessageId
 │
-├── context/                    # Стратегии контекста, facts, branches
-│   ├── context.controller.ts   # /conversations/:id/context, /facts, /branches, /checkpoints
-│   ├── context.service.ts      # prepareContext, facts CRUD (JSONB), branches, checkpoints
+├── context/                    # Стратегии контекста и facts
+│   ├── context.controller.ts   # /conversations/:id/context, /facts
+│   ├── context.service.ts      # prepareContext, facts CRUD (JSONB), retrieval hint для RAG
 │   ├── repositories/context.repository.ts
-│   ├── repositories/branch.repository.ts
-│   ├── repositories/checkpoint.repository.ts
-│   └── strategies/             # sliding-window, sticky-facts, branching
+│   └── strategies/             # sliding-window, sticky-facts
 │
 ├── ai/                         # Инфраструктура OpenAI
 │   ├── openai.service.ts       # callOpenAI, callOpenAIStream, callOpenAIStreamWithTools, calculateCost
@@ -109,12 +107,13 @@ src/
 │   └── mcp-tool-router.service.ts # Routes prefixed tool_call (server__tool) to correct MCP server
 │
 ├── memory/                     # Сборка system prompt
-│   └── memory-assembler.service.ts  # 4-слойный builder (invariants, long-term, working, short-term)
+│   └── memory-assembler.service.ts  # builder memory-слоёв; инварианты остаются только в debug-слое, а не в system prompt
 │
 ├── message-processing/         # Pipeline обработки сообщений
 │   ├── message.controller.ts   # POST /conversations/:id/messages (SSE), pause/resume/cancel, GET /messages/:id/debug
-│   ├── services/step-orchestrator.service.ts  # State machine, retry loop, SSE events, строгий RAG-режим
-│   ├── services/step-runner.service.ts        # Запуск шагов, streaming, system prompts, strict RAG verdict/parser
+│   ├── services/step-orchestrator.service.ts  # State machine, retry loop, выбор стратегии на попытку, SSE events
+│   ├── services/step-runner.service.ts        # Общий low-level runner шагов, streaming, tool mode, generic validation parser
+│   ├── services/strategies/                   # Standard/RAG стратегии и resolver между ними
 │   ├── services/guard.service.ts              # Injection detection, stage integrity
 │   └── repositories/step.repository.ts        # message_steps table
 │
@@ -139,13 +138,13 @@ user_profiles (id, user_id FK→users, response_language, dialogue_style, respon
 projects (id, user_id FK→users, title, description, status, created_at, updated_at)
 project_invariants (id, project_id FK→projects ON DELETE CASCADE, content)
 conversations (id, project_id FK→projects, user_id FK→users, title, model, system_prompt, temperature, max_tokens, repetition_penalty, context_limit, rag_enabled, rag_query_rewrite_enabled, rag_mode, created_at, updated_at)
-conversation_contexts (id, conversation_id UNIQUE FK, strategy_type, strategy_data JSONB, summary, summary_up_to_index, active_branch_id FK→branches)
-conversation_branches (id, context_id FK→contexts, name, parent_branch_id, checkpoint_message_id)
+conversation_contexts (id, conversation_id UNIQUE FK, strategy_type, strategy_data JSONB, summary, summary_up_to_index, active_branch_id FK→branches; активная продуктовая стратегия — `sliding_window` или `sticky_facts`)
+conversation_branches (id, context_id FK→contexts, name, parent_branch_id, checkpoint_message_id) -- legacy schema, больше не используется публичным контуром
 messages (id, conversation_id FK, branch_id FK, user_content, assistant_content, status, current_step, attempt_number, max_attempts, error_message)
 message_steps (id, message_id FK, step_type, attempt_number, status, input_context JSONB, output_result JSONB, model, tokens, cost, duration_ms, validation_passed/reason)
 message_meta (id, message_id UNIQUE FK, applied_model/temperature/max_tokens, tokens, cost, duration_ms, context stats)
 message_debug (id, message_id UNIQUE FK, strategy_type, token_breakdown JSONB, facts_snapshot JSONB, strategy_metadata JSONB, rag_context JSONB, memory_layers JSONB)
-checkpoints (id, conversation_id FK, message_id FK, label)
+checkpoints (id, conversation_id FK, message_id FK, label) -- legacy schema, больше не используется публичным контуром
 issue_subscriptions (DEPRECATED — подписки теперь в MCP: mcp_issue_subscriptions)
 issue_notifications (id UUID PK, subscription_id UUID nullable, conversation_id FK→conversations, issue_number, issue_title, issue_url, issue_author, summary, is_read, created_at)
 -- MCP таблица: mcp_issue_subscriptions (id UUID PK, repository, conversation_id, user_id, callback_url, last_checked_at, last_issue_number, ttl_minutes, expires_at, is_active, created_at)
@@ -177,7 +176,7 @@ src/
 │   ├── ai-params-panel.tsx     # Правый drawer: параметры AI
 │   ├── pipeline-message-bubble.tsx, pipeline-stepper.tsx, pipeline-controls.tsx
 │   ├── context-indicator.tsx, applied-params-display.tsx, debug-panel.tsx
-│   ├── strategy-selector.tsx, facts-panel.tsx, branch-selector.tsx
+│   ├── strategy-selector.tsx, facts-panel.tsx
 │   ├── personalization-panel.tsx, empty-state.tsx, typing-indicator.tsx
 │   ├── notification-bubble.tsx   # Inline уведомление (teal, react-markdown)
 │   └── subscription-indicator.tsx # Панель подписок с TTL progress bar
@@ -188,12 +187,12 @@ src/
 │   ├── use-tasks.ts            # projects[], addProject, removeProject
 │   ├── use-ai-params.ts        # AI params (local defaults + гидрация RAG/rewrite-настроек из active conversation)
 │   ├── use-pipeline.ts         # Pipeline SSE: start, pause, resume, cancel (messageId)
-│   ├── use-invariants.ts, use-facts.ts, use-branches.ts, use-personalization.ts
+│   ├── use-invariants.ts, use-facts.ts, use-personalization.ts
 │   ├── use-notification-stream.ts  # Persistent SSE для push-уведомлений
 │   ├── use-subscriptions.ts        # Управление подписками
 │   └── use-notifications.ts        # Коллекция уведомлений
 │
-├── lib/api.ts                  # API: projects, conversations, messages, context, facts, branches
+├── lib/api.ts                  # API: projects, conversations, messages, context, facts
 ├── types/                      # Project, Conversation, ConversationMessage (envelope), Pipeline, AIParams
 └── context/auth-context.tsx    # AuthProvider + useAuth()
 ```
@@ -209,25 +208,34 @@ src/
 - `filter` использует кодовый эвристический фильтр поверх vector search
 - `reranker` использует отдельную модель `jinaai/jina-reranker-v2-base-multilingual`
 - `query rewrite` использует отдельный шаг на `gpt-4.1-nano` и переписывает только поисковый запрос для retrieval
-- Для загрузки reranker backend использует `XLMRobertaModel` через `Transformers.js`
 - Если reranker недоступен в режиме `reranker`, backend завершает запрос явной ошибкой
 - Если `query rewrite` включён и шаг rewrite завершается ошибкой или возвращает невалидный JSON, backend завершает запрос явной ошибкой
-- При включённом флаге backend собирает отдельный `RAG evidence` system message, а не вклеивает RAG в общий memory prompt
+- При включённом флаге backend сначала резолвит стратегию обработки сообщения: `rag` или `standard`
+- Если у `rag`-стратегии retrieval не выбрал ни одного чанка, попытка до planning сразу переключается на `standard`; пользователь получает обычный non-RAG ответ без RAG-разделов, а fallback фиксируется только в debug
+- При `rag`-стратегии backend собирает отдельный `RAG evidence` system message, а не вклеивает RAG в общий memory prompt
 - Каждый RAG-чанк в evidence-блоке содержит `chunk_id`, `message_id`, `document_id`, источник, дату и `content`
-- В строгом RAG-режиме planning и execution работают по структурированному JSON-контракту, а backend парсит и валидирует его кодом
-- В строгом RAG-режиме planning сначала решает, хватает ли данных в RAG, и выставляет `ragVerdict` / `responseMode` / `chunkIds`
+- В `rag`-стратегии planning и execution работают по структурированному JSON-контракту, а backend парсит и валидирует его кодом
+- В `rag`-стратегии planning сначала решает, хватает ли данных в RAG, и выставляет `ragVerdict` / `responseMode` / `chunkIds`
 - Backend дополнительно отклоняет ложный `INSUFFICIENT`, если planning пытается отказаться при уже выбранных сильных прямых чанках для обобщающего вопроса
-- Если planning нарушил формат или ошибочно выбрал `REFUSE`, backend может применить явный `policy_repair` и синтезировать канонический strict RAG-план; это отражается в логах и debug-метаданных
-- Если planning считает данные недостаточными, execution возвращает явный отказ и не отвечает по существу
-- Если planning считает данные достаточными, execution отвечает только по RAG и обязан возвращать `chunk_id`, цитаты и пояснения в структурированном виде
-- В strict RAG цитата считается корректной только если это короткий непрерывный дословный фрагмент `content` без `...`, склейки удалённых частей и перефразирования
+- Если planning нарушил формат или ошибочно выбрал `REFUSE`, backend может применить явный `policy_repair` и синтезировать канонический RAG-план; это отражается в логах и debug-метаданных
+- Если planning считает данные недостаточными, execution всё равно отвечает по существу на основе знаний модели, а неполное покрытие RAG или отсутствие данных в RAG показывает отдельным предупреждением
+- Если planning считает данные достаточными, execution опирается на RAG как на основной источник доказательств и обязан возвращать `chunk_id`, цитаты и пояснения в структурированном виде
+- В `rag`-стратегии цитата считается корректной только если это короткий непрерывный дословный фрагмент `content` без `...`, склейки удалённых частей и перефразирования
 - При повторной попытке execution получает причину предыдущего validation-fail и должен исправлять ответ с учётом этой обратной связи
-- После успешной проверки backend нормализует итоговый strict RAG-ответ в единый формат с разделом `Источники и цитаты`, где для каждого доказательства выводятся `chunk_id`, `source_ref`, `source`, `message_id`, `published_at` и дословная цитата
-- В строгом RAG-режиме execution запускается без tools и не использует MCP как источник фактов
-- Backend больше не валит strict RAG-ответ на этапе validation из-за неточного `chunk_id` или цитаты; stage-level проверка оставляет только структурный контракт ответа
+- После успешной проверки backend нормализует итоговый RAG-ответ в единый формат с разделами `Предупреждение` (при `PARTIAL` / `ABSENT`), `Краткий ответ`, `Статус RAG` и `Источники из RAG`, где для каждого доказательства выводятся `chunk_id`, `source_ref`, `source`, `message_id`, `published_at` и дословная цитата
+- В `rag`-стратегии execution запускается без tools и не использует MCP как источник фактов
+- В `standard`-стратегии execution использует обычный tool-aware runner
+- Если во время resume уже существует завершённый planning текущей попытки, а заново резолвленная стратегия не совпала с ним, backend не смешивает стратегии в одной попытке, а начинает новую попытку с нуля
+- Backend больше не валит RAG-ответ на этапе validation из-за неточного `chunk_id` или цитаты; stage-level проверка оставляет только структурный контракт ответа
 - Debug-данные RAG хранятся отдельно в `message_debug.rag_context` как компактные ссылки на найденные чанки
-- В `message_debug.rag_context` дополнительно фиксируются режим, число кандидатов, исходный и переписанный запрос, причина `rewrite`/`no-op`, а также mode-specific score
-- В `message_debug.strategy_metadata.ragPipeline` сохраняются planning verdict, response mode, выбранные `chunk_id`, источник плана (`model` или `policy_repair`) и число цитат из финального ответа
+- В `message_debug.rag_context` дополнительно фиксируются режим, число кандидатов, исходный и переписанный запрос, retrieval hint от стратегии контекста, причина `rewrite`/`no-op`, а также mode-specific score
+- В `message_debug.strategy_metadata` отдельно сохраняются `requestedStrategy`, `effectiveStrategy`, `fallbackReason`, `ragCandidateCount`, `ragSelectedCount` и при `rag`-стратегии `ragPipeline` с planning verdict, response mode, выбранными `chunk_id`, источником плана (`model` или `policy_repair`), статусом покрытия RAG и числом цитат из финального ответа
+- `contextStrategy` теперь проходит через создание диалога, загрузку диалога и отправку сообщений; стратегия `sticky_facts` может влиять на RAG retrieval через retrieval hint
+- В продукте больше нет branch/checkpoint API и стратегии `branching`; legacy-поля схемы пока сохранены только для безопасной миграции
+- Все operations над project/conversation/message/context/debug валидируют ownership и на чужие идентификаторы отвечают `404 Not Found`
+- `MemoryAssemblerService` больше не дублирует инварианты в итоговом system prompt; текст инвариантов инжектируется только на уровне pipeline prompt builder
+- Контекстные стратегии подготавливают только предшествующий контекст; текущий пользовательский запрос добавляется в planning/execution/validation ровно один раз
+- Режим `reranker` использует sequence-classification модель и валидирует форму logits до применения порогов
 - `GET /api/messages/:id/debug` обогащает RAG-ссылки текстом чанка и полным текстом сообщения из `rag_chunks` / `rag_documents`
 - Переиндексация Telegram-дампа выполняется через `backend/src/rag/import-telegram-dump.ts`
 
