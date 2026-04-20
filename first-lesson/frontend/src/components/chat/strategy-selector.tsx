@@ -1,6 +1,6 @@
 'use client';
 
-import { Layers, Brain, GitBranch } from 'lucide-react';
+import { Layers, Brain } from 'lucide-react';
 import { ContextStrategyType, STRATEGY_LABELS } from '@/types/ai-params';
 
 interface StrategySelectorProps {
@@ -12,7 +12,6 @@ interface StrategySelectorProps {
 const STRATEGIES: { type: ContextStrategyType; icon: typeof Layers; description: string }[] = [
   { type: 'sliding_window', icon: Layers, description: 'Старые сообщения заменяются краткой сводкой, последние хранятся дословно' },
   { type: 'sticky_facts', icon: Brain, description: 'Ключевые факты извлекаются и хранятся отдельно от истории сообщений' },
-  { type: 'branching', icon: GitBranch, description: 'Создавайте ответвления диалога от любого сообщения ассистента' },
 ];
 
 export function StrategySelector({ value, onChange, disabled }: StrategySelectorProps) {

@@ -99,6 +99,8 @@ export function ChatWindow() {
           resetParams={resetParams}
           hasNonDefaults={hasNonDefaults}
           onClose={() => setShowParams(false)}
+          contextStrategyValue={params.contextStrategy}
+          onChangeContextStrategy={(value) => setParam('contextStrategy', value)}
         />
       </div>
     </>

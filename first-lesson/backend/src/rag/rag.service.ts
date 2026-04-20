@@ -16,7 +16,7 @@ import { RagEmbeddingService } from './rag-embedding.service';
 import { RagQueryRewriteService } from './rag-query-rewrite.service';
 import { RagRerankerService } from './rag-reranker.service';
 import { RagRepository } from './rag.repository';
-import { RagChunkMatch, RagContextResult } from './rag.types';
+import { RagChunkMatch, RagContextResult, RagRetrievalHintDebug } from './rag.types';
 
 @Injectable()
 export class RagService {
@@ -33,8 +33,10 @@ export class RagService {
     query: string,
     mode: RagMode = DEFAULT_RAG_MODE,
     queryRewriteEnabled = false,
+    retrievalHint?: RagRetrievalHintDebug,
   ): Promise<RagContextResult> {
     const normalizedQuery = query.trim();
+    const normalizedRetrievalHint = normalizeRetrievalHint(retrievalHint);
     if (!normalizedQuery) {
       return {
         block: '',
@@ -43,6 +45,7 @@ export class RagService {
         candidateCount: 0,
         selectedCount: 0,
         queryRewrite: createQueryRewriteDebug(normalizedQuery, normalizedQuery, queryRewriteEnabled, null),
+        retrievalHint: normalizedRetrievalHint,
         matches: [],
       };
     }
@@ -61,6 +64,8 @@ export class RagService {
         queryRewriteEnabled,
         queryChars: normalizedQuery.length,
         queryPreview: truncateForLog(normalizedQuery),
+        retrievalHintApplied: normalizedRetrievalHint.applied,
+        retrievalHintStrategy: normalizedRetrievalHint.strategyType,
         topK: selectedTopK,
         candidatePool,
         maxContextChars,
@@ -68,9 +73,16 @@ export class RagService {
     );
 
     const queryRewrite = queryRewriteEnabled
-      ? await this.ragQueryRewriteService.rewrite(normalizedQuery, traceId)
+      ? await this.ragQueryRewriteService.rewrite(
+          normalizedQuery,
+          traceId,
+          normalizedRetrievalHint.applied ? normalizedRetrievalHint.text : undefined,
+        )
       : null;
-    const retrievalQuery = queryRewrite?.rewrittenQuery ?? normalizedQuery;
+    const retrievalQuery =
+      queryRewrite?.rewrittenQuery ??
+      buildRetrievalQuery(normalizedQuery, normalizedRetrievalHint);
+    const queryRewriteDebugQuery = queryRewriteEnabled ? retrievalQuery : normalizedQuery;
 
     const queryEmbedding = await this.ragEmbeddingService.embedQuery(retrievalQuery);
     const rawMatches = await this.ragRepository.searchRelevantChunks(queryEmbedding, candidatePool);
@@ -102,12 +114,13 @@ export class RagService {
         selectedCount: 0,
         queryRewrite: createQueryRewriteDebug(
           normalizedQuery,
-          retrievalQuery,
+          queryRewriteDebugQuery,
           queryRewriteEnabled,
           queryRewrite?.model ?? null,
           queryRewrite?.rawApplied ?? false,
           queryRewrite?.reason ?? null,
         ),
+        retrievalHint: normalizedRetrievalHint,
         matches: [],
       };
     }
@@ -129,12 +142,13 @@ export class RagService {
       selectedCount: matches.length,
       queryRewrite: createQueryRewriteDebug(
         normalizedQuery,
-        retrievalQuery,
+        queryRewriteDebugQuery,
         queryRewriteEnabled,
         queryRewrite?.model ?? null,
         queryRewrite?.rawApplied ?? false,
         queryRewrite?.reason ?? null,
       ),
+      retrievalHint: normalizedRetrievalHint,
       matches,
     };
   }
@@ -329,7 +343,7 @@ export class RagService {
       '═══ RAG-ДОКАЗАТЕЛЬСТВА ИЗ ИНДЕКСИРОВАННЫХ МАТЕРИАЛОВ ═══',
       'Ниже приведены релевантные чанки, которые разрешено использовать как фактический источник ответа.',
       'Для каждого фактического утверждения нужно ссылаться на конкретный chunk_id из этого блока.',
-      'Если в этих чанках нет нужных данных, нужно явно отказаться отвечать по существу.',
+      'Если в этих чанках нет нужных данных, это нужно явно отметить в ответе как отсутствие или неполное покрытие RAG.',
       'Цитаты должны быть короткими дословными выдержками из поля content соответствующего чанка.',
       '',
       sections.join('\n\n'),
@@ -355,6 +369,28 @@ function createQueryRewriteDebug(
     rewrittenQuery,
     model: enabled ? model : null,
   };
+}
+
+function normalizeRetrievalHint(
+  retrievalHint?: RagRetrievalHintDebug,
+): RagRetrievalHintDebug {
+  const text = retrievalHint?.text?.trim() ?? '';
+  return {
+    applied: Boolean(retrievalHint?.applied && text),
+    strategyType: retrievalHint?.strategyType ?? null,
+    text,
+  };
+}
+
+function buildRetrievalQuery(
+  query: string,
+  retrievalHint: RagRetrievalHintDebug,
+): string {
+  if (!retrievalHint.applied || !retrievalHint.text) {
+    return query;
+  }
+
+  return `${query}\n\nКонтекст для снятия неоднозначности:\n${retrievalHint.text}`;
 }
 
 function parseIntegerEnv(name: string, fallback: number): number {

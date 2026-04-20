@@ -17,6 +17,12 @@ export interface RagQueryRewriteDebug {
   model: string | null;
 }
 
+export interface RagRetrievalHintDebug {
+  applied: boolean;
+  strategyType: string | null;
+  text: string;
+}
+
 export interface RagDocumentRecord {
   id: string;
   sourceType: string;
@@ -47,6 +53,7 @@ export interface RagContextResult {
   candidateCount: number;
   selectedCount: number;
   queryRewrite: RagQueryRewriteDebug;
+  retrievalHint: RagRetrievalHintDebug;
   matches: RagChunkMatch[];
 }
 
@@ -68,6 +75,7 @@ export interface RagDebugContext {
   matchCount: number;
   selectedCount: number;
   queryRewrite: RagQueryRewriteDebug;
+  retrievalHint: RagRetrievalHintDebug;
   matches: RagDebugReference[];
 }
 

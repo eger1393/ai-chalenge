@@ -20,7 +20,7 @@ function loadFromStorage(): AIParams | null {
       contextStrategy = 'sliding_window';
       slidingWindowKeepLast = typeof parsed.summaryKeepLast === 'number' ? parsed.summaryKeepLast : 10;
     } else {
-      if (typeof parsed.contextStrategy === 'string' && ['sliding_window', 'sticky_facts', 'branching'].includes(parsed.contextStrategy)) {
+      if (typeof parsed.contextStrategy === 'string' && ['sliding_window', 'sticky_facts'].includes(parsed.contextStrategy)) {
         contextStrategy = parsed.contextStrategy;
       }
       if (typeof parsed.slidingWindowKeepLast === 'number') {

@@ -10,6 +10,9 @@ import { StepOrchestratorService } from './services/step-orchestrator.service';
 import { StepRunnerService } from './services/step-runner.service';
 import { GuardService } from './services/guard.service';
 import { StepRepository } from './repositories/step.repository';
+import { StandardMessageProcessingStrategy } from './services/strategies/standard-message-processing.strategy';
+import { RagMessageProcessingStrategy } from './services/strategies/rag-message-processing.strategy';
+import { MessageProcessingStrategyResolverService } from './services/strategies/message-processing-strategy-resolver.service';
 
 @Module({
   imports: [ConversationModule, ContextModule, MemoryModule, AIModule, ProjectModule, RagModule],
@@ -19,6 +22,9 @@ import { StepRepository } from './repositories/step.repository';
     StepRunnerService,
     GuardService,
     StepRepository,
+    StandardMessageProcessingStrategy,
+    RagMessageProcessingStrategy,
+    MessageProcessingStrategyResolverService,
   ],
   exports: [StepOrchestratorService],
 })

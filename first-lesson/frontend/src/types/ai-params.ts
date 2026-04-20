@@ -1,4 +1,4 @@
-export type ContextStrategyType = 'sliding_window' | 'sticky_facts' | 'branching';
+export type ContextStrategyType = 'sliding_window' | 'sticky_facts';
 export type RagMode = 'filter' | 'reranker';
 
 export interface AIParams {
@@ -62,7 +62,6 @@ export const DEFAULT_AI_PARAMS: AIParams = {
 export const STRATEGY_LABELS: Record<ContextStrategyType, string> = {
   sliding_window: 'Окно',
   sticky_facts: 'Факты',
-  branching: 'Ветки',
 };
 
 export const RAG_MODE_LABELS: Record<RagMode, string> = {

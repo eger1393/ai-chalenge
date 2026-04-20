@@ -25,7 +25,6 @@ const STEP_COLORS: Record<string, { bg: string; text: string; border: string; ic
 const STRATEGY_LABELS: Record<string, string> = {
   sliding_window: 'Скользящее окно',
   sticky_facts: 'Факты',
-  branching: 'Ветки',
   pipeline: 'Pipeline',
 };
 
@@ -77,6 +76,10 @@ function formatDate(value?: string | null): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 // ── Copy Button ──────────────────────────────────────────────────────
@@ -382,10 +385,10 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
 
   // Pipeline data comes from either pipelineData field or strategyMetadata (DB stores in strategy_metadata JSONB)
   const pipelineData = debugData.pipelineData
-    || (debugData.strategyType === 'pipeline' && debugData.strategyMetadata
+    || (debugData.strategyMetadata && typeof debugData.strategyMetadata === 'object' && 'steps' in debugData.strategyMetadata
       ? debugData.strategyMetadata as unknown as NonNullable<MessageDebugData['pipelineData']>
       : null);
-  const isPipeline = debugData.strategyType === 'pipeline' && pipelineData;
+  const isPipeline = Boolean(pipelineData);
   const ragPipeline = isPipeline && debugData.strategyMetadata && typeof debugData.strategyMetadata === 'object'
     ? (
         debugData.strategyMetadata as {
@@ -404,6 +407,8 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
               mode?: 'ANSWER' | 'REFUSE';
               referencedChunkIds?: string[];
               quoteCount?: number;
+              ragStatus?: 'GROUNDED' | 'PARTIAL' | 'ABSENT' | null;
+              ragNotice?: string | null;
               refusalReason?: string | null;
               missingInfo?: string | null;
             } | null;
@@ -411,6 +416,25 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
         }
       ).ragPipeline ?? null
     : null;
+  const contextStrategyEntries = useMemo(() => {
+    const entries: Array<[string, unknown]> = [];
+    const rawMetadata = debugData.strategyMetadata;
+
+    if (isRecord(rawMetadata)) {
+      const strategyMetadata = isPipeline && isRecord(rawMetadata.context)
+        ? rawMetadata.context
+        : rawMetadata;
+      entries.push(
+        ...Object.entries(strategyMetadata).filter(([key]) => key !== 'factsSnapshot'),
+      );
+    }
+
+    if (debugData.branchInfo) {
+      entries.push(['branchInfo', debugData.branchInfo]);
+    }
+
+    return entries;
+  }, [debugData.strategyMetadata, debugData.branchInfo, isPipeline]);
 
   // Build available tabs
   const availableTabs = useMemo(() => {
@@ -430,11 +454,11 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
     if (debugData.strategyType === 'sticky_facts') {
       tabs.push({ id: 'facts', label: 'Факты' });
     }
-    if (debugData.strategyMetadata && Object.keys(debugData.strategyMetadata).length > 0 && !isPipeline) {
+    if (contextStrategyEntries.length > 0) {
       tabs.push({ id: 'strategy', label: 'Стратегия' });
     }
     return tabs;
-  }, [debugData, isPipeline]);
+  }, [debugData, isPipeline, contextStrategyEntries]);
 
   const [activeTab, setActiveTab] = useState<TabId | null>(null);
   const currentTab = activeTab && availableTabs.some(t => t.id === activeTab) ? activeTab : (availableTabs[0]?.id ?? null);
@@ -555,8 +579,8 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
                   <div className="px-3 py-2 bg-emerald-100/60 border-b border-emerald-100">
                     <div className="flex items-center gap-2">
                       <Database className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-                      <span className="text-xs font-semibold text-emerald-700 flex-1">Строгий RAG-режим</span>
-                      <span className="text-[10px] font-medium text-emerald-700">факты только из чанков</span>
+                      <span className="text-xs font-semibold text-emerald-700 flex-1">RAG-контракт ответа</span>
+                      <span className="text-[10px] font-medium text-emerald-700">ответ формируется всегда, а RAG показывает степень покрытия</span>
                     </div>
                   </div>
 
@@ -581,6 +605,11 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
                         icon={<FileText className="w-3 h-3 text-emerald-500" />}
                         label="Цитат"
                         value={String(ragPipeline.execution?.quoteCount ?? 0)}
+                      />
+                      <Stat
+                        icon={<Database className="w-3 h-3 text-emerald-500" />}
+                        label="Покрытие RAG"
+                        value={ragPipeline.execution?.ragStatus ?? '—'}
                       />
                     </div>
 
@@ -612,6 +641,15 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
                       </div>
                     )}
 
+                    {ragPipeline.execution?.ragNotice && (
+                      <div className="rounded-md border border-gray-100 bg-white p-2.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Примечание RAG</div>
+                        <div className="text-[11px] text-gray-700 whitespace-pre-wrap leading-relaxed">
+                          {ragPipeline.execution.ragNotice}
+                        </div>
+                      </div>
+                    )}
+
                     {ragPipeline.planning?.repairReason && (
                       <div className="rounded-md border border-amber-100 bg-amber-50 p-2.5">
                         <div className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 mb-1">Причина repair</div>
@@ -623,7 +661,7 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
 
                     {ragPipeline.planning?.planText && (
                       <div className="rounded-md border border-gray-100 bg-white p-2.5">
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">План strict RAG</div>
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">План RAG-ответа</div>
                         <div className="text-[11px] text-gray-700 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
                           {ragPipeline.planning.planText}
                         </div>
@@ -730,6 +768,33 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
                   </div>
                   <div className="border-t border-sky-100 px-3 py-2 text-[10px] text-sky-700/80">
                     raw applied: <span className="font-mono">{String(ragData.queryRewrite.rawApplied)}</span>
+                  </div>
+                </div>
+              )}
+
+              {(ragData.retrievalHint.applied || ragData.retrievalHint.text) && (
+                <div className="rounded-lg border border-amber-100 bg-amber-50/40 overflow-hidden">
+                  <div className="px-3 py-2 bg-amber-100/60 border-b border-amber-100">
+                    <div className="flex items-center gap-2">
+                      <ArrowRight className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                      <span className="text-xs font-semibold text-amber-700 flex-1">Retrieval hint</span>
+                      <span className="text-[10px] text-amber-700/80">
+                        {ragData.retrievalHint.strategyType
+                          ? STRATEGY_LABELS[ragData.retrievalHint.strategyType] || ragData.retrievalHint.strategyType
+                          : 'без стратегии'}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-[10px] text-amber-700/80">
+                      Используется только для снятия неоднозначности retrieval, но не как источник доказательств
+                    </div>
+                  </div>
+                  <div className="p-3">
+                    <div className="rounded-md border border-gray-100 bg-white p-2.5">
+                      <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-1">Текст hint</div>
+                      <div className="text-[11px] text-gray-700 whitespace-pre-wrap leading-relaxed">
+                        {ragData.retrievalHint.text || 'Пусто'}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -938,18 +1003,16 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
           )}
 
           {/* ── Strategy Metadata ──────────────────────────── */}
-          {currentTab === 'strategy' && debugData.strategyMetadata && Object.keys(debugData.strategyMetadata).length > 0 && !isPipeline && (
+          {currentTab === 'strategy' && contextStrategyEntries.length > 0 && (
             <div className="space-y-1">
-              {Object.entries(debugData.strategyMetadata)
-                .filter(([key]) => key !== 'factsSnapshot')
-                .map(([key, val]) => (
-                  <div key={key} className="flex items-baseline gap-2 text-[11px]">
-                    <span className="text-gray-500 min-w-[100px]">{key}</span>
-                    <span className="font-mono text-gray-700 break-all">
-                      {typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val)}
-                    </span>
-                  </div>
-                ))}
+              {contextStrategyEntries.map(([key, val]) => (
+                <div key={key} className="flex items-baseline gap-2 text-[11px]">
+                  <span className="text-gray-500 min-w-[100px]">{key}</span>
+                  <span className="font-mono text-gray-700 break-all">
+                    {typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val)}
+                  </span>
+                </div>
+              ))}
             </div>
           )}
 

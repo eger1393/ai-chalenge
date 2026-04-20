@@ -88,10 +88,12 @@ export class ConversationRepository extends BaseRepository<Conversation> {
     super(db, 'conversations');
   }
 
-  async findByProjectId(projectId: string): Promise<Conversation[]> {
+  async findByProjectIdAndUserId(projectId: string, userId: string): Promise<Conversation[]> {
     const { rows } = await this.db.query(
-      `SELECT * FROM conversations WHERE project_id = $1 ORDER BY updated_at DESC`,
-      [projectId],
+      `SELECT * FROM conversations
+       WHERE project_id = $1 AND user_id = $2
+       ORDER BY updated_at DESC`,
+      [projectId, userId],
     );
     return rows.map(mapRow);
   }

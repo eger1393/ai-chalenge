@@ -111,6 +111,17 @@ export class MessageRepository extends BaseRepository<Message> {
     return rows.length > 0 ? mapRow(rows[0]) : null;
   }
 
+  async findOwnedById(id: string, userId: string): Promise<Message | null> {
+    const { rows } = await this.db.query(
+      `SELECT m.*
+       FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+       WHERE m.id = $1 AND c.user_id = $2`,
+      [id, userId],
+    );
+    return rows.length > 0 ? mapRow(rows[0]) : null;
+  }
+
   async createEnvelope(
     conversationId: string,
     userContent: string,
@@ -162,22 +173,14 @@ export class MessageRepository extends BaseRepository<Message> {
     return rows.map(mapRow);
   }
 
-  async getForContext(
-    conversationId: string,
-    branchId?: string,
-  ): Promise<Array<{ role: string; content: string }>> {
-    let sql = `SELECT user_content, assistant_content FROM messages
-               WHERE conversation_id = $1 AND status = 'done'`;
-    const params: unknown[] = [conversationId];
-
-    if (branchId) {
-      sql += ` AND branch_id = $2`;
-      params.push(branchId);
-    }
-
-    sql += ` ORDER BY created_at ASC`;
-
-    const { rows } = await this.db.query(sql, params);
+  async getForContext(conversationId: string): Promise<Array<{ role: string; content: string }>> {
+    const { rows } = await this.db.query(
+      `SELECT user_content, assistant_content
+       FROM messages
+       WHERE conversation_id = $1 AND status = 'done'
+       ORDER BY created_at ASC`,
+      [conversationId],
+    );
 
     const result: Array<{ role: string; content: string }> = [];
     for (const row of rows) {

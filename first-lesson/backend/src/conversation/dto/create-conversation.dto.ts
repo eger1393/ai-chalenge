@@ -49,5 +49,6 @@ export class CreateConversationDto {
 
   @IsOptional()
   @IsString()
+  @IsIn(['sliding_window', 'sticky_facts'])
   contextStrategy?: string;
 }

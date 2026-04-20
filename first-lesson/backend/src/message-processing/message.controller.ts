@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, Res, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Param, UseGuards, Request, Res, Logger, NotFoundException } from '@nestjs/common';
 import { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -9,6 +9,7 @@ import { ConversationService } from '../conversation/conversation.service';
 import { StepRepository } from './repositories/step.repository';
 import { RagRepository } from '../rag/rag.repository';
 import { normalizeRagMode } from '../rag/constants';
+import { ContextService } from '../context/context.service';
 
 @Controller()
 export class MessageController {
@@ -20,6 +21,7 @@ export class MessageController {
     private readonly conversationService: ConversationService,
     private readonly stepRepository: StepRepository,
     private readonly ragRepository: RagRepository,
+    private readonly contextService: ContextService,
   ) {}
 
   @Post('conversations/:id/messages')
@@ -42,6 +44,7 @@ export class MessageController {
 
     try {
       const userId = req.user.userId;
+      const conversation = await this.conversationService.findOne(userId, conversationId);
 
       // If params provided, update conversation params
       if (dto.params) {
@@ -59,10 +62,16 @@ export class MessageController {
         if (Object.keys(updateData).length > 0) {
           await this.conversationService.updateParams(conversationId, updateData as Parameters<ConversationService['updateParams']>[1]);
         }
-      }
 
-      // Load conversation to get projectId
-      const conversation = await this.conversationService.findOne(userId, conversationId);
+        if (dto.params.contextStrategy) {
+          const existingContext = await this.contextService.getContext(conversationId);
+          if (existingContext) {
+            await this.contextService.updateStrategy(conversationId, dto.params.contextStrategy);
+          } else {
+            await this.contextService.createContext(conversationId, dto.params.contextStrategy);
+          }
+        }
+      }
 
       // Create message envelope
       const envelope = await this.messageRepository.createEnvelope(
@@ -90,7 +99,11 @@ export class MessageController {
 
   @Post('messages/:id/pause')
   @UseGuards(JwtAuthGuard)
-  async pauseMessage(@Param('id') id: string) {
+  async pauseMessage(
+    @Request() req: { user: { userId: string } },
+    @Param('id') id: string,
+  ) {
+    await this.requireOwnedMessage(req.user.userId, id);
     await this.orchestrator.pauseMessage(id);
     return { status: 'paused' };
   }
@@ -98,6 +111,7 @@ export class MessageController {
   @Post('messages/:id/resume')
   @UseGuards(JwtAuthGuard)
   async resumeMessage(
+    @Request() req: { user: { userId: string } },
     @Param('id') id: string,
     @Res() res: Response,
   ) {
@@ -111,6 +125,7 @@ export class MessageController {
     };
 
     try {
+      await this.requireOwnedMessage(req.user.userId, id);
       await this.orchestrator.resumeMessage(id, onEvent);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -124,14 +139,22 @@ export class MessageController {
 
   @Post('messages/:id/cancel')
   @UseGuards(JwtAuthGuard)
-  async cancelMessage(@Param('id') id: string) {
+  async cancelMessage(
+    @Request() req: { user: { userId: string } },
+    @Param('id') id: string,
+  ) {
+    await this.requireOwnedMessage(req.user.userId, id);
     await this.orchestrator.cancelMessage(id);
     return { status: 'cancelled' };
   }
 
   @Get('messages/:id/debug')
   @UseGuards(JwtAuthGuard)
-  async getMessageDebug(@Param('id') id: string) {
+  async getMessageDebug(
+    @Request() req: { user: { userId: string } },
+    @Param('id') id: string,
+  ) {
+    await this.requireOwnedMessage(req.user.userId, id);
     const [meta, debug, steps] = await Promise.all([
       this.messageRepository.getMetaByMessageId(id),
       this.messageRepository.getDebugByMessageId(id),
@@ -185,6 +208,14 @@ export class MessageController {
     };
   }
 
+  private async requireOwnedMessage(userId: string, messageId: string) {
+    const message = await this.messageRepository.findOwnedById(messageId, userId);
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+    return message;
+  }
+
   private async buildRagDebug(rawRagContext: unknown) {
     if (!isRecord(rawRagContext)) {
       return null;
@@ -218,6 +249,7 @@ export class MessageController {
         asNumber(rawRagContext.matchCount) ??
         references.length,
       queryRewrite: mapQueryRewrite(rawRagContext.queryRewrite),
+      retrievalHint: mapRetrievalHint(rawRagContext.retrievalHint),
       matches: references.map((reference) => {
         const detail = detailsByChunkId.get(reference.chunkId);
         return {
@@ -246,11 +278,11 @@ export class MessageController {
 
   @Get('messages/:id')
   @UseGuards(JwtAuthGuard)
-  async getMessage(@Param('id') id: string) {
-    const message = await this.messageRepository.findById(id);
-    if (!message) {
-      return { error: 'Message not found' };
-    }
+  async getMessage(
+    @Request() req: { user: { userId: string } },
+    @Param('id') id: string,
+  ) {
+    const message = await this.requireOwnedMessage(req.user.userId, id);
 
     const steps = await this.stepRepository.findByMessageId(id);
 
@@ -326,6 +358,22 @@ function mapQueryRewrite(value: unknown) {
     originalQuery: asString(value.originalQuery) ?? '',
     rewrittenQuery: asString(value.rewrittenQuery) ?? '',
     model: asString(value.model),
+  };
+}
+
+function mapRetrievalHint(value: unknown) {
+  if (!isRecord(value)) {
+    return {
+      applied: false,
+      strategyType: null,
+      text: '',
+    };
+  }
+
+  return {
+    applied: Boolean(value.applied),
+    strategyType: asString(value.strategyType),
+    text: asString(value.text) ?? '',
   };
 }
 

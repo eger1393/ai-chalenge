@@ -24,7 +24,8 @@ export class SlidingWindowStrategy implements IContextStrategy {
     const maxBudget = Math.floor(contextWindow * 0.80);
     const warningThreshold = Math.floor(contextWindow * 0.85);
 
-    const allMessages = [...historyMessages, { role: 'user', content: currentMessage }];
+    const allMessages = [...historyMessages];
+    const currentMessageTokens = this.tokenService.countTokens(currentMessage, model) + 4;
 
     // Calculate total tokens including system messages
     let systemTokens = 0;
@@ -32,7 +33,7 @@ export class SlidingWindowStrategy implements IContextStrategy {
       systemTokens += this.tokenService.countTokens(msg.content, model);
     }
 
-    let totalTokens = systemTokens;
+    let totalTokens = systemTokens + currentMessageTokens;
     for (const msg of allMessages) {
       totalTokens += this.tokenService.countTokens(msg.content, model);
     }
@@ -40,7 +41,8 @@ export class SlidingWindowStrategy implements IContextStrategy {
     // If everything fits, return as-is
     if (totalTokens <= warningThreshold) {
       return {
-        messages: [...systemMessages, ...allMessages],
+        strategyType: 'sliding_window',
+        messages: allMessages,
         truncatedMessages: 0,
         truncatedTokens: 0,
         contextUsedTokens: totalTokens,
@@ -59,7 +61,7 @@ export class SlidingWindowStrategy implements IContextStrategy {
     const first2 = allMessages.slice(0, 2);
     const rest = allMessages.slice(2);
 
-    let budgetUsed = systemTokens;
+    let budgetUsed = systemTokens + currentMessageTokens;
     for (const msg of first2) {
       budgetUsed += this.tokenService.countTokens(msg.content, model);
     }
@@ -75,7 +77,8 @@ export class SlidingWindowStrategy implements IContextStrategy {
     const truncated = [...first2, ...kept];
 
     return {
-      messages: [...systemMessages, ...truncated],
+      strategyType: 'sliding_window',
+      messages: truncated,
       truncatedMessages: allMessages.length - truncated.length,
       truncatedTokens: totalTokens - budgetUsed,
       contextUsedTokens: budgetUsed,

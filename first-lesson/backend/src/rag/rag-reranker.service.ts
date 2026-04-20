@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as path from 'node:path';
-import { AutoTokenizer, env, XLMRobertaModel } from '@huggingface/transformers';
+import { AutoTokenizer, env, XLMRobertaForSequenceClassification } from '@huggingface/transformers';
 import { RAG_RERANKER_DTYPE, RAG_RERANKER_MODEL_ID } from './constants';
 import { RagChunkMatch } from './rag.types';
 
 type RagRerankerTokenizer = Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>;
-type RagRerankerModel = Awaited<ReturnType<typeof XLMRobertaModel.from_pretrained>>;
+type RagRerankerModel = Awaited<ReturnType<typeof XLMRobertaForSequenceClassification.from_pretrained>>;
 
 @Injectable()
 export class RagRerankerService {
@@ -38,7 +38,7 @@ export class RagRerankerService {
       truncation: true,
     });
     const outputs = await model(inputs);
-    const rerankerScores = await extractPositiveScores(outputs.logits);
+    const rerankerScores = await extractPositiveScores(outputs.logits, matches.length);
 
     if (rerankerScores.length !== matches.length) {
       throw new Error(
@@ -83,7 +83,7 @@ export class RagRerankerService {
       );
       this.artifactsPromise = Promise.all([
         AutoTokenizer.from_pretrained(RAG_RERANKER_MODEL_ID),
-        XLMRobertaModel.from_pretrained(RAG_RERANKER_MODEL_ID, {
+        XLMRobertaForSequenceClassification.from_pretrained(RAG_RERANKER_MODEL_ID, {
           dtype: RAG_RERANKER_DTYPE,
         }),
       ]).then(([tokenizer, model]) => ({ tokenizer, model }));
@@ -111,15 +111,25 @@ function truncateForLog(value: string, maxLength = 140): string {
   return `${normalized.slice(0, maxLength - 1)}…`;
 }
 
-async function extractPositiveScores(logits: { tolist(): Promise<unknown> | unknown }): Promise<number[]> {
+async function extractPositiveScores(
+  logits: { tolist(): Promise<unknown> | unknown },
+  expectedRows: number,
+): Promise<number[]> {
   const raw = await logits.tolist();
   const rows = normalizeLogitRows(raw);
-  return rows.map((row) => sigmoid(row[0] ?? 0));
+
+  if (rows.length !== expectedRows) {
+    throw new Error(
+      `Reranker вернул ${rows.length} строк logits при ожидаемых ${expectedRows}`,
+    );
+  }
+
+  return rows.map(extractPositiveScore);
 }
 
 function normalizeLogitRows(value: unknown): number[][] {
   if (!Array.isArray(value)) {
-    return [];
+    throw new Error('Reranker вернул logits в неожиданном формате');
   }
 
   if (value.length === 0) {
@@ -127,18 +137,48 @@ function normalizeLogitRows(value: unknown): number[][] {
   }
 
   if (typeof value[0] === 'number') {
-    return [value.filter((item): item is number => typeof item === 'number' && Number.isFinite(item))];
+    return [normalizeSingleLogitRow(value, 0)];
   }
 
-  return value.map((row) => {
-    if (!Array.isArray(row)) {
-      return [];
-    }
+  return value.map((row, index) => normalizeSingleLogitRow(row, index));
+}
 
-    return row.filter((item): item is number => typeof item === 'number' && Number.isFinite(item));
+function normalizeSingleLogitRow(value: unknown, index: number): number[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Reranker вернул строку logits #${index + 1} в неожиданном формате`);
+  }
+
+  return value.map((item, itemIndex) => {
+    if (typeof item !== 'number' || !Number.isFinite(item)) {
+      throw new Error(
+        `Reranker вернул нечисловой logit в строке #${index + 1}, позиции #${itemIndex + 1}`,
+      );
+    }
+    return item;
   });
+}
+
+function extractPositiveScore(row: number[], index: number): number {
+  if (row.length === 1) {
+    return sigmoid(row[0]);
+  }
+
+  if (row.length === 2) {
+    return softmaxPositive(row[0], row[1]);
+  }
+
+  throw new Error(
+    `Reranker вернул неподдерживаемое число logits в строке #${index + 1}: ${row.length}`,
+  );
 }
 
 function sigmoid(value: number): number {
   return 1 / (1 + Math.exp(-value));
+}
+
+function softmaxPositive(negative: number, positive: number): number {
+  const max = Math.max(negative, positive);
+  const expNegative = Math.exp(negative - max);
+  const expPositive = Math.exp(positive - max);
+  return expPositive / (expNegative + expPositive);
 }

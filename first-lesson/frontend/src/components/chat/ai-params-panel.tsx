@@ -18,10 +18,21 @@ interface AIParamsPanelProps {
   resetParams: () => void;
   hasNonDefaults: boolean;
   onClose?: () => void;
-  conversationStrategy?: string;
+  contextStrategyValue: ContextStrategyType;
+  isContextStrategyLocked?: boolean;
+  onChangeContextStrategy: (value: ContextStrategyType) => void;
 }
 
-export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, onClose, conversationStrategy }: AIParamsPanelProps) {
+export function AIParamsPanel({
+  params,
+  setParam,
+  resetParams,
+  hasNonDefaults,
+  onClose,
+  contextStrategyValue,
+  isContextStrategyLocked = false,
+  onChangeContextStrategy,
+}: AIParamsPanelProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -130,22 +141,22 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
         {/* Context Strategy */}
         <div className="border-t border-gray-200 pt-4">
           <label className="text-xs font-medium text-gray-700 block mb-2">Стратегия контекста</label>
-          {conversationStrategy ? (
+          {isContextStrategyLocked ? (
             <div className="flex items-center gap-2">
               <span className="text-[10px] px-2 py-1 rounded bg-gray-100 text-gray-500 font-medium">
-                {STRATEGY_LABELS[conversationStrategy as ContextStrategyType] || conversationStrategy}
+                {STRATEGY_LABELS[contextStrategyValue] || contextStrategyValue}
               </span>
-              <span className="text-[10px] text-gray-400">Зафиксирована для этого диалога</span>
+              <span className="text-[10px] text-gray-400">Зафиксирована после первого сообщения</span>
             </div>
           ) : (
             <StrategySelector
-              value={params.contextStrategy}
-              onChange={(v) => setParam('contextStrategy', v)}
+              value={contextStrategyValue}
+              onChange={onChangeContextStrategy}
             />
           )}
 
           {/* sliding_window settings */}
-          {params.contextStrategy === 'sliding_window' && (
+          {contextStrategyValue === 'sliding_window' && (
             <div className="mt-3">
               <div className="flex items-center justify-between mb-1">
                 <label className="text-xs font-medium text-gray-700">Хранить последних</label>
@@ -170,16 +181,9 @@ export function AIParamsPanel({ params, setParam, resetParams, hasNonDefaults, o
           )}
 
           {/* sticky_facts info */}
-          {params.contextStrategy === 'sticky_facts' && (
+          {contextStrategyValue === 'sticky_facts' && (
             <p className="text-[10px] text-gray-400 mt-2">
               AI извлекает ключевые факты из диалога и отправляет их вместе с последними сообщениями
-            </p>
-          )}
-
-          {/* branching info */}
-          {params.contextStrategy === 'branching' && (
-            <p className="text-[10px] text-gray-400 mt-2">
-              Создавайте ветки через кнопку на сообщениях ассистента
             </p>
           )}
         </div>

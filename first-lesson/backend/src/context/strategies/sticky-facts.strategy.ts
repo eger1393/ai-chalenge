@@ -70,13 +70,12 @@ export class StickyFactsStrategy implements IContextStrategy {
       kept.unshift(historyMessages[i]);
     }
 
-    // Assemble final messages: system + factsBlock + kept history + current message
-    const resultMessages: Array<{ role: string; content: string }> = [...systemMessages];
+    // Assemble final messages for prompt builder: facts block + kept history
+    const resultMessages: Array<{ role: string; content: string }> = [];
     if (factsBlock) {
       resultMessages.push({ role: 'user', content: factsBlock });
     }
     resultMessages.push(...kept);
-    resultMessages.push({ role: 'user', content: currentMessage });
 
     const truncatedCount = historyMessages.length - kept.length;
 
@@ -89,6 +88,7 @@ export class StickyFactsStrategy implements IContextStrategy {
     const truncatedTokens = Math.max(0, totalOriginalTokens - budgetUsed);
 
     return {
+      strategyType: 'sticky_facts',
       messages: resultMessages,
       truncatedMessages: truncatedCount,
       truncatedTokens,
@@ -98,7 +98,7 @@ export class StickyFactsStrategy implements IContextStrategy {
         factsCount: facts.length,
         factsSnapshot: facts.map(f => ({ key: f.key, value: f.value })),
         factsTokens,
-        originalMessagesCount: historyMessages.length + 1,
+        originalMessagesCount: historyMessages.length,
         keptMessagesCount: resultMessages.length,
         keepLast: (strategyData?.keepLast as number) || undefined,
       },

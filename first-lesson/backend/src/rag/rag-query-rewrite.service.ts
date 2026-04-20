@@ -18,7 +18,11 @@ export class RagQueryRewriteService {
 
   constructor(private readonly openaiService: OpenAIService) {}
 
-  async rewrite(query: string, traceId: string): Promise<RagQueryRewriteResult> {
+  async rewrite(
+    query: string,
+    traceId: string,
+    contextHint?: string,
+  ): Promise<RagQueryRewriteResult> {
     this.logger.log(
       `[${traceId}] Query rewrite start ${JSON.stringify({
         model: RAG_QUERY_REWRITE_MODEL,
@@ -44,11 +48,15 @@ export class RagQueryRewriteService {
           role: 'user',
           content:
             `Исходный запрос:\n${query}\n\n` +
+            (contextHint?.trim()
+              ? `Дополнительный контекст диалога для снятия неоднозначности:\n${contextHint.trim()}\n\n`
+              : '') +
             'Перепиши его в короткую поисковую формулировку для retrieval по базе сообщений.\n' +
             'Правила:\n' +
             '- Убирай разговорные вставки, междометия и лишние слова\n' +
             '- Нормализуй сленг и просторечие: "че-каво", "траблы", "что не так", "фигня", "почему ломается"\n' +
             '- Канонизируй продукты и сущности: "клод код" и "клауд код" -> "Claude Code"\n' +
+            '- Используй дополнительный контекст только для снятия неоднозначности и выбора правильной темы поиска\n' +
             '- Для вопросов про мнение, знание, опыт или проблемы превращай запрос в retrieval-friendly формулировку\n' +
             '- Не оставляй no-op, если смысл понятен и запрос можно сделать более поисковым\n' +
             '- Поле "reason" обязано быть одним из: normalized_colloquial, canonicalized_entity, clarified_intent, already_search_friendly, ambiguous_without_context\n' +

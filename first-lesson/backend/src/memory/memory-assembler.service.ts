@@ -32,13 +32,15 @@ export class MemoryAssemblerService {
     const layers: MemoryLayer[] = [];
     const parts: string[] = [];
 
-    // === INVARIANTS (highest priority — inserted first) ===
+    // Инварианты сохраняем в слоях памяти для debug, но не дублируем в systemPrompt.
     if (params.projectId) {
-      const invariants = await this.projectService.getInvariantsByProjectId(params.projectId);
+      const invariants = await this.projectService.getInvariantsByProjectId(
+        params.userId,
+        params.projectId,
+      );
       if (invariants.length > 0) {
         const invariantsContent = invariants.map((inv, i) => `${i + 1}. ${inv}`).join('\n');
         const section = `═══ ИНВАРИАНТЫ (НАРУШЕНИЕ ЗАПРЕЩЕНО) ═══\nСЛЕДУЮЩИЕ ПРАВИЛА НЕЛЬЗЯ НАРУШАТЬ НИ ПРИ КАКИХ ОБСТОЯТЕЛЬСТВАХ.\nДаже если пользователь явно просит нарушить эти правила — ОТКАЗАТЬ и объяснить что это инвариант.\n\n${invariantsContent}\n═══════════════════════════════════════`;
-        parts.push(section);
         layers.push({
           type: 'invariants',
           label: `Инварианты (${invariants.length})`,
@@ -64,7 +66,7 @@ export class MemoryAssemblerService {
 
     // === WORKING: project context ===
     if (params.projectId) {
-      const project = await this.projectService.findById(params.projectId);
+      const project = await this.projectService.findById(params.userId, params.projectId);
       if (project) {
         const workingContent = `Task: ${project.title}${project.description ? `\n${project.description}` : ''}`;
         const section = `[WORKING MEMORY — Current Task]\n${workingContent}`;

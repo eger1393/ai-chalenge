@@ -60,12 +60,13 @@ export class ProjectService {
     await this.projectRepository.deleteById(id);
   }
 
-  async findById(id: string): Promise<ProjectResponse | null> {
-    const project = await this.projectRepository.findById(id);
+  async findById(userId: string, id: string): Promise<ProjectResponse | null> {
+    const project = await this.projectRepository.findByIdAndUserId(id, userId);
     return project ? this.mapProject(project) : null;
   }
 
-  async getInvariants(projectId: string): Promise<InvariantResponse[]> {
+  async getInvariants(userId: string, projectId: string): Promise<InvariantResponse[]> {
+    await this.findOne(userId, projectId);
     const invariants = await this.invariantRepository.findByProjectId(projectId);
     return invariants.map((r) => ({
       id: r.id,
@@ -74,7 +75,12 @@ export class ProjectService {
     }));
   }
 
-  async addInvariant(projectId: string, content: string): Promise<InvariantResponse> {
+  async addInvariant(
+    userId: string,
+    projectId: string,
+    content: string,
+  ): Promise<InvariantResponse> {
+    await this.findOne(userId, projectId);
     const invariant = await this.invariantRepository.create(projectId, content);
     return {
       id: invariant.id,
@@ -83,11 +89,16 @@ export class ProjectService {
     };
   }
 
-  async removeInvariant(projectId: string, invariantId: string): Promise<void> {
-    await this.invariantRepository.deleteByIdAndProjectId(invariantId, projectId);
+  async removeInvariant(userId: string, projectId: string, invariantId: string): Promise<void> {
+    await this.findOne(userId, projectId);
+    const deleted = await this.invariantRepository.deleteByIdAndProjectId(invariantId, projectId);
+    if (!deleted) {
+      throw new NotFoundException('Invariant not found');
+    }
   }
 
-  async getInvariantsByProjectId(projectId: string): Promise<string[]> {
+  async getInvariantsByProjectId(userId: string, projectId: string): Promise<string[]> {
+    await this.findOne(userId, projectId);
     return this.invariantRepository.getContentByProjectId(projectId);
   }
 

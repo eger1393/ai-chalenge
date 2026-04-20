@@ -46,17 +46,17 @@ export class ProjectController {
   }
 
   @Get(':id/invariants')
-  getInvariants(@Param('id') id: string) {
-    return this.projectService.getInvariants(id);
+  getInvariants(@Request() req, @Param('id') id: string) {
+    return this.projectService.getInvariants(req.user.userId, id);
   }
 
   @Post(':id/invariants')
-  addInvariant(@Param('id') id: string, @Body() body: { content: string }) {
-    return this.projectService.addInvariant(id, body.content);
+  addInvariant(@Request() req, @Param('id') id: string, @Body() body: { content: string }) {
+    return this.projectService.addInvariant(req.user.userId, id, body.content);
   }
 
   @Delete(':id/invariants/:iid')
-  removeInvariant(@Param('id') id: string, @Param('iid') iid: string) {
-    return this.projectService.removeInvariant(id, iid);
+  removeInvariant(@Request() req, @Param('id') id: string, @Param('iid') iid: string) {
+    return this.projectService.removeInvariant(req.user.userId, id, iid);
   }
 }

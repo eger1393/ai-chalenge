@@ -11,6 +11,7 @@ export interface Conversation {
   ragEnabled: boolean;
   ragQueryRewriteEnabled: boolean;
   ragMode: 'filter' | 'reranker';
+  contextStrategy?: string;
   createdAt: string;
   updatedAt: string;
   messageCount: number;
@@ -24,7 +25,6 @@ export interface Conversation {
 export interface ConversationMessage {
   id: string;
   conversationId: string;
-  branchId?: string;
   userContent: string;
   assistantContent?: string;
   status: 'pending' | 'processing' | 'done' | 'failed' | 'cancelled' | 'paused';
@@ -74,25 +74,6 @@ export interface ConversationFact {
   updatedAt?: string;
 }
 
-export interface ConversationBranch {
-  id: string;
-  name: string;
-  parentBranchId?: string;
-  checkpointMessageId?: string;
-  checkpointId?: string;
-  isActive: boolean;
-  messageCount?: number;
-  createdAt: string;
-}
-
-export interface Checkpoint {
-  id: string;
-  conversationId: string;
-  messageId: string;
-  label?: string;
-  createdAt: string;
-}
-
 export interface ConversationTotals {
   totalMessages: number;
   totalTokens: number;
@@ -105,7 +86,6 @@ export interface ConversationDetail extends Conversation {
   messages: ConversationMessage[];
   conversationTotals?: ConversationTotals;
   facts?: ConversationFact[];
-  branches?: ConversationBranch[];
 }
 
 export interface ContextWindow {
@@ -140,6 +120,11 @@ export interface MessageDebugData {
       originalQuery: string;
       rewrittenQuery: string;
       model?: string | null;
+    };
+    retrievalHint: {
+      applied: boolean;
+      strategyType?: string | null;
+      text: string;
     };
     matches: Array<{
       rank: number;
@@ -191,9 +176,9 @@ export interface MessageDebugData {
     totalAttempts: number;
     totalCost: number;
     totalTokens: number;
-    steps: Array<{
-      stepType: string;
-      status: string;
+      steps: Array<{
+        stepType: string;
+        status: string;
       content: string;
       attempt: number;
       model: string;

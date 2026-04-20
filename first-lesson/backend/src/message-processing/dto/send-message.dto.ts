@@ -63,6 +63,7 @@ class SendMessageParamsDto {
 
   @IsOptional()
   @IsString()
+  @IsIn(['sliding_window', 'sticky_facts'])
   contextStrategy?: string;
 }
 

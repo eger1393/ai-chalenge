@@ -10,17 +10,15 @@ import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { useConversations } from '@/hooks/use-conversations';
 import { usePipeline } from '@/hooks/use-pipeline';
 import { useFacts } from '@/hooks/use-facts';
-import { useBranches } from '@/hooks/use-branches';
 import { useTasks } from '@/hooks/use-tasks';
 import { useInvariants } from '@/hooks/use-invariants';
 import { useNotificationContext } from '@/context/notification-context';
-import { addProjectInvariant } from '@/lib/api';
+import { addProjectInvariant, updateConversationContext } from '@/lib/api';
 import { IssueNotification } from '@/types/notification';
+import type { ContextStrategyType } from '@/types/ai-params';
 import { ConversationSidebar } from './conversation-sidebar';
 import { ContextIndicator } from './context-indicator';
 import { SubscriptionIndicator } from './subscription-indicator';
-import { BranchSelector } from './branch-selector';
-import { CheckpointDivider } from './checkpoint-divider';
 import { FactsPanel } from './facts-panel';
 import { MessageBubble } from './message-bubble';
 import { NotificationBubble } from './notification-bubble';
@@ -45,13 +43,13 @@ export function ChatLayout() {
   } = useAIParams();
   const pipeline = usePipeline();
   const facts = useFacts(chat.conversationId);
-  const branches = useBranches(chat.conversationId);
   const { tasks, addTask, removeTask } = useTasks();
   const invariantsHook = useInvariants();
   const { notifications, subscriptions, loadNotifications, loadSubscriptions, markRead } = useNotificationContext();
   const [showParams, setShowParams] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [conversationStrategy, setConversationStrategy] = useState<string | undefined>(undefined);
+  const [isContextStrategyLocked, setIsContextStrategyLocked] = useState(false);
   const scrollRef = useAutoScroll(chat.messages);
 
   // Track previous activeId to avoid re-loading the same conversation
@@ -79,14 +77,14 @@ export function ChatLayout() {
 
     if (activeId) {
       chat.loadConversation(activeId).then((detail) => {
-        setConversationStrategy(undefined);
+        setConversationStrategy(detail?.contextStrategy || undefined);
+        setIsContextStrategyLocked((detail?.messages.length ?? 0) > 0);
         if (detail) {
           setConversationRagConfig(detail.ragEnabled, detail.ragMode, detail.ragQueryRewriteEnabled);
         }
-        if (params.contextStrategy === 'sticky_facts') {
+        const resolvedStrategy = detail?.contextStrategy || params.contextStrategy;
+        if (resolvedStrategy === 'sticky_facts') {
           facts.loadFacts(activeId);
-        } else if (params.contextStrategy === 'branching') {
-          branches.loadBranches(activeId);
         }
 
         // Load invariants for active project
@@ -100,6 +98,7 @@ export function ChatLayout() {
     } else {
       chat.startNew();
       setConversationStrategy(undefined);
+      setIsContextStrategyLocked(false);
       restoreStoredRagConfig();
       pipeline.reset();
     }
@@ -141,13 +140,38 @@ export function ChatLayout() {
   const handleNewChat = useCallback(() => {
     conversations.select(null);
     setConversationStrategy(undefined);
+    setIsContextStrategyLocked(false);
     restoreStoredRagConfig();
     setSidebarOpen(false);
   }, [conversations, restoreStoredRagConfig]);
 
+  const handleContextStrategyChange = useCallback(
+    async (nextStrategy: ContextStrategyType) => {
+      const previousStrategy = (currentStrategy || params.contextStrategy) as ContextStrategyType;
+      setParam('contextStrategy', nextStrategy);
+
+      if (!chat.conversationId || isContextStrategyLocked) {
+        return;
+      }
+
+      setConversationStrategy(nextStrategy);
+      try {
+        await updateConversationContext(chat.conversationId, {
+          strategyType: nextStrategy,
+        });
+      } catch (error) {
+        console.error('Failed to update context strategy', error);
+        setConversationStrategy(previousStrategy);
+        setParam('contextStrategy', previousStrategy);
+      }
+    },
+    [chat.conversationId, currentStrategy, isContextStrategyLocked, params.contextStrategy, setParam],
+  );
+
   const handleSend = useCallback(
     async (text: string) => {
       let currentConvId = chat.conversationId;
+      const effectiveContextStrategy = (currentStrategy || params.contextStrategy) as ContextStrategyType;
       if (!currentConvId) {
         // Need a project to create a conversation
         if (!activeProject && tasks.length === 0) {
@@ -163,6 +187,7 @@ export function ChatLayout() {
           params.ragEnabled,
           params.ragQueryRewriteEnabled,
           params.ragMode,
+          effectiveContextStrategy,
         );
         currentConvId = conv.id;
         chat.setConversationId(conv.id);
@@ -170,13 +195,17 @@ export function ChatLayout() {
       // Add user message to UI
       const userMsg: Message = { id: Date.now().toString(), role: 'user', content: text.trim() };
       chat.setMessages((prev: Message[]) => [...prev, userMsg]);
+      setIsContextStrategyLocked(true);
       // Start pipeline
-      pipeline.start(text.trim(), currentConvId, params);
+      pipeline.start(text.trim(), currentConvId, {
+        ...params,
+        contextStrategy: effectiveContextStrategy,
+      });
       if (tasks.length > 0) {
         conversations.refresh(tasks.map(t => t.id));
       }
       if (!conversationStrategy) {
-        setConversationStrategy(params.contextStrategy);
+        setConversationStrategy(effectiveContextStrategy);
       }
       if (currentStrategy === 'sticky_facts' && chat.conversationId) {
         facts.loadFacts(chat.conversationId);
@@ -194,9 +223,10 @@ export function ChatLayout() {
       if (!conversationStrategy) {
         setConversationStrategy(params.contextStrategy);
       }
+      setIsContextStrategyLocked(chat.messages.length > 0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.conversationId]);
+  }, [chat.conversationId, chat.messages.length]);
 
   const handleSelectConversation = useCallback(
     (id: string) => {
@@ -213,6 +243,7 @@ export function ChatLayout() {
       if (wasActive) {
         chat.startNew();
         setConversationStrategy(undefined);
+        setIsContextStrategyLocked(false);
         restoreStoredRagConfig();
       }
     },
@@ -228,83 +259,14 @@ export function ChatLayout() {
         params.ragEnabled,
         params.ragQueryRewriteEnabled,
         params.ragMode,
+        currentStrategy,
       );
+      setConversationStrategy(currentStrategy);
+      setIsContextStrategyLocked(false);
       conversations.select(conv.id);
       setSidebarOpen(false);
     },
-    [conversations, params],
-  );
-
-  const handleCreateCheckpoint = useCallback(
-    async (messageId: string) => {
-      const checkpoint = await branches.createCheckpoint(messageId);
-      if (checkpoint) {
-        if (chat.conversationId) {
-          await chat.loadConversation(chat.conversationId);
-        }
-      }
-    },
-    [branches, chat],
-  );
-
-  const handleCreateBranchFromCheckpoint = useCallback(
-    async (checkpointId: string) => {
-      const name = `Branch ${branches.branches.length + 1}`;
-      const branch = await branches.createNewBranch(checkpointId, name);
-      if (branch && chat.conversationId) {
-        const messages = await branches.switchBranch(branch.id);
-        if (messages) {
-          // ConversationMessage[] from branch -- map through envelopes
-          chat.setMessages(
-            messages.flatMap((m) => {
-              const msgs: Message[] = [];
-              if (m.userContent) {
-                msgs.push({ id: `${m.id}-user`, role: 'user', content: m.userContent });
-              }
-              if (m.assistantContent) {
-                msgs.push({ id: `${m.id}-assistant`, role: 'assistant', content: m.assistantContent });
-              }
-              return msgs;
-            }),
-          );
-        }
-      }
-    },
-    [branches, chat],
-  );
-
-  const handleSwitchBranch = useCallback(
-    async (branchId: string) => {
-      const messages = await branches.switchBranch(branchId);
-      if (messages) {
-        chat.setMessages(
-          messages.flatMap((m) => {
-            const msgs: Message[] = [];
-            if (m.userContent) {
-              msgs.push({ id: `${m.id}-user`, role: 'user', content: m.userContent });
-            }
-            if (m.assistantContent) {
-              msgs.push({ id: `${m.id}-assistant`, role: 'assistant', content: m.assistantContent });
-            }
-            return msgs;
-          }),
-        );
-      }
-    },
-    [branches, chat],
-  );
-
-  const handleDeleteBranch = useCallback(
-    async (branchId: string) => {
-      await branches.removeBranch(branchId);
-      if (chat.conversationId) {
-        const mainBranch = branches.branches.find((b) => b.name === 'main');
-        if (mainBranch) {
-          await handleSwitchBranch(mainBranch.id);
-        }
-      }
-    },
-    [branches, chat.conversationId, handleSwitchBranch],
+    [conversations, currentStrategy, params],
   );
 
   // Handle pipeline completion
@@ -327,7 +289,8 @@ export function ChatLayout() {
         chat.setMessages((prev: Message[]) => [...prev, assistantMsg]);
       }
       if (chat.conversationId) {
-        chat.loadConversation(chat.conversationId).then(() => {
+        chat.loadConversation(chat.conversationId).then((detail) => {
+          setConversationStrategy(detail?.contextStrategy || undefined);
           loadSubscriptions(chat.conversationId!);
           pipeline.reset();
         });
@@ -337,11 +300,6 @@ export function ChatLayout() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pipeline.pipelineState?.status, pipeline.pipelineState?.finalContent]);
-
-  // Build checkpoint map: messageId -> checkpoint
-  const checkpointByMessageId = new Map(
-    branches.checkpoints.map((cp) => [cp.messageId, cp])
-  );
 
   return (
     <>
@@ -453,18 +411,6 @@ export function ChatLayout() {
           {/* Subscription indicator */}
           <SubscriptionIndicator subscriptions={subscriptions} />
 
-          {/* Branch selector */}
-          {currentStrategy === 'branching' && branches.branches.length > 0 && (
-            <BranchSelector
-              branches={branches.branches}
-              checkpoints={branches.checkpoints}
-              activeBranchId={branches.activeBranchId}
-              onSwitch={handleSwitchBranch}
-              onCreateBranch={handleCreateBranchFromCheckpoint}
-              onDeleteBranch={handleDeleteBranch}
-            />
-          )}
-
           {/* Messages */}
           <div
             ref={scrollRef}
@@ -492,7 +438,6 @@ export function ChatLayout() {
                     );
                   }
                   const msg = item.data;
-                  const checkpoint = checkpointByMessageId.get(msg.id);
                   return (
                     <div key={msg.id}>
                       <MessageBubble
@@ -506,17 +451,9 @@ export function ChatLayout() {
                         truncation={msg.truncation}
                         contextUsedTokens={msg.contextUsedTokens}
                         contextMaxTokens={msg.contextMaxTokens}
-                        showCheckpointButton={currentStrategy === 'branching' && msg.role === 'assistant'}
-                        onCreateCheckpoint={currentStrategy === 'branching' ? handleCreateCheckpoint : undefined}
                         messageId={msg.id}
                         debugData={msg.debugData}
                       />
-                      {checkpoint && (
-                        <CheckpointDivider
-                          checkpoint={checkpoint}
-                          onCreateBranch={handleCreateBranchFromCheckpoint}
-                        />
-                      )}
                     </div>
                   );
                 })}
@@ -574,7 +511,9 @@ export function ChatLayout() {
           resetParams={resetParams}
           hasNonDefaults={hasNonDefaults}
           onClose={() => setShowParams(false)}
-          conversationStrategy={conversationStrategy}
+          contextStrategyValue={currentStrategy as ContextStrategyType}
+          isContextStrategyLocked={isContextStrategyLocked}
+          onChangeContextStrategy={handleContextStrategyChange}
         />
       </div>
     </>

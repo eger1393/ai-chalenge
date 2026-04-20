@@ -1,6 +1,6 @@
 import { setTokens, getAccessToken, getRefreshToken, clearTokens } from './tokens';
 import { AIParams } from '@/types/ai-params';
-import { Checkpoint, Conversation, ConversationBranch, ConversationDetail, ConversationFact, ConversationMessage, MessageDebugData } from '@/types/conversation';
+import { Conversation, ConversationDetail, ConversationFact, ConversationMessage, MessageDebugData } from '@/types/conversation';
 import { Project, ProjectInvariant } from '@/types/task';
 import { UserProfile } from '@/types/personalization';
 import { PipelineSSEEvent } from '@/types/pipeline';
@@ -161,6 +161,7 @@ export async function createConversation(data: {
   ragEnabled?: boolean;
   ragQueryRewriteEnabled?: boolean;
   ragMode?: 'filter' | 'reranker';
+  contextStrategy?: string;
 }) {
   return apiRequest<Conversation>('/conversations', {
     method: 'POST',
@@ -208,7 +209,7 @@ export async function getConversationFacts(id: string): Promise<ConversationFact
 
 export async function setConversationFact(id: string, key: string, value: string): Promise<void> {
   await apiRequest<void>(`/conversations/${id}/facts`, {
-    method: 'POST',
+    method: 'PUT',
     body: JSON.stringify({ key, value }),
   });
 }
@@ -219,52 +220,20 @@ export async function deleteConversationFact(id: string, key: string): Promise<v
   });
 }
 
-// ===== Checkpoints API =====
-
-export async function createCheckpoint(convId: string, messageId: string, label?: string): Promise<Checkpoint> {
-  return apiRequest<Checkpoint>(`/conversations/${convId}/checkpoints`, {
-    method: 'POST',
-    body: JSON.stringify({ messageId, label: label || undefined }),
-  });
-}
-
-export async function getCheckpoints(convId: string): Promise<Checkpoint[]> {
-  return apiRequest<Checkpoint[]>(`/conversations/${convId}/checkpoints`);
-}
-
-// ===== Branches API =====
-
-export async function getConversationBranches(id: string): Promise<ConversationBranch[]> {
-  return apiRequest<ConversationBranch[]>(`/conversations/${id}/branches`);
-}
-
-export async function createBranch(convId: string, checkpointId: string, name: string): Promise<ConversationBranch> {
-  return apiRequest<ConversationBranch>(`/conversations/${convId}/branches`, {
-    method: 'POST',
-    body: JSON.stringify({ checkpointId, name }),
-  });
-}
-
-export async function activateBranch(convId: string, branchId: string): Promise<void> {
-  await apiRequest<void>(`/conversations/${convId}/branches/${branchId}/activate`, {
-    method: 'POST',
-  });
-}
-
-export async function deleteBranch(convId: string, branchId: string): Promise<void> {
-  await apiRequest<void>(`/conversations/${convId}/branches/${branchId}`, {
-    method: 'DELETE',
-  });
-}
-
-export async function getBranchMessages(convId: string, branchId: string): Promise<ConversationMessage[]> {
-  return apiRequest<ConversationMessage[]>(`/conversations/${convId}/branches/${branchId}/messages`);
-}
-
 // ===== Context API =====
 
 export async function getConversationContext(id: string) {
   return apiRequest<any>(`/conversations/${id}/context`);
+}
+
+export async function updateConversationContext(
+  id: string,
+  data: { strategyType?: string; strategyData?: Record<string, unknown> },
+) {
+  return apiRequest<{ success: boolean }>(`/conversations/${id}/context`, {
+    method: 'PATCH',
+    body: JSON.stringify(data),
+  });
 }
 
 // ===== Profile API =====

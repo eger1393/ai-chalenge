@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Flag, Bug } from 'lucide-react';
+import { Bug } from 'lucide-react';
 import { AppliedParams, Usage } from '@/types/ai-params';
 import { MessageDebugData } from '@/types/conversation';
 import { AppliedParamsDisplay } from './applied-params-display';
@@ -19,13 +19,11 @@ interface MessageBubbleProps {
   truncation?: { droppedMessages: number; droppedTokens: number };
   contextUsedTokens?: number;
   contextMaxTokens?: number;
-  onCreateCheckpoint?: (messageId: string) => void;
-  showCheckpointButton?: boolean;
   messageId?: string;
   debugData?: MessageDebugData;
 }
 
-export function MessageBubble({ role, content, error, appliedParams, cost, usage, durationMs, truncation, contextUsedTokens, contextMaxTokens, onCreateCheckpoint, showCheckpointButton, messageId, debugData }: MessageBubbleProps) {
+export function MessageBubble({ role, content, error, appliedParams, cost, usage, durationMs, truncation, contextUsedTokens, contextMaxTokens, messageId, debugData }: MessageBubbleProps) {
   const [debugData2, setDebugData2] = useState<MessageDebugData | null>(null);
   const [debugLoading, setDebugLoading] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
@@ -87,17 +85,6 @@ export function MessageBubble({ role, content, error, appliedParams, cost, usage
           {content}
         </div>
         <div className="flex items-center gap-2 mt-1">
-          {showCheckpointButton && onCreateCheckpoint && messageId && (
-            <button
-              type="button"
-              onClick={() => onCreateCheckpoint(messageId)}
-              className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-indigo-600 opacity-0 group-hover/msg:opacity-100 transition-all"
-              title="Создать checkpoint от этого сообщения"
-            >
-              <Flag className="w-3 h-3" />
-              Checkpoint
-            </button>
-          )}
           {messageId && (
             <button
               type="button"

@@ -1,7 +1,6 @@
 import {
   Controller,
   Get,
-  Post,
   Patch,
   Put,
   Delete,
@@ -9,23 +8,30 @@ import {
   Body,
   UseGuards,
   NotFoundException,
+  Request,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ContextService } from './context.service';
+import { ConversationService } from '../conversation/conversation.service';
 import { UpdateContextDto } from './dto/update-context.dto';
 import { SetFactDto } from './dto/set-fact.dto';
-import { CreateBranchDto } from './dto/create-branch.dto';
-import { CreateCheckpointDto } from './dto/create-checkpoint.dto';
 
 @Controller('conversations/:id')
 @UseGuards(JwtAuthGuard)
 export class ContextController {
-  constructor(private readonly contextService: ContextService) {}
+  constructor(
+    private readonly contextService: ContextService,
+    private readonly conversationService: ConversationService,
+  ) {}
 
   // ── Context ──
 
   @Get('context')
-  async getContext(@Param('id') conversationId: string) {
+  async getContext(
+    @Request() req: { user: { userId: string } },
+    @Param('id') conversationId: string,
+  ) {
+    await this.conversationService.findOne(req.user.userId, conversationId);
     const ctx = await this.contextService.getContext(conversationId);
     if (!ctx) {
       throw new NotFoundException('Context not found for this conversation');
@@ -35,9 +41,11 @@ export class ContextController {
 
   @Patch('context')
   async updateStrategy(
+    @Request() req: { user: { userId: string } },
     @Param('id') conversationId: string,
     @Body() dto: UpdateContextDto,
   ) {
+    await this.conversationService.findOne(req.user.userId, conversationId);
     if (dto.strategyType) {
       await this.contextService.updateStrategy(
         conversationId,
@@ -51,81 +59,33 @@ export class ContextController {
   // ── Facts ──
 
   @Get('facts')
-  async getFacts(@Param('id') conversationId: string) {
+  async getFacts(
+    @Request() req: { user: { userId: string } },
+    @Param('id') conversationId: string,
+  ) {
+    await this.conversationService.findOne(req.user.userId, conversationId);
     return this.contextService.getFacts(conversationId);
   }
 
   @Put('facts')
   async setFact(
+    @Request() req: { user: { userId: string } },
     @Param('id') conversationId: string,
     @Body() dto: SetFactDto,
   ) {
+    await this.conversationService.findOne(req.user.userId, conversationId);
     await this.contextService.setFact(conversationId, dto.key, dto.value);
     return { success: true };
   }
 
   @Delete('facts/:key')
   async deleteFact(
+    @Request() req: { user: { userId: string } },
     @Param('id') conversationId: string,
     @Param('key') key: string,
   ) {
+    await this.conversationService.findOne(req.user.userId, conversationId);
     await this.contextService.deleteFact(conversationId, key);
     return { success: true };
-  }
-
-  // ── Branches ──
-
-  @Get('branches')
-  async getBranches(@Param('id') conversationId: string) {
-    return this.contextService.getBranches(conversationId);
-  }
-
-  @Post('branches')
-  async createBranch(
-    @Param('id') conversationId: string,
-    @Body() dto: CreateBranchDto,
-  ) {
-    return this.contextService.createBranch(
-      conversationId,
-      dto.name,
-      dto.checkpointMessageId,
-    );
-  }
-
-  @Post('branches/:bid/activate')
-  async activateBranch(
-    @Param('id') conversationId: string,
-    @Param('bid') branchId: string,
-  ) {
-    await this.contextService.activateBranch(conversationId, branchId);
-    return { success: true };
-  }
-
-  @Delete('branches/:bid')
-  async deleteBranch(
-    @Param('id') conversationId: string,
-    @Param('bid') branchId: string,
-  ) {
-    await this.contextService.deleteBranch(conversationId, branchId);
-    return { success: true };
-  }
-
-  // ── Checkpoints ──
-
-  @Get('checkpoints')
-  async getCheckpoints(@Param('id') conversationId: string) {
-    return this.contextService.getCheckpoints(conversationId);
-  }
-
-  @Post('checkpoints')
-  async createCheckpoint(
-    @Param('id') conversationId: string,
-    @Body() dto: CreateCheckpointDto,
-  ) {
-    return this.contextService.createCheckpoint(
-      conversationId,
-      dto.messageId,
-      dto.label,
-    );
   }
 }

@@ -1,4 +1,4 @@
-export type ContextStrategyType = 'sliding_window' | 'sticky_facts' | 'branching';
+export type ContextStrategyType = 'sliding_window' | 'sticky_facts';
 
 export interface ContextStrategyParams {
   conversationId: string;
@@ -13,6 +13,7 @@ export interface ContextStrategyParams {
 }
 
 export interface ContextStrategyResult {
+  strategyType: ContextStrategyType;
   messages: Array<{ role: string; content: string }>;
   truncatedMessages: number;
   truncatedTokens: number;
@@ -25,4 +26,8 @@ export interface ContextStrategyResult {
 
 export interface IContextStrategy {
   prepareContext(params: ContextStrategyParams): Promise<ContextStrategyResult>;
+}
+
+export function normalizeContextStrategyType(value: unknown): ContextStrategyType {
+  return value === 'sticky_facts' ? 'sticky_facts' : 'sliding_window';
 }

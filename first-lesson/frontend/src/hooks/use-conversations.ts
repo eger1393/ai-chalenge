@@ -52,6 +52,7 @@ export function useConversations() {
       ragEnabled?: boolean,
       ragQueryRewriteEnabled?: boolean,
       ragMode?: 'filter' | 'reranker',
+      contextStrategy?: string,
     ) => {
       const conv = await createConversation({
         projectId,
@@ -60,6 +61,7 @@ export function useConversations() {
         ragEnabled,
         ragQueryRewriteEnabled,
         ragMode,
+        contextStrategy,
       });
       setConversations((prev) => [conv, ...prev]);
       setActiveId(conv.id);

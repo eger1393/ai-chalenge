@@ -1,18 +1,16 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ContextRepository, ConversationContext } from './repositories/context.repository';
-import { BranchRepository, Branch } from './repositories/branch.repository';
-import { CheckpointRepository, Checkpoint } from './repositories/checkpoint.repository';
 import { TransactionService } from '../database/transaction.service';
 import { MessageRepository } from '../conversation/repositories/message.repository';
 import { TokenService } from '../ai/token.service';
 import { OpenAIService } from '../ai/openai.service';
 import { SlidingWindowStrategy } from './strategies/sliding-window.strategy';
 import { StickyFactsStrategy } from './strategies/sticky-facts.strategy';
-import { BranchingStrategy } from './strategies/branching.strategy';
 import {
   IContextStrategy,
   ContextStrategyType,
   ContextStrategyResult,
+  normalizeContextStrategyType,
 } from './strategies/context-strategy.interface';
 
 export interface Fact {
@@ -27,6 +25,12 @@ interface FactsDiff {
   remove: string[];
 }
 
+export interface RagRetrievalHint {
+  applied: boolean;
+  strategyType: ContextStrategyType | null;
+  text: string;
+}
+
 @Injectable()
 export class ContextService {
   private readonly logger = new Logger(ContextService.name);
@@ -34,27 +38,24 @@ export class ContextService {
 
   constructor(
     private readonly contextRepository: ContextRepository,
-    private readonly branchRepository: BranchRepository,
-    private readonly checkpointRepository: CheckpointRepository,
     private readonly transactionService: TransactionService,
     private readonly messageRepository: MessageRepository,
     private readonly tokenService: TokenService,
     private readonly openaiService: OpenAIService,
     private readonly slidingWindowStrategy: SlidingWindowStrategy,
     private readonly stickyFactsStrategy: StickyFactsStrategy,
-    private readonly branchingStrategy: BranchingStrategy,
   ) {
     this.strategies = new Map<ContextStrategyType, IContextStrategy>([
       ['sliding_window', this.slidingWindowStrategy],
       ['sticky_facts', this.stickyFactsStrategy],
-      ['branching', this.branchingStrategy],
     ]);
   }
 
   // ── Context CRUD ──
 
   async getContext(conversationId: string): Promise<ConversationContext | null> {
-    return this.contextRepository.findByConversationId(conversationId);
+    const ctx = await this.contextRepository.findByConversationId(conversationId);
+    return ctx ? normalizeConversationContext(ctx) : null;
   }
 
   async createContext(
@@ -62,7 +63,11 @@ export class ContextService {
     strategyType: string,
     strategyData?: Record<string, unknown>,
   ): Promise<ConversationContext> {
-    return this.contextRepository.create(conversationId, strategyType, strategyData);
+    return this.contextRepository.create(
+      conversationId,
+      normalizeContextStrategyType(strategyType),
+      strategyData,
+    );
   }
 
   async updateStrategy(
@@ -74,7 +79,24 @@ export class ContextService {
     if (!ctx) {
       throw new NotFoundException('Context not found for this conversation');
     }
-    await this.contextRepository.updateStrategyType(conversationId, strategyType, strategyData);
+    const currentStrategyType = normalizeContextStrategyType(ctx.strategy_type);
+    const nextStrategyType = normalizeContextStrategyType(strategyType);
+
+    if (currentStrategyType !== nextStrategyType) {
+      const messageCount = await this.messageRepository.getMessageCount(conversationId);
+      if (messageCount > 0) {
+        throw new ConflictException(
+          'Стратегия контекста фиксируется после первого сообщения',
+        );
+      }
+    }
+
+    const nextStrategyData = strategyData ?? ((ctx.strategy_data as Record<string, unknown>) || {});
+    await this.contextRepository.updateStrategyType(
+      conversationId,
+      nextStrategyType,
+      nextStrategyData,
+    );
   }
 
   // ── Prepare context for AI call ──
@@ -90,16 +112,15 @@ export class ContextService {
     if (!ctx) {
       ctx = await this.contextRepository.create(conversationId, 'sliding_window');
     }
+    ctx = normalizeConversationContext(ctx);
 
-    const strategyType = ctx.strategy_type as ContextStrategyType;
+    const strategyType = normalizeContextStrategyType(ctx.strategy_type);
     const strategy = this.strategies.get(strategyType) || this.slidingWindowStrategy;
 
-    // Load history messages; for branching, filter by active branch
-    const branchId = ctx.active_branch_id || undefined;
-    const historyMessages = await this.messageRepository.getForContext(conversationId, branchId);
+    const historyMessages = await this.messageRepository.getForContext(conversationId);
 
     this.logger.debug(
-      `Preparing context: strategy=${strategyType}, history=${historyMessages.length}, branch=${branchId || 'none'}`,
+      `Preparing context: strategy=${strategyType}, history=${historyMessages.length}`,
     );
 
     return strategy.prepareContext({
@@ -113,6 +134,63 @@ export class ContextService {
       summary: ctx.summary || undefined,
       summaryUpToIndex: ctx.summary_up_to_index,
     });
+  }
+
+  async buildRagRetrievalHint(conversationId: string): Promise<RagRetrievalHint> {
+    const ctx = await this.contextRepository.findByConversationId(conversationId);
+    if (!ctx) {
+      return {
+        applied: false,
+        strategyType: null,
+        text: '',
+      };
+    }
+
+    const strategyType = normalizeContextStrategyType(ctx.strategy_type);
+    const strategyData = (ctx.strategy_data as Record<string, unknown>) || {};
+
+    if (strategyType === 'sticky_facts') {
+      const facts = ((strategyData.facts as Fact[]) || [])
+        .filter((fact) => fact.key?.trim() && fact.value?.trim())
+        .slice(-8);
+
+      if (facts.length === 0) {
+        return {
+          applied: false,
+          strategyType,
+          text: '',
+        };
+      }
+
+      return {
+        applied: true,
+        strategyType,
+        text: [
+          'Факты диалога для снятия неоднозначности поиска:',
+          ...facts.map((fact) => `- ${fact.key}: ${fact.value}`),
+        ].join('\n'),
+      };
+    }
+
+    const historyMessages = await this.messageRepository.getForContext(conversationId);
+    const tail = historyMessages
+      .slice(-4)
+      .map((message) => `[${message.role}] ${truncateForHint(message.content, 240)}`)
+      .filter(Boolean);
+
+    if (tail.length === 0) {
+      return {
+        applied: false,
+        strategyType,
+        text: '',
+      };
+    }
+
+    return {
+      applied: true,
+      strategyType,
+      text: ['Последний контекст диалога для снятия неоднозначности поиска:', ...tail].join('\n'),
+    };
   }
 
   // ── Facts CRUD (read-modify-write JSONB) ──
@@ -249,75 +327,6 @@ Rules:
     }
   }
 
-  // ── Branches ──
-
-  async getBranches(conversationId: string): Promise<Branch[]> {
-    const ctx = await this.contextRepository.findByConversationId(conversationId);
-    if (!ctx) return [];
-    return this.branchRepository.findByContextId(ctx.id);
-  }
-
-  async createBranch(
-    conversationId: string,
-    name: string,
-    checkpointMessageId?: string,
-  ): Promise<Branch> {
-    let ctx = await this.contextRepository.findByConversationId(conversationId);
-    if (!ctx) {
-      ctx = await this.contextRepository.create(conversationId, 'branching');
-    }
-    return this.branchRepository.create(ctx.id, name, undefined, checkpointMessageId);
-  }
-
-  async activateBranch(conversationId: string, branchId: string): Promise<void> {
-    const ctx = await this.contextRepository.findByConversationId(conversationId);
-    if (!ctx) {
-      throw new NotFoundException('Context not found for this conversation');
-    }
-
-    // Verify branch belongs to this context
-    const branch = await this.branchRepository.findByIdAndContextId(branchId, ctx.id);
-    if (!branch) {
-      throw new NotFoundException('Branch not found in this context');
-    }
-
-    await this.contextRepository.setActiveBranch(conversationId, branchId);
-  }
-
-  async deleteBranch(conversationId: string, branchId: string): Promise<void> {
-    const ctx = await this.contextRepository.findByConversationId(conversationId);
-    if (!ctx) {
-      throw new NotFoundException('Context not found for this conversation');
-    }
-
-    const branch = await this.branchRepository.findByIdAndContextId(branchId, ctx.id);
-    if (!branch) {
-      throw new NotFoundException('Branch not found in this context');
-    }
-
-    // If active branch is being deleted, reset to null
-    if (ctx.active_branch_id === branchId) {
-      await this.contextRepository.setActiveBranch(conversationId, null);
-    }
-
-    // FK ON DELETE SET NULL on messages.branch_id handles message cleanup
-    await this.branchRepository.deleteById(branchId);
-  }
-
-  // ── Checkpoints ──
-
-  async getCheckpoints(conversationId: string): Promise<Checkpoint[]> {
-    return this.checkpointRepository.findByConversationId(conversationId);
-  }
-
-  async createCheckpoint(
-    conversationId: string,
-    messageId: string,
-    label?: string,
-  ): Promise<Checkpoint> {
-    return this.checkpointRepository.create(conversationId, messageId, label);
-  }
-
   // ── Summary ──
 
   async updateSummary(
@@ -331,4 +340,26 @@ Rules:
     }
     await this.contextRepository.updateSummary(conversationId, summary, upToIndex);
   }
+}
+
+function truncateForHint(value: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, ' ').trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength - 1)}…`;
+}
+
+function normalizeConversationContext(ctx: ConversationContext): ConversationContext {
+  const strategyType = normalizeContextStrategyType(ctx.strategy_type);
+  if (strategyType === ctx.strategy_type && ctx.active_branch_id == null) {
+    return ctx;
+  }
+
+  return {
+    ...ctx,
+    strategy_type: strategyType,
+    active_branch_id: null,
+  };
 }

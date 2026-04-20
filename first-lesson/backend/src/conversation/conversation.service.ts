@@ -6,6 +6,8 @@ import { CreateConversationDto } from './dto/create-conversation.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 import { DatabaseService } from '../database/database.service';
 import { normalizeRagMode, type RagMode } from '../rag/constants';
+import { ProjectService } from '../project/project.service';
+import { normalizeContextStrategyType } from '../context/strategies/context-strategy.interface';
 
 @Injectable()
 export class ConversationService {
@@ -14,6 +16,7 @@ export class ConversationService {
     private readonly messageRepository: MessageRepository,
     private readonly transactionService: TransactionService,
     private readonly db: DatabaseService,
+    private readonly projectService: ProjectService,
   ) {}
 
   async create(
@@ -22,6 +25,8 @@ export class ConversationService {
     dto: CreateConversationDto,
   ): Promise<Conversation> {
     return this.transactionService.run(async () => {
+      await this.projectService.findOne(userId, projectId);
+
       const conversation = await this.conversationRepository.create({
         projectId,
         userId,
@@ -41,7 +46,11 @@ export class ConversationService {
       await this.db.query(
         `INSERT INTO conversation_contexts (id, conversation_id, strategy_type)
          VALUES ($1, $2, $3)`,
-        [contextId, conversation.id, dto.contextStrategy || 'sliding_window'],
+        [
+          contextId,
+          conversation.id,
+          normalizeContextStrategyType(dto.contextStrategy),
+        ],
       );
 
       return conversation;
@@ -50,7 +59,8 @@ export class ConversationService {
 
   async findAll(userId: string, projectId?: string): Promise<Conversation[]> {
     if (projectId) {
-      return this.conversationRepository.findByProjectId(projectId);
+      await this.projectService.findOne(userId, projectId);
+      return this.conversationRepository.findByProjectIdAndUserId(projectId, userId);
     }
     return this.conversationRepository.findByUserId(userId);
   }
@@ -101,13 +111,20 @@ export class ConversationService {
 
   async getConversationWithMessages(userId: string, id: string) {
     const conversation = await this.findOne(userId, id);
-    const messages = await this.messageRepository.findByConversationId(id);
-    const totals = await this.messageRepository.getTotals(id);
+    const [messages, totals, contextResult] = await Promise.all([
+      this.messageRepository.findByConversationId(id),
+      this.messageRepository.getTotals(id),
+      this.db.query(
+        `SELECT strategy_type FROM conversation_contexts WHERE conversation_id = $1`,
+        [id],
+      ),
+    ]);
 
     return {
       ...conversation,
       messages,
       conversationTotals: totals,
+      contextStrategy: normalizeContextStrategyType(contextResult.rows[0]?.strategy_type),
     };
   }
 

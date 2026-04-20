@@ -96,7 +96,7 @@ export class AIParamsDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(['sliding_window', 'sticky_facts', 'branching'])
+  @IsIn(['sliding_window', 'sticky_facts'])
   contextStrategy?: string;
 
   @IsOptional()
