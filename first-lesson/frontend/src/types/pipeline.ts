@@ -16,6 +16,7 @@ export interface PipelineSSEEvent {
   messageId?: string;
   step?: string;
   attempt?: number;
+  provider?: string;
   delta?: string;
   result?: string;
   response?: string;
@@ -45,6 +46,7 @@ export interface PipelineStepData {
   status: 'running' | 'completed' | 'failed';
   content: string;
   attempt?: number;
+  provider?: string;
   model?: string;
   promptTokens?: number;
   completionTokens?: number;

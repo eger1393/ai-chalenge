@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OpenAIService } from '../../ai/openai.service';
+import { AIProvider } from '../../ai/dto/ai-params.dto';
 import { McpRegistryService } from '../../mcp/mcp-registry.service';
 import { McpToolRouter } from '../../mcp/mcp-tool-router.service';
 import { StepRepository, MessageStep } from '../repositories/step.repository';
@@ -18,6 +19,7 @@ export interface StepRunParams {
   messageId: string;
   stepType: StepType;
   attempt: number;
+  provider: AIProvider;
   model: string;
   temperature: number;
   maxTokens: number;
@@ -40,7 +42,7 @@ export class StepRunnerService {
   ) {}
 
   async runStep(params: StepRunParams): Promise<{ output: string; step: MessageStep }> {
-    const { messageId, stepType, attempt, model, temperature, maxTokens, messages, onEvent } =
+    const { messageId, stepType, attempt, provider, model, temperature, maxTokens, messages, onEvent } =
       params;
     const startTime = Date.now();
 
@@ -53,13 +55,14 @@ export class StepRunnerService {
       messageId,
       stepType,
       attemptNumber: attempt,
+      provider,
       model,
       inputContext,
     });
 
-    onEvent({ type: 'step_start', step: stepType, attempt, model });
+    onEvent({ type: 'step_start', step: stepType, attempt, provider, model });
     this.logger.debug(
-      `Message ${messageId}: step ${stepType} started (attempt ${attempt}, model ${model})`,
+      `Message ${messageId}: step ${stepType} started (attempt ${attempt}, provider ${provider}, model ${model})`,
     );
 
     let fullText = '';
@@ -72,6 +75,8 @@ export class StepRunnerService {
         messages,
         temperature,
         maxTokens,
+        undefined,
+        provider,
       );
 
       for await (const chunk of stream) {
@@ -93,7 +98,7 @@ export class StepRunnerService {
     }
 
     const durationMs = Date.now() - startTime;
-    const cost = this.openaiService.calculateCost(model, promptTokens, completionTokens);
+    const cost = this.openaiService.calculateCost(provider, model, promptTokens, completionTokens);
 
     await this.stepRepository.updateStep(step.id, {
       status: 'completed',
@@ -107,6 +112,7 @@ export class StepRunnerService {
     onEvent({
       type: 'step_complete',
       step: stepType,
+      provider,
       result: fullText,
       cost,
       tokens: promptTokens + completionTokens,
@@ -114,7 +120,7 @@ export class StepRunnerService {
     });
 
     this.logger.debug(
-      `Message ${messageId}: step ${stepType} completed in ${durationMs}ms, tokens=${promptTokens + completionTokens}, cost=$${cost.toFixed(4)}`,
+      `Message ${messageId}: step ${stepType} completed in ${durationMs}ms, provider=${provider}, tokens=${promptTokens + completionTokens}, cost=$${cost.toFixed(4)}`,
     );
 
     return {
@@ -137,7 +143,7 @@ export class StepRunnerService {
       return this.runStep(params);
     }
 
-    const { messageId, stepType, attempt, model, temperature, maxTokens, messages, onEvent } =
+    const { messageId, stepType, attempt, provider, model, temperature, maxTokens, messages, onEvent } =
       params;
     const startTime = Date.now();
 
@@ -150,13 +156,14 @@ export class StepRunnerService {
       messageId,
       stepType,
       attemptNumber: attempt,
+      provider,
       model,
       inputContext,
     });
 
-    onEvent({ type: 'step_start', step: stepType, attempt, model });
+    onEvent({ type: 'step_start', step: stepType, attempt, provider, model });
     this.logger.debug(
-      `Message ${messageId}: step ${stepType} with tools started (attempt ${attempt}, model ${model})`,
+      `Message ${messageId}: step ${stepType} with tools started (attempt ${attempt}, provider ${provider}, model ${model})`,
     );
 
     const workingMessages: Array<{
@@ -197,6 +204,7 @@ export class StepRunnerService {
           temperature,
           maxTokens,
           this.mcpRegistry.getAllToolsForOpenAI(),
+          provider,
         );
 
         for await (const chunk of stream) {
@@ -309,7 +317,7 @@ export class StepRunnerService {
     }
 
     const durationMs = Date.now() - startTime;
-    const cost = this.openaiService.calculateCost(model, promptTokens, completionTokens);
+    const cost = this.openaiService.calculateCost(provider, model, promptTokens, completionTokens);
     const outputResult =
       collectedToolCalls.length > 0
         ? { text: fullText, toolCalls: collectedToolCalls }
@@ -327,6 +335,7 @@ export class StepRunnerService {
     onEvent({
       type: 'step_complete',
       step: stepType,
+      provider,
       result: fullText,
       cost,
       tokens: promptTokens + completionTokens,
@@ -334,7 +343,7 @@ export class StepRunnerService {
     });
 
     this.logger.debug(
-      `Message ${messageId}: step ${stepType} with tools completed in ${durationMs}ms, iterations=${iteration}, tokens=${promptTokens + completionTokens}, cost=$${cost.toFixed(4)}`,
+      `Message ${messageId}: step ${stepType} with tools completed in ${durationMs}ms, provider=${provider}, iterations=${iteration}, tokens=${promptTokens + completionTokens}, cost=$${cost.toFixed(4)}`,
     );
 
     return {

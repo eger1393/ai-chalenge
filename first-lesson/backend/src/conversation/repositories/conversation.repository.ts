@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { BaseRepository } from '../../database/base.repository';
 import { DatabaseService } from '../../database/database.service';
+import {
+  DEFAULT_PROVIDER,
+  getDefaultModelForProvider,
+  type AIProvider,
+} from '../../ai/dto/ai-params.dto';
 import { DEFAULT_RAG_MODE, normalizeRagMode, type RagMode } from '../../rag/constants';
 
 export interface Conversation {
@@ -8,6 +13,7 @@ export interface Conversation {
   projectId: string;
   userId: string;
   title: string;
+  provider: AIProvider;
   model: string;
   systemPrompt: string | null;
   temperature: number | null;
@@ -25,6 +31,7 @@ interface CreateConversationData {
   projectId: string;
   userId: string;
   title?: string;
+  provider?: AIProvider;
   model?: string;
   systemPrompt?: string;
   temperature?: number;
@@ -38,6 +45,7 @@ interface CreateConversationData {
 
 type UpdateConversationData = Partial<{
   title: string;
+  provider: AIProvider;
   model: string;
   systemPrompt: string;
   temperature: number;
@@ -51,6 +59,7 @@ type UpdateConversationData = Partial<{
 
 const COLUMN_MAP: Record<string, string> = {
   title: 'title',
+  provider: 'provider',
   model: 'model',
   systemPrompt: 'system_prompt',
   temperature: 'temperature',
@@ -68,6 +77,7 @@ function mapRow(row: Record<string, unknown>): Conversation {
     projectId: row.project_id as string,
     userId: row.user_id as string,
     title: row.title as string,
+    provider: ((row.provider as string) ?? DEFAULT_PROVIDER) as AIProvider,
     model: row.model as string,
     systemPrompt: (row.system_prompt as string) ?? null,
     temperature: row.temperature != null ? parseFloat(String(row.temperature)) : null,
@@ -106,18 +116,25 @@ export class ConversationRepository extends BaseRepository<Conversation> {
     return rows.map(mapRow);
   }
 
+  async findById(id: string): Promise<Conversation | null> {
+    const { rows } = await this.db.query(`SELECT * FROM conversations WHERE id = $1`, [id]);
+    return rows.length > 0 ? mapRow(rows[0]) : null;
+  }
+
   async create(data: CreateConversationData): Promise<Conversation> {
     const id = crypto.randomUUID();
+    const provider = data.provider ?? DEFAULT_PROVIDER;
     const { rows } = await this.db.query(
-      `INSERT INTO conversations (id, project_id, user_id, title, model, system_prompt, temperature, max_tokens, repetition_penalty, context_limit, rag_enabled, rag_query_rewrite_enabled, rag_mode)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `INSERT INTO conversations (id, project_id, user_id, title, provider, model, system_prompt, temperature, max_tokens, repetition_penalty, context_limit, rag_enabled, rag_query_rewrite_enabled, rag_mode)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
         id,
         data.projectId,
         data.userId,
         data.title || 'New dialog',
-        data.model || 'gpt-4o-mini',
+        provider,
+        data.model || getDefaultModelForProvider(provider),
         data.systemPrompt || null,
         data.temperature ?? 1.0,
         data.maxTokens ?? 16384,

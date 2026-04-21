@@ -1,6 +1,7 @@
 export interface Conversation {
   id: string;
   title: string;
+  provider: string;
   model: string;
   systemPrompt?: string;
   projectId: string;
@@ -39,6 +40,7 @@ export interface ConversationMessage {
 export interface MessageMeta {
   id: string;
   messageId: string;
+  appliedProvider?: string;
   appliedModel?: string;
   appliedTemperature?: number;
   appliedMaxTokens?: number;
@@ -158,6 +160,7 @@ export interface MessageDebugData {
     content?: string;
   }>;
   meta?: {
+    appliedProvider?: string;
     appliedModel?: string;
     appliedTemperature?: number;
     appliedMaxTokens?: number;
@@ -181,6 +184,7 @@ export interface MessageDebugData {
         status: string;
       content: string;
       attempt: number;
+      provider?: string;
       model: string;
       promptTokens: number;
       completionTokens: number;

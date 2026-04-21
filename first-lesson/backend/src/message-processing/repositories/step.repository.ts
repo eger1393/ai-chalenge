@@ -10,6 +10,7 @@ export interface MessageStep {
   status: string;
   inputContext: unknown;
   outputResult: unknown;
+  provider: string | null;
   model: string | null;
   promptTokens: number;
   completionTokens: number;
@@ -30,6 +31,7 @@ function mapRow(row: Record<string, unknown>): MessageStep {
     status: row.status as string,
     inputContext: row.input_context ?? null,
     outputResult: row.output_result ?? null,
+    provider: (row.provider as string) ?? null,
     model: (row.model as string) ?? null,
     promptTokens: (row.prompt_tokens as number) ?? 0,
     completionTokens: (row.completion_tokens as number) ?? 0,
@@ -60,19 +62,21 @@ export class StepRepository extends BaseRepository<MessageStep> {
     messageId: string;
     stepType: string;
     attemptNumber: number;
+    provider: string;
     model: string;
     inputContext?: unknown;
   }): Promise<MessageStep> {
     const id = crypto.randomUUID();
     const { rows } = await this.db.query(
-      `INSERT INTO message_steps (id, message_id, step_type, attempt_number, status, model, input_context)
-       VALUES ($1, $2, $3, $4, 'running', $5, $6)
+      `INSERT INTO message_steps (id, message_id, step_type, attempt_number, status, provider, model, input_context)
+       VALUES ($1, $2, $3, $4, 'running', $5, $6, $7)
        RETURNING *`,
       [
         id,
         data.messageId,
         data.stepType,
         data.attemptNumber,
+        data.provider,
         data.model,
         data.inputContext ? JSON.stringify(data.inputContext) : null,
       ],

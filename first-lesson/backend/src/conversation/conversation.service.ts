@@ -1,10 +1,15 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { TransactionService } from '../database/transaction.service';
 import { ConversationRepository, Conversation } from './repositories/conversation.repository';
 import { MessageRepository } from './repositories/message.repository';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 import { DatabaseService } from '../database/database.service';
+import {
+  resolveAISelection,
+  resolveStoredAISelection,
+  type AIProvider,
+} from '../ai/dto/ai-params.dto';
 import { normalizeRagMode, type RagMode } from '../rag/constants';
 import { ProjectService } from '../project/project.service';
 import { normalizeContextStrategyType } from '../context/strategies/context-strategy.interface';
@@ -31,7 +36,10 @@ export class ConversationService {
         projectId,
         userId,
         title: dto.title,
-        model: dto.model,
+        ...this.resolveAISelectionOrThrow({
+          provider: dto.provider,
+          model: dto.model,
+        }),
         systemPrompt: dto.systemPrompt,
         temperature: dto.temperature,
         maxTokens: dto.maxTokens,
@@ -78,10 +86,28 @@ export class ConversationService {
     id: string,
     dto: UpdateConversationDto,
   ): Promise<Conversation> {
-    await this.findOne(userId, id);
+    const conversation = await this.findOne(userId, id);
+    const { provider: _provider, model: _model, ...restDto } = dto;
+
+    let selectionUpdate: Partial<{ provider: AIProvider; model: string }> = {};
+    if (dto.provider !== undefined || dto.model !== undefined) {
+      const currentSelection = resolveStoredAISelection({
+        provider: conversation.provider,
+        model: conversation.model,
+      });
+
+      selectionUpdate = this.resolveAISelectionOrThrow(
+        {
+          provider: dto.provider ?? currentSelection.provider,
+          model: dto.model ?? (dto.provider !== undefined ? undefined : currentSelection.model),
+        },
+        currentSelection,
+      );
+    }
 
     return this.conversationRepository.update(id, {
-      ...dto,
+      ...restDto,
+      ...selectionUpdate,
       ragMode: dto.ragMode ? normalizeRagMode(dto.ragMode) : undefined,
     });
   }
@@ -95,6 +121,7 @@ export class ConversationService {
     id: string,
     params: Partial<{
       title: string;
+      provider: AIProvider;
       model: string;
       systemPrompt: string;
       temperature: number;
@@ -106,7 +133,31 @@ export class ConversationService {
       ragMode: RagMode;
     }>,
   ): Promise<Conversation> {
-    return this.conversationRepository.update(id, params);
+    let selectionUpdate: Partial<{ provider: AIProvider; model: string }> = {};
+
+    if (params.provider !== undefined || params.model !== undefined) {
+      const conversation = await this.conversationRepository.findById(id);
+      if (!conversation) {
+        throw new NotFoundException('Conversation not found');
+      }
+
+      const currentSelection = resolveStoredAISelection({
+        provider: conversation.provider,
+        model: conversation.model,
+      });
+      selectionUpdate = this.resolveAISelectionOrThrow(
+        {
+          provider: params.provider ?? currentSelection.provider,
+          model: params.model ?? (params.provider !== undefined ? undefined : currentSelection.model),
+        },
+        currentSelection,
+      );
+    }
+
+    return this.conversationRepository.update(id, {
+      ...params,
+      ...selectionUpdate,
+    });
   }
 
   async getConversationWithMessages(userId: string, id: string) {
@@ -130,5 +181,18 @@ export class ConversationService {
 
   async getConversationTotals(conversationId: string) {
     return this.messageRepository.getTotals(conversationId);
+  }
+
+  private resolveAISelectionOrThrow(
+    selection: { provider?: unknown; model?: unknown },
+    fallback?: { provider: AIProvider; model: string },
+  ) {
+    try {
+      return resolveAISelection(selection, fallback);
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'Invalid AI provider/model selection',
+      );
+    }
   }
 }

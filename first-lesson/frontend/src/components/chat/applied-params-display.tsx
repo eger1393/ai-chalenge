@@ -31,8 +31,11 @@ export function AppliedParamsDisplay({ appliedParams, cost, usage, durationMs, c
   const parts: string[] = [];
 
   if (appliedParams) {
-    if (appliedParams.model && appliedParams.model !== DEFAULT_AI_PARAMS.model) {
-      parts.push(`model:${appliedParams.model}`);
+    if (
+      (appliedParams.provider && appliedParams.provider !== DEFAULT_AI_PARAMS.provider) ||
+      (appliedParams.model && appliedParams.model !== DEFAULT_AI_PARAMS.model)
+    ) {
+      parts.push(`model:${appliedParams.provider ? `${appliedParams.provider}:` : ''}${appliedParams.model}`);
     }
 
     if (appliedParams.temperature !== DEFAULT_AI_PARAMS.temperature) {

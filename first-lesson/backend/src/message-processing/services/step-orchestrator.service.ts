@@ -14,7 +14,10 @@ import {
   StepRunnerService,
   ValidationResult,
 } from './step-runner.service';
-import { ALLOWED_MODELS, DEFAULT_MODEL } from '../../ai/dto/ai-params.dto';
+import {
+  AIProvider,
+  resolveStoredAISelection,
+} from '../../ai/dto/ai-params.dto';
 import { normalizeRagMode, type RagMode } from '../../rag/constants';
 import { RagContextResult, RagDebugContext } from '../../rag/rag.types';
 import { ContextStrategyResult } from '../../context/strategies/context-strategy.interface';
@@ -43,6 +46,7 @@ interface RetryLoopResult {
 interface RuntimeConversationSettings {
   userId: string;
   projectId: string | null;
+  provider: AIProvider;
   model: string;
   temperature: number | null;
   maxTokens: number | null;
@@ -55,6 +59,7 @@ interface RuntimeConversationSettings {
 
 const INTERNAL_PLANNING_MODEL = 'gpt-4.1-mini';
 const INTERNAL_VALIDATION_MODEL = 'gpt-4.1-mini';
+const INTERNAL_LLM_PROVIDER: AIProvider = 'openai';
 const INTERNAL_PLANNING_TEMPERATURE = 0.2;
 const INTERNAL_VALIDATION_TEMPERATURE = 0;
 
@@ -82,13 +87,12 @@ export class StepOrchestratorService {
 
     const conversation = await this.conversationService.findOne(userId, conversationId);
     const envMaxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || '16384', 10);
-    const userModel =
-      conversation.model &&
-      ALLOWED_MODELS.includes(
-        conversation.model as (typeof ALLOWED_MODELS)[number],
-      )
-        ? conversation.model
-        : DEFAULT_MODEL;
+    const userSelection = resolveStoredAISelection({
+      provider: conversation.provider,
+      model: conversation.model,
+    });
+    const userProvider = userSelection.provider;
+    const userModel = userSelection.model;
     const executionTemperature = conversation.temperature ?? 1.0;
     const maxTokens = conversation.maxTokens ?? envMaxTokens;
 
@@ -136,8 +140,11 @@ export class StepOrchestratorService {
         userContent,
         memorySystemPrompt,
         invariants,
+        userProvider,
         userModel,
+        planningProvider: INTERNAL_LLM_PROVIDER,
         planningModel: INTERNAL_PLANNING_MODEL,
+        validationProvider: INTERNAL_LLM_PROVIDER,
         validationModel: INTERNAL_VALIDATION_MODEL,
         executionTemperature,
         planningTemperature: INTERNAL_PLANNING_TEMPERATURE,
@@ -167,6 +174,7 @@ export class StepOrchestratorService {
         userId,
         projectId,
         userContent,
+        userProvider,
         userModel,
         executionTemperature,
         maxTokens,
@@ -220,13 +228,12 @@ export class StepOrchestratorService {
     this.logger.log(`Message ${messageId}: resumed from attempt ${message.attemptNumber}`);
 
     const envMaxTokens = parseInt(process.env.OPENAI_MAX_TOKENS || '16384', 10);
-    const userModel =
-      conversation.model &&
-      ALLOWED_MODELS.includes(
-        conversation.model as (typeof ALLOWED_MODELS)[number],
-      )
-        ? conversation.model
-        : DEFAULT_MODEL;
+    const userSelection = resolveStoredAISelection({
+      provider: conversation.provider,
+      model: conversation.model,
+    });
+    const userProvider = userSelection.provider;
+    const userModel = userSelection.model;
     const executionTemperature = conversation.temperature ?? 1.0;
     const maxTokens = conversation.maxTokens ?? envMaxTokens;
 
@@ -252,8 +259,11 @@ export class StepOrchestratorService {
         userContent: message.userContent,
         memorySystemPrompt,
         invariants,
+        userProvider,
         userModel,
+        planningProvider: INTERNAL_LLM_PROVIDER,
         planningModel: INTERNAL_PLANNING_MODEL,
+        validationProvider: INTERNAL_LLM_PROVIDER,
         validationModel: INTERNAL_VALIDATION_MODEL,
         executionTemperature,
         planningTemperature: INTERNAL_PLANNING_TEMPERATURE,
@@ -283,6 +293,7 @@ export class StepOrchestratorService {
         userId: conversation.userId,
         projectId: conversation.projectId || undefined,
         userContent: message.userContent,
+        userProvider,
         userModel,
         executionTemperature,
         maxTokens,
@@ -311,6 +322,7 @@ export class StepOrchestratorService {
     userId: string;
     projectId?: string;
     userContent: string;
+    userProvider: AIProvider;
     userModel: string;
     executionTemperature: number;
     maxTokens: number;
@@ -323,6 +335,7 @@ export class StepOrchestratorService {
       messageId,
       conversationId,
       userContent,
+      userProvider,
       userModel,
       executionTemperature,
       maxTokens,
@@ -336,6 +349,7 @@ export class StepOrchestratorService {
     await this.messageRepository.updateStatus(messageId, 'done');
 
     await this.messageRepository.saveMeta(messageId, {
+      appliedProvider: userProvider,
       appliedModel: userModel,
       appliedTemperature: executionTemperature,
       appliedMaxTokens: maxTokens,
@@ -400,6 +414,7 @@ export class StepOrchestratorService {
       messageId,
       response: result.execResult,
       meta: {
+        provider: userProvider,
         model: userModel,
         totalTokens: result.totalPromptTokens + result.totalCompletionTokens,
         totalCost: result.totalCost,
@@ -417,8 +432,11 @@ export class StepOrchestratorService {
     userContent: string;
     memorySystemPrompt: string | undefined;
     invariants: string[];
+    userProvider: AIProvider;
     userModel: string;
+    planningProvider: AIProvider;
     planningModel: string;
+    validationProvider: AIProvider;
     validationModel: string;
     executionTemperature: number;
     planningTemperature: number;
@@ -443,8 +461,11 @@ export class StepOrchestratorService {
       userContent,
       memorySystemPrompt,
       invariants,
+      userProvider,
       userModel,
+      planningProvider,
       planningModel,
+      validationProvider,
       validationModel,
       executionTemperature,
       planningTemperature,
@@ -534,6 +555,7 @@ export class StepOrchestratorService {
           messageId,
           stepType: 'planning',
           attempt,
+          provider: planningProvider,
           model: planningModel,
           temperature: planningTemperature,
           maxTokens,
@@ -613,6 +635,7 @@ export class StepOrchestratorService {
             messageId,
             stepType: 'execution',
             attempt,
+            provider: userProvider,
             model: userModel,
             temperature: executionTemperature,
             maxTokens,
@@ -655,6 +678,7 @@ export class StepOrchestratorService {
           messageId,
           stepType: 'validation',
           attempt,
+          provider: validationProvider,
           model: validationModel,
           temperature: validationTemperature,
           maxTokens,
@@ -831,7 +855,7 @@ export class StepOrchestratorService {
     conversationId: string,
   ): Promise<RuntimeConversationSettings | null> {
     const result = await this.db.query(
-      `SELECT user_id, project_id, model, temperature, max_tokens, context_limit,
+      `SELECT user_id, project_id, provider, model, temperature, max_tokens, context_limit,
               system_prompt, rag_enabled, rag_query_rewrite_enabled, rag_mode
        FROM conversations
        WHERE id = $1`,
@@ -843,10 +867,12 @@ export class StepOrchestratorService {
     }
 
     const row = result.rows[0];
+    const selection = resolveStoredAISelection({ provider: row.provider, model: row.model });
     return {
       userId: row.user_id,
       projectId: row.project_id ?? null,
-      model: row.model,
+      provider: selection.provider,
+      model: selection.model,
       temperature: row.temperature != null ? parseFloat(String(row.temperature)) : null,
       maxTokens: row.max_tokens ?? null,
       contextLimit: row.context_limit ?? null,
@@ -925,6 +951,7 @@ function buildPipelineStrategyMetadata(
       stepType: step.stepType,
       attempt: step.attemptNumber,
       status: step.status,
+      provider: step.provider,
       model: step.model,
       promptTokens: step.promptTokens,
       completionTokens: step.completionTokens,

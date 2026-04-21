@@ -152,6 +152,7 @@ export async function removeProjectInvariant(projectId: string, invariantId: str
 export async function createConversation(data: {
   projectId: string;
   title?: string;
+  provider?: string;
   model?: string;
   systemPrompt?: string;
   temperature?: number;
@@ -179,6 +180,7 @@ export async function getConversation(id: string) {
 
 export async function updateConversation(id: string, data: {
   title?: string;
+  provider?: string;
   temperature?: number;
   maxTokens?: number;
   repetitionPenalty?: number;
@@ -263,6 +265,7 @@ export function startMessages(
   const body: Record<string, unknown> = { message };
   if (params) {
     const filtered: Record<string, unknown> = {};
+    if (params.provider) filtered.provider = params.provider;
     if (params.model) filtered.model = params.model;
     if (params.temperature !== undefined) filtered.temperature = params.temperature;
     if (params.maxTokens !== undefined) filtered.maxTokens = params.maxTokens;

@@ -1,3 +1,4 @@
+import { AIProvider } from '../../../ai/dto/ai-params.dto';
 import { RagContextResult } from '../../../rag/rag.types';
 import { MessageStep } from '../../repositories/step.repository';
 import { StepRunnerService, ValidationResult } from '../step-runner.service';
@@ -37,6 +38,7 @@ export interface StrategyExecutionStepParams {
   messageId: string;
   stepType: 'execution';
   attempt: number;
+  provider: AIProvider;
   model: string;
   temperature: number;
   maxTokens: number;

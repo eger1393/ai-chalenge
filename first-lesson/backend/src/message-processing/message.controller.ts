@@ -49,6 +49,7 @@ export class MessageController {
       // If params provided, update conversation params
       if (dto.params) {
         const updateData: Record<string, unknown> = {};
+        if (dto.params.provider) updateData.provider = dto.params.provider;
         if (dto.params.model) updateData.model = dto.params.model;
         if (dto.params.temperature != null) updateData.temperature = dto.params.temperature;
         if (dto.params.maxTokens != null) updateData.maxTokens = dto.params.maxTokens;
@@ -171,6 +172,7 @@ export class MessageController {
       status: s.status,
       content: s.outputResult ? (typeof s.outputResult === 'object' && (s.outputResult as Record<string, unknown>).text ? (s.outputResult as Record<string, unknown>).text : JSON.stringify(s.outputResult)) : '',
       attempt: s.attemptNumber,
+      provider: s.provider || '',
       model: s.model || '',
       promptTokens: s.promptTokens,
       completionTokens: s.completionTokens,

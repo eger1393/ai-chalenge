@@ -40,13 +40,14 @@ export function usePipeline() {
             attempt: event.attempt || prev.attempt,
             steps: [
               ...prev.steps,
-              {
-                stepType: event.step || 'execution',
-                status: 'running',
-                content: '',
-                attempt: event.attempt,
-                model: (event as any).model,
-              },
+                {
+                  stepType: event.step || 'execution',
+                  status: 'running',
+                  content: '',
+                  attempt: event.attempt,
+                  provider: event.provider,
+                  model: (event as any).model,
+                },
             ],
           };
         }
@@ -71,6 +72,7 @@ export function usePipeline() {
               ...steps[lastIdx],
               status: 'completed',
               content: event.result || steps[lastIdx].content,
+              provider: event.provider || steps[lastIdx].provider,
               model: (event as any).model || steps[lastIdx].model,
               promptTokens: (event as any).tokens?.prompt || steps[lastIdx].promptTokens,
               completionTokens: (event as any).tokens?.completion || steps[lastIdx].completionTokens,

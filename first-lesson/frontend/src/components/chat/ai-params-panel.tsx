@@ -3,9 +3,13 @@
 import { X, RotateCcw } from 'lucide-react';
 import {
   AIParams,
+  AVAILABLE_PROVIDERS,
   AVAILABLE_MODELS,
+  getDefaultModelForProvider,
+  MODELS_BY_PROVIDER,
   MODEL_LABELS,
   MODEL_CONTEXT_SIZES,
+  PROVIDER_LABELS,
   STRATEGY_LABELS,
   ContextStrategyType,
   RAG_MODE_LABELS,
@@ -33,6 +37,8 @@ export function AIParamsPanel({
   isContextStrategyLocked = false,
   onChangeContextStrategy,
 }: AIParamsPanelProps) {
+  const availableModels = MODELS_BY_PROVIDER[params.provider] || AVAILABLE_MODELS;
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -54,14 +60,38 @@ export function AIParamsPanel({
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
         {/* Model */}
         <div>
+          <label className="text-xs font-medium text-gray-700 block mb-1">Провайдер</label>
+          <p className="text-[10px] text-gray-400 mb-1.5">OpenAI использует внешний API. Ollama идёт через локально развернутую модель на твоём сервере.</p>
+          <select
+            value={params.provider}
+            onChange={(e) => {
+              const nextProvider = e.target.value as AIParams['provider'];
+              setParam('provider', nextProvider);
+              setParam('model', getDefaultModelForProvider(nextProvider));
+            }}
+            className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          >
+            {AVAILABLE_PROVIDERS.map((provider) => (
+              <option key={provider} value={provider}>
+                {PROVIDER_LABELS[provider] ?? provider}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
           <label className="text-xs font-medium text-gray-700 block mb-1">Модель</label>
-          <p className="text-[10px] text-gray-400 mb-1.5">Выбор модели OpenAI. Цены указаны за 1M токенов (вход/выход).</p>
+          <p className="text-[10px] text-gray-400 mb-1.5">
+            {params.provider === 'openai'
+              ? 'Для OpenAI в списке показаны цены за 1M токенов (вход/выход).'
+              : 'Локальная модель вызывается через Ollama-compatible API и не показывает API-cost в интерфейсе.'}
+          </p>
           <select
             value={params.model}
             onChange={(e) => setParam('model', e.target.value)}
             className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           >
-            {AVAILABLE_MODELS.map((m) => (
+            {availableModels.map((m) => (
               <option key={m} value={m}>
                 {MODEL_LABELS[m] ?? m}
               </option>
@@ -279,7 +309,7 @@ export function AIParamsPanel({
             <label className="text-xs font-medium text-gray-700">Штраф за повторы</label>
             <span className="text-xs font-mono text-gray-500">{params.repetitionPenalty.toFixed(1)}</span>
           </div>
-          <p className="text-[10px] text-gray-400 mb-1.5">OpenAI frequency_penalty. 0 — без штрафа, положительные — меньше повторов, отрицательные — больше повторов.</p>
+          <p className="text-[10px] text-gray-400 mb-1.5">Штраф за повторы. 0 — без штрафа, положительные — меньше повторов, отрицательные — больше повторов.</p>
           <input
             type="range"
             min={-2}

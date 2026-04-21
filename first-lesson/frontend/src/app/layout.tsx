@@ -8,7 +8,7 @@ const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
   title: 'ChatGPT App',
-  description: 'Chat with OpenAI GPT models',
+  description: 'Chat with OpenAI and local Ollama models',
 };
 
 export default function RootLayout({

@@ -1,9 +1,48 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { AIParams, AVAILABLE_MODELS, DEFAULT_AI_PARAMS, type RagMode } from '@/types/ai-params';
+import {
+  AIParams,
+  DEFAULT_AI_PARAMS,
+  getDefaultModelForProvider,
+  inferProviderFromModel,
+  isAIProvider,
+  isModelSupportedByProvider,
+  type RagMode,
+} from '@/types/ai-params';
 
 const STORAGE_KEY = 'aiParams';
+
+function normalizeParams(parsed: Record<string, unknown>, fallback: AIParams = DEFAULT_AI_PARAMS): AIParams {
+  const provider = isAIProvider(parsed.provider)
+    ? parsed.provider
+    : inferProviderFromModel(parsed.model) ?? fallback.provider;
+  const model = isModelSupportedByProvider(provider, parsed.model)
+    ? parsed.model
+    : getDefaultModelForProvider(provider);
+
+  return {
+    provider,
+    model,
+    temperature: typeof parsed.temperature === 'number' ? parsed.temperature : fallback.temperature,
+    maxTokens: typeof parsed.maxTokens === 'number' ? parsed.maxTokens : fallback.maxTokens,
+    repetitionPenalty: typeof parsed.repetitionPenalty === 'number' ? parsed.repetitionPenalty : fallback.repetitionPenalty,
+    systemPrompt: typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : fallback.systemPrompt,
+    contextLimit: typeof parsed.contextLimit === 'number' ? parsed.contextLimit : fallback.contextLimit,
+    ragEnabled: typeof parsed.ragEnabled === 'boolean' ? parsed.ragEnabled : fallback.ragEnabled,
+    ragQueryRewriteEnabled:
+      typeof parsed.ragQueryRewriteEnabled === 'boolean'
+        ? parsed.ragQueryRewriteEnabled
+        : fallback.ragQueryRewriteEnabled,
+    ragMode: parsed.ragMode === 'reranker' ? 'reranker' : fallback.ragMode,
+    contextStrategy:
+      typeof parsed.contextStrategy === 'string' && ['sliding_window', 'sticky_facts'].includes(parsed.contextStrategy)
+        ? (parsed.contextStrategy as AIParams['contextStrategy'])
+        : fallback.contextStrategy,
+    slidingWindowKeepLast:
+      typeof parsed.slidingWindowKeepLast === 'number' ? parsed.slidingWindowKeepLast : fallback.slidingWindowKeepLast,
+  };
+}
 
 function loadFromStorage(): AIParams | null {
   if (typeof window === 'undefined') return null;
@@ -28,22 +67,11 @@ function loadFromStorage(): AIParams | null {
       }
     }
 
-    return {
-      model: typeof parsed.model === 'string' && (AVAILABLE_MODELS as readonly string[]).includes(parsed.model) ? parsed.model : DEFAULT_AI_PARAMS.model,
-      temperature: typeof parsed.temperature === 'number' ? parsed.temperature : DEFAULT_AI_PARAMS.temperature,
-      maxTokens: typeof parsed.maxTokens === 'number' ? parsed.maxTokens : DEFAULT_AI_PARAMS.maxTokens,
-      repetitionPenalty: typeof parsed.repetitionPenalty === 'number' ? parsed.repetitionPenalty : DEFAULT_AI_PARAMS.repetitionPenalty,
-      systemPrompt: typeof parsed.systemPrompt === 'string' ? parsed.systemPrompt : DEFAULT_AI_PARAMS.systemPrompt,
-      contextLimit: typeof parsed.contextLimit === 'number' ? parsed.contextLimit : DEFAULT_AI_PARAMS.contextLimit,
-      ragEnabled: typeof parsed.ragEnabled === 'boolean' ? parsed.ragEnabled : DEFAULT_AI_PARAMS.ragEnabled,
-      ragQueryRewriteEnabled:
-        typeof parsed.ragQueryRewriteEnabled === 'boolean'
-          ? parsed.ragQueryRewriteEnabled
-          : DEFAULT_AI_PARAMS.ragQueryRewriteEnabled,
-      ragMode: parsed.ragMode === 'reranker' ? 'reranker' : DEFAULT_AI_PARAMS.ragMode,
+    return normalizeParams({
+      ...parsed,
       contextStrategy,
       slidingWindowKeepLast,
-    };
+    });
   } catch {
     return null;
   }
@@ -100,6 +128,21 @@ export function useAIParams() {
     saveToStorage(DEFAULT_AI_PARAMS);
   }, []);
 
+  const hydrateConversationParams = useCallback((next: Partial<AIParams>) => {
+    setParams((prev) => {
+      const merged = normalizeParams(next as Record<string, unknown>, prev);
+      return {
+        ...prev,
+        ...merged,
+      };
+    });
+  }, []);
+
+  const restoreStoredParams = useCallback(() => {
+    const stored = loadFromStorage();
+    setParams(stored ?? DEFAULT_AI_PARAMS);
+  }, []);
+
   const setConversationRagConfig = useCallback((
     ragEnabled: boolean,
     ragMode: RagMode,
@@ -124,6 +167,7 @@ export function useAIParams() {
   }, []);
 
   const hasNonDefaults =
+    params.provider !== DEFAULT_AI_PARAMS.provider ||
     params.model !== DEFAULT_AI_PARAMS.model ||
     params.temperature !== DEFAULT_AI_PARAMS.temperature ||
     params.maxTokens !== DEFAULT_AI_PARAMS.maxTokens ||
@@ -140,6 +184,8 @@ export function useAIParams() {
     params,
     setParam,
     resetParams,
+    hydrateConversationParams,
+    restoreStoredParams,
     hasNonDefaults,
     setConversationRagConfig,
     restoreStoredRagConfig,

@@ -47,6 +47,7 @@ export function useConversations() {
   const create = useCallback(
     async (
       projectId: string,
+      provider?: string,
       model?: string,
       systemPrompt?: string,
       ragEnabled?: boolean,
@@ -56,6 +57,7 @@ export function useConversations() {
     ) => {
       const conv = await createConversation({
         projectId,
+        provider,
         model,
         systemPrompt,
         ragEnabled,

@@ -15,7 +15,7 @@ import { useInvariants } from '@/hooks/use-invariants';
 import { useNotificationContext } from '@/context/notification-context';
 import { addProjectInvariant, updateConversationContext } from '@/lib/api';
 import { IssueNotification } from '@/types/notification';
-import type { ContextStrategyType } from '@/types/ai-params';
+import type { AIParams, ContextStrategyType } from '@/types/ai-params';
 import { ConversationSidebar } from './conversation-sidebar';
 import { ContextIndicator } from './context-indicator';
 import { SubscriptionIndicator } from './subscription-indicator';
@@ -38,8 +38,8 @@ export function ChatLayout() {
     setParam,
     resetParams,
     hasNonDefaults,
-    setConversationRagConfig,
-    restoreStoredRagConfig,
+    hydrateConversationParams,
+    restoreStoredParams,
   } = useAIParams();
   const pipeline = usePipeline();
   const facts = useFacts(chat.conversationId);
@@ -80,7 +80,19 @@ export function ChatLayout() {
         setConversationStrategy(detail?.contextStrategy || undefined);
         setIsContextStrategyLocked((detail?.messages.length ?? 0) > 0);
         if (detail) {
-          setConversationRagConfig(detail.ragEnabled, detail.ragMode, detail.ragQueryRewriteEnabled);
+          hydrateConversationParams({
+            provider: detail.provider as AIParams['provider'],
+            model: detail.model,
+            temperature: detail.temperature,
+            maxTokens: detail.maxTokens,
+            repetitionPenalty: detail.repetitionPenalty,
+            systemPrompt: detail.systemPrompt || '',
+            contextLimit: detail.contextLimit,
+            ragEnabled: detail.ragEnabled,
+            ragQueryRewriteEnabled: detail.ragQueryRewriteEnabled,
+            ragMode: detail.ragMode,
+            contextStrategy: (detail.contextStrategy as ContextStrategyType) || params.contextStrategy,
+          });
         }
         const resolvedStrategy = detail?.contextStrategy || params.contextStrategy;
         if (resolvedStrategy === 'sticky_facts') {
@@ -99,7 +111,7 @@ export function ChatLayout() {
       chat.startNew();
       setConversationStrategy(undefined);
       setIsContextStrategyLocked(false);
-      restoreStoredRagConfig();
+      restoreStoredParams();
       pipeline.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -141,9 +153,9 @@ export function ChatLayout() {
     conversations.select(null);
     setConversationStrategy(undefined);
     setIsContextStrategyLocked(false);
-    restoreStoredRagConfig();
+    restoreStoredParams();
     setSidebarOpen(false);
-  }, [conversations, restoreStoredRagConfig]);
+  }, [conversations, restoreStoredParams]);
 
   const handleContextStrategyChange = useCallback(
     async (nextStrategy: ContextStrategyType) => {
@@ -182,6 +194,7 @@ export function ChatLayout() {
         if (!projectId) return;
         const conv = await conversations.create(
           projectId,
+          params.provider,
           params.model,
           params.systemPrompt,
           params.ragEnabled,
@@ -244,16 +257,17 @@ export function ChatLayout() {
         chat.startNew();
         setConversationStrategy(undefined);
         setIsContextStrategyLocked(false);
-        restoreStoredRagConfig();
+        restoreStoredParams();
       }
     },
-    [conversations, chat, restoreStoredRagConfig],
+    [conversations, chat, restoreStoredParams],
   );
 
   const handleNewConversationInProject = useCallback(
     async (projectId: string) => {
       const conv = await conversations.create(
         projectId,
+        params.provider,
         params.model,
         params.systemPrompt,
         params.ragEnabled,
@@ -291,6 +305,21 @@ export function ChatLayout() {
       if (chat.conversationId) {
         chat.loadConversation(chat.conversationId).then((detail) => {
           setConversationStrategy(detail?.contextStrategy || undefined);
+          if (detail) {
+            hydrateConversationParams({
+              provider: detail.provider as AIParams['provider'],
+              model: detail.model,
+              temperature: detail.temperature,
+              maxTokens: detail.maxTokens,
+              repetitionPenalty: detail.repetitionPenalty,
+              systemPrompt: detail.systemPrompt || '',
+              contextLimit: detail.contextLimit,
+              ragEnabled: detail.ragEnabled,
+              ragQueryRewriteEnabled: detail.ragQueryRewriteEnabled,
+              ragMode: detail.ragMode,
+              contextStrategy: (detail.contextStrategy as ContextStrategyType) || params.contextStrategy,
+            });
+          }
           loadSubscriptions(chat.conversationId!);
           pipeline.reset();
         });

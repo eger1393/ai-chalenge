@@ -18,6 +18,7 @@ export interface Message {
 }
 
 export interface MessageMetaData {
+  appliedProvider?: string;
   appliedModel?: string;
   appliedTemperature?: number;
   appliedMaxTokens?: number;
@@ -196,14 +197,15 @@ export class MessageRepository extends BaseRepository<Message> {
     const id = crypto.randomUUID();
     await this.db.query(
       `INSERT INTO message_meta (
-        id, message_id, applied_model, applied_temperature, applied_max_tokens,
+        id, message_id, applied_provider, applied_model, applied_temperature, applied_max_tokens,
         applied_repetition_penalty, prompt_tokens, completion_tokens, total_tokens,
         cost, duration_ms, context_used_tokens, context_max_tokens,
         truncated_messages, truncated_tokens
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
       [
         id,
         messageId,
+        meta.appliedProvider ?? null,
         meta.appliedModel ?? null,
         meta.appliedTemperature ?? null,
         meta.appliedMaxTokens ?? null,
@@ -273,6 +275,7 @@ export class MessageRepository extends BaseRepository<Message> {
     if (rows.length === 0) return null;
     const row = rows[0];
     return {
+      appliedProvider: row.applied_provider ?? undefined,
       appliedModel: row.applied_model ?? undefined,
       appliedTemperature: row.applied_temperature ?? undefined,
       appliedMaxTokens: row.applied_max_tokens ?? undefined,

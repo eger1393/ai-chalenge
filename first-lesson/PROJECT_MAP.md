@@ -9,6 +9,7 @@ first-lesson/
 ├── GLOBAL_AGENTS_CONTEXT.md    # Снимок глобального AGENTS из /home/unix/.codex/AGENTS.md
 ├── AGENTS.md                   # Корневые правила проекта + карта вложенных AGENTS.md
 ├── backend/                    # NestJS API
+├── docs/                       # Эксплуатационная и интеграционная документация
 ├── frontend/                   # Next.js 14 SPA
 ├── github-explorer-mcp/        # MCP-сервер GitHub (stdio + supergateway)
 ├── knowledge-base-mcp/         # MCP-сервер базы знаний + импорт Telegram-дампов с embeddings
@@ -16,6 +17,9 @@ first-lesson/
 ├── docker-compose.yml          # 6 сервисов: postgres, postgres-mcp, github-explorer-mcp,
 │                               #   knowledge-base-mcp, backend, frontend
 ├── deploy.md                   # Процедура деплоя (SSH, порты, скрипты)
+├── docs/ollama-dev-gpu-server-gemma4-api.md
+│                               # Публичный контракт `Ollama API` для `dev-gpu-server.superlook.ai`
+│                               # и текущей модели `gemma4:31b`
 ├── RAG_CONTROL_QUESTIONS.md    # Контрольный набор вопросов для проверки RAG по Telegram-дампу
 ├── swarm-report/               # Отчёты задач
 └── PROJECT_MAP.md              # ← этот файл
@@ -38,7 +42,7 @@ first-lesson/
 
 ## Backend (`backend/`)
 
-**Стек:** NestJS, TypeScript, pg (raw SQL), OpenAI SDK, Passport JWT, bcryptjs, helmet, throttler
+**Стек:** NestJS, TypeScript, pg (raw SQL), OpenAI SDK (OpenAI + Ollama-compatible `/v1`), Passport JWT, bcryptjs, helmet, throttler
 
 ### Модули
 
@@ -84,10 +88,10 @@ src/
 │   ├── repositories/context.repository.ts
 │   └── strategies/             # sliding-window, sticky-facts
 │
-├── ai/                         # Инфраструктура OpenAI
-│   ├── openai.service.ts       # callOpenAI, callOpenAIStream, callOpenAIStreamWithTools, calculateCost
+├── ai/                         # LLM-инфраструктура OpenAI + локальный Ollama-провайдер
+│   ├── openai.service.ts       # Router поверх OpenAI SDK: OpenAI API + Ollama-compatible `/v1`
 │   ├── token.service.ts        # countTokens (tiktoken)
-│   └── dto/ai-params.dto.ts    # ALLOWED_MODELS, MODEL_PRICING, MODEL_CONTEXT_WINDOWS
+│   └── dto/ai-params.dto.ts    # providers/models catalog, pricing, context windows
 │
 ├── rag/                        # Обычный backend-контур RAG без MCP
 │   ├── rag.module.ts           # Модуль RAG
@@ -137,12 +141,12 @@ users (id UUID PK, username, password_hash, role, created_at)
 user_profiles (id, user_id FK→users, response_language, dialogue_style, response_brevity, custom_prompt, preferences JSONB)
 projects (id, user_id FK→users, title, description, status, created_at, updated_at)
 project_invariants (id, project_id FK→projects ON DELETE CASCADE, content)
-conversations (id, project_id FK→projects, user_id FK→users, title, model, system_prompt, temperature, max_tokens, repetition_penalty, context_limit, rag_enabled, rag_query_rewrite_enabled, rag_mode, created_at, updated_at)
+conversations (id, project_id FK→projects, user_id FK→users, title, provider, model, system_prompt, temperature, max_tokens, repetition_penalty, context_limit, rag_enabled, rag_query_rewrite_enabled, rag_mode, created_at, updated_at)
 conversation_contexts (id, conversation_id UNIQUE FK, strategy_type, strategy_data JSONB, summary, summary_up_to_index, active_branch_id FK→branches; активная продуктовая стратегия — `sliding_window` или `sticky_facts`)
 conversation_branches (id, context_id FK→contexts, name, parent_branch_id, checkpoint_message_id) -- legacy schema, больше не используется публичным контуром
 messages (id, conversation_id FK, branch_id FK, user_content, assistant_content, status, current_step, attempt_number, max_attempts, error_message)
-message_steps (id, message_id FK, step_type, attempt_number, status, input_context JSONB, output_result JSONB, model, tokens, cost, duration_ms, validation_passed/reason)
-message_meta (id, message_id UNIQUE FK, applied_model/temperature/max_tokens, tokens, cost, duration_ms, context stats)
+message_steps (id, message_id FK, step_type, attempt_number, status, input_context JSONB, output_result JSONB, provider, model, tokens, cost, duration_ms, validation_passed/reason)
+message_meta (id, message_id UNIQUE FK, applied_provider/applied_model/temperature/max_tokens, tokens, cost, duration_ms, context stats)
 message_debug (id, message_id UNIQUE FK, strategy_type, token_breakdown JSONB, facts_snapshot JSONB, strategy_metadata JSONB, rag_context JSONB, memory_layers JSONB)
 checkpoints (id, conversation_id FK, message_id FK, label) -- legacy schema, больше не используется публичным контуром
 issue_subscriptions (DEPRECATED — подписки теперь в MCP: mcp_issue_subscriptions)
@@ -173,7 +177,7 @@ src/
 │   ├── chat-layout.tsx         # Главный оркестратор: sidebar + chat + params
 │   ├── conversation-sidebar.tsx # Проекты (accordion) + диалоги
 │   ├── chat-window.tsx, chat-input.tsx, message-bubble.tsx
-│   ├── ai-params-panel.tsx     # Правый drawer: параметры AI
+│   ├── ai-params-panel.tsx     # Правый drawer: выбор провайдера, модели и параметров AI
 │   ├── pipeline-message-bubble.tsx, pipeline-stepper.tsx, pipeline-controls.tsx
 │   ├── context-indicator.tsx, applied-params-display.tsx, debug-panel.tsx
 │   ├── strategy-selector.tsx, facts-panel.tsx
@@ -185,7 +189,7 @@ src/
 │   ├── use-chat.ts             # messages (envelope→UI маппинг), send, loadConversation
 │   ├── use-conversations.ts    # conversations[], create(projectId), select, remove
 │   ├── use-tasks.ts            # projects[], addProject, removeProject
-│   ├── use-ai-params.ts        # AI params (local defaults + гидрация RAG/rewrite-настроек из active conversation)
+│   ├── use-ai-params.ts        # AI params (local defaults + гидрация параметров active conversation)
 │   ├── use-pipeline.ts         # Pipeline SSE: start, pause, resume, cancel (messageId)
 │   ├── use-invariants.ts, use-facts.ts, use-personalization.ts
 │   ├── use-notification-stream.ts  # Persistent SSE для push-уведомлений
@@ -292,6 +296,9 @@ src/
 | Переменная | Где | Назначение |
 |---|---|---|
 | `OPENAI_API_KEY` | backend | Ключ OpenAI |
+| `OLLAMA_BASE_URL` | backend | OpenAI-compatible `/v1` URL локального Ollama-шлюза |
+| `OLLAMA_API_KEY` | backend | Ключ доступа к локальному Ollama-шлюзу |
+| `OLLAMA_TIMEOUT` | backend | Таймаут запросов к локальному Ollama-провайдеру |
 | `DATABASE_URL` | backend | PostgreSQL connection string |
 | `JWT_SECRET` | backend | Секрет JWT |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` | backend | Единственный пользователь |

@@ -12,9 +12,15 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import { ALLOWED_PROVIDERS } from '../../ai/dto/ai-params.dto';
 import { ALLOWED_RAG_MODES } from '../../rag/constants';
 
 class SendMessageParamsDto {
+  @IsOptional()
+  @IsString()
+  @IsIn(ALLOWED_PROVIDERS as unknown as string[])
+  provider?: string;
+
   @IsOptional()
   @IsString()
   model?: string;

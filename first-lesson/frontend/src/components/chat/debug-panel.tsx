@@ -177,7 +177,9 @@ function PipelineStepCard({ step, index, isExpanded, onToggle }: {
         </span>
 
         {/* Compact meta */}
-        <span className={`text-[10px] font-mono ${colors.text} opacity-60`}>{step.model}</span>
+        <span className={`text-[10px] font-mono ${colors.text} opacity-60`}>
+          {step.provider ? `${step.provider}:${step.model}` : step.model}
+        </span>
         <span className={`text-[10px] font-mono ${colors.text} opacity-60`}>{formatTokens(totalTokens)}</span>
         <span className={`text-[10px] font-mono ${colors.text} opacity-60`}>{formatCost(step.cost)}</span>
         <span className={`text-[10px] font-mono ${colors.text} opacity-60 flex items-center gap-0.5`}>
@@ -485,7 +487,7 @@ export function DebugPanel({ debugData, isLoading }: DebugPanelProps) {
 
           {meta?.appliedModel && (
             <span className="px-1.5 py-0.5 rounded bg-gray-200 text-[10px] font-mono text-gray-600">
-              {meta.appliedModel}
+              {meta.appliedProvider ? `${meta.appliedProvider}:${meta.appliedModel}` : meta.appliedModel}
             </span>
           )}
 

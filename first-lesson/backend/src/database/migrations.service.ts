@@ -91,6 +91,7 @@ export class MigrationsService {
         project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         title VARCHAR(200) NOT NULL DEFAULT 'New dialog',
+        provider VARCHAR(20) NOT NULL DEFAULT 'openai',
         model VARCHAR(50) NOT NULL DEFAULT 'gpt-4o-mini',
         system_prompt TEXT,
         temperature DOUBLE PRECISION NOT NULL DEFAULT 1.0,
@@ -103,6 +104,15 @@ export class MigrationsService {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
+    `);
+    await this.db.query(`
+      ALTER TABLE conversations
+      ADD COLUMN IF NOT EXISTS provider VARCHAR(20) NOT NULL DEFAULT 'openai'
+    `);
+    await this.db.query(`
+      UPDATE conversations
+      SET provider = 'openai'
+      WHERE provider IS NULL OR provider = ''
     `);
     await this.db.query(`
       ALTER TABLE conversations
@@ -253,6 +263,7 @@ export class MigrationsService {
         status VARCHAR(20) NOT NULL DEFAULT 'running',
         input_context JSONB,
         output_result JSONB,
+        provider VARCHAR(20),
         model VARCHAR(50),
         prompt_tokens INTEGER DEFAULT 0,
         completion_tokens INTEGER DEFAULT 0,
@@ -265,6 +276,10 @@ export class MigrationsService {
       )
     `);
     await this.db.query(`
+      ALTER TABLE message_steps
+      ADD COLUMN IF NOT EXISTS provider VARCHAR(20)
+    `);
+    await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_message_steps_message ON message_steps(message_id, created_at)
     `);
 
@@ -273,6 +288,7 @@ export class MigrationsService {
       CREATE TABLE IF NOT EXISTS message_meta (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         message_id UUID NOT NULL UNIQUE REFERENCES messages(id) ON DELETE CASCADE,
+        applied_provider VARCHAR(20),
         applied_model VARCHAR(50),
         applied_temperature DOUBLE PRECISION,
         applied_max_tokens INTEGER,
@@ -288,6 +304,10 @@ export class MigrationsService {
         truncated_tokens INTEGER DEFAULT 0,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
+    `);
+    await this.db.query(`
+      ALTER TABLE message_meta
+      ADD COLUMN IF NOT EXISTS applied_provider VARCHAR(20)
     `);
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_message_meta_message ON message_meta(message_id)
