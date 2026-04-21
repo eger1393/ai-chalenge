@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { type AIProvider } from '../ai/dto/ai-params.dto';
 import {
   DEFAULT_RAG_MODE,
   RAG_DEFAULT_CANDIDATE_POOL,
@@ -31,6 +32,8 @@ export class RagService {
 
   async buildContextBlock(
     query: string,
+    provider: AIProvider,
+    model: string,
     mode: RagMode = DEFAULT_RAG_MODE,
     queryRewriteEnabled = false,
     retrievalHint?: RagRetrievalHintDebug,
@@ -75,6 +78,8 @@ export class RagService {
     const queryRewrite = queryRewriteEnabled
       ? await this.ragQueryRewriteService.rewrite(
           normalizedQuery,
+          provider,
+          model,
           traceId,
           normalizedRetrievalHint.applied ? normalizedRetrievalHint.text : undefined,
         )

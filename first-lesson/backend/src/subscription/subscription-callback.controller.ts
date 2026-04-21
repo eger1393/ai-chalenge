@@ -6,7 +6,9 @@ import {
   UnauthorizedException,
   Logger,
 } from '@nestjs/common';
+import { resolveStoredAISelection } from '../ai/dto/ai-params.dto';
 import { OpenAIService } from '../ai/openai.service';
+import { ConversationService } from '../conversation/conversation.service';
 import { NotificationService } from '../notification/notification.service';
 import {
   SubscriptionCallbackDto,
@@ -19,6 +21,7 @@ export class SubscriptionCallbackController {
 
   constructor(
     private readonly openaiService: OpenAIService,
+    private readonly conversationService: ConversationService,
     private readonly notificationService: NotificationService,
   ) {}
 
@@ -40,7 +43,11 @@ export class SubscriptionCallbackController {
 
     for (const issue of dto.issues) {
       try {
-        const summary = await this.generateIssueSummary(issue);
+        const summary = await this.generateIssueSummary(
+          dto.user_id,
+          dto.conversation_id,
+          issue,
+        );
 
         const created = await this.notificationService.createAndPush(dto.user_id, {
           subscriptionId: dto.subscription_id,
@@ -70,12 +77,19 @@ export class SubscriptionCallbackController {
   }
 
   private async generateIssueSummary(
+    userId: string,
+    conversationId: string,
     issue: CallbackIssueDto,
   ): Promise<string> {
     const userContent = `Issue #${issue.number}: ${issue.title}\n\n${issue.body || 'No description'}`;
+    const conversation = await this.conversationService.findOne(userId, conversationId);
+    const selection = resolveStoredAISelection({
+      provider: conversation.provider,
+      model: conversation.model,
+    });
 
     const completion = await this.openaiService.callOpenAI(
-      'gpt-4.1-nano',
+      selection.model,
       [
         {
           role: 'system',
@@ -86,6 +100,8 @@ export class SubscriptionCallbackController {
       ],
       0.3,
       300,
+      undefined,
+      selection.provider,
     );
 
     return completion.choices[0]?.message?.content ?? '';

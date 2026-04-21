@@ -1,6 +1,7 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { type AIProvider } from '../ai/dto/ai-params.dto';
 import { OpenAIService } from '../ai/openai.service';
-import { RAG_QUERY_REWRITE_MAX_TOKENS, RAG_QUERY_REWRITE_MODEL } from './constants';
+import { RAG_QUERY_REWRITE_MAX_TOKENS } from './constants';
 import type { RagQueryRewriteReason } from './rag.types';
 
 export interface RagQueryRewriteResult {
@@ -20,19 +21,22 @@ export class RagQueryRewriteService {
 
   async rewrite(
     query: string,
+    provider: AIProvider,
+    model: string,
     traceId: string,
     contextHint?: string,
   ): Promise<RagQueryRewriteResult> {
     this.logger.log(
       `[${traceId}] Query rewrite start ${JSON.stringify({
-        model: RAG_QUERY_REWRITE_MODEL,
+        provider,
+        model,
         queryChars: query.length,
         queryPreview: truncateForLog(query),
       })}`,
     );
 
     const response = await this.openaiService.callOpenAI(
-      RAG_QUERY_REWRITE_MODEL,
+      model,
       [
         {
           role: 'system',
@@ -73,6 +77,8 @@ export class RagQueryRewriteService {
       ],
       0,
       RAG_QUERY_REWRITE_MAX_TOKENS,
+      undefined,
+      provider,
     );
 
     const rawContent = response.choices?.[0]?.message?.content?.trim();
@@ -98,7 +104,8 @@ export class RagQueryRewriteService {
     const applied = parsed.applied;
     this.logger.log(
       `[${traceId}] Query rewrite result ${JSON.stringify({
-        model: RAG_QUERY_REWRITE_MODEL,
+        provider,
+        model,
         applied,
         rawApplied: parsed.applied,
         reason: parsed.reason,
@@ -108,7 +115,7 @@ export class RagQueryRewriteService {
     );
 
     return {
-      model: RAG_QUERY_REWRITE_MODEL,
+      model,
       originalQuery: query,
       rewrittenQuery,
       applied,

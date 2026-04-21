@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { type AIProvider } from '../../../ai/dto/ai-params.dto';
 import { ContextService } from '../../../context/context.service';
 import { type RagMode } from '../../../rag/constants';
 import { RagService } from '../../../rag/rag.service';
@@ -17,6 +18,8 @@ interface ResolveStrategyParams {
   ragQueryRewriteEnabled: boolean;
   conversationId: string;
   userContent: string;
+  userProvider: AIProvider;
+  userModel: string;
 }
 
 @Injectable()
@@ -48,6 +51,8 @@ export class MessageProcessingStrategyResolverService {
     const retrievalHint = await this.contextService.buildRagRetrievalHint(params.conversationId);
     const ragResult = await this.ragService.buildContextBlock(
       params.userContent,
+      params.userProvider,
+      params.userModel,
       params.ragMode,
       params.ragQueryRewriteEnabled,
       retrievalHint,

@@ -1,4 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { DEFAULT_MODEL, DEFAULT_PROVIDER } from '../ai/dto/ai-params.dto';
 import { DatabaseService } from './database.service';
 
 @Injectable()
@@ -91,8 +92,8 @@ export class MigrationsService {
         project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
         user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         title VARCHAR(200) NOT NULL DEFAULT 'New dialog',
-        provider VARCHAR(20) NOT NULL DEFAULT 'openai',
-        model VARCHAR(50) NOT NULL DEFAULT 'gpt-4o-mini',
+        provider VARCHAR(20) NOT NULL DEFAULT '${DEFAULT_PROVIDER}',
+        model VARCHAR(50) NOT NULL DEFAULT '${DEFAULT_MODEL}',
         system_prompt TEXT,
         temperature DOUBLE PRECISION NOT NULL DEFAULT 1.0,
         max_tokens INTEGER NOT NULL DEFAULT 16384,
@@ -107,7 +108,7 @@ export class MigrationsService {
     `);
     await this.db.query(`
       ALTER TABLE conversations
-      ADD COLUMN IF NOT EXISTS provider VARCHAR(20) NOT NULL DEFAULT 'openai'
+      ADD COLUMN IF NOT EXISTS provider VARCHAR(20) NOT NULL DEFAULT '${DEFAULT_PROVIDER}'
     `);
     await this.db.query(`
       UPDATE conversations

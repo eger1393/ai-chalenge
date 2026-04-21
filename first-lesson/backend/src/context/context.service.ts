@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { type AIProvider } from '../ai/dto/ai-params.dto';
 import { ContextRepository, ConversationContext } from './repositories/context.repository';
 import { TransactionService } from '../database/transaction.service';
 import { MessageRepository } from '../conversation/repositories/message.repository';
@@ -252,6 +253,8 @@ export class ContextService {
     conversationId: string,
     userContent: string,
     assistantReply: string,
+    provider: AIProvider,
+    model: string,
   ): Promise<void> {
     const existingFacts = await this.getFacts(conversationId);
 
@@ -287,13 +290,15 @@ Rules:
 
     try {
       const response = await this.openaiService.callOpenAI(
-        'gpt-4.1-nano',
+        model,
         [
           { role: 'system', content: 'You extract facts from dialogue. Respond ONLY with valid JSON.' },
           { role: 'user', content: prompt },
         ],
         0.2,
         1024,
+        undefined,
+        provider,
       );
 
       const content = response.choices?.[0]?.message?.content || '{"upsert":[],"remove":[]}';

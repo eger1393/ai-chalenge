@@ -57,9 +57,6 @@ interface RuntimeConversationSettings {
   ragMode: RagMode;
 }
 
-const INTERNAL_PLANNING_MODEL = 'gpt-4.1-mini';
-const INTERNAL_VALIDATION_MODEL = 'gpt-4.1-mini';
-const INTERNAL_LLM_PROVIDER: AIProvider = 'openai';
 const INTERNAL_PLANNING_TEMPERATURE = 0.2;
 const INTERNAL_VALIDATION_TEMPERATURE = 0;
 
@@ -142,10 +139,6 @@ export class StepOrchestratorService {
         invariants,
         userProvider,
         userModel,
-        planningProvider: INTERNAL_LLM_PROVIDER,
-        planningModel: INTERNAL_PLANNING_MODEL,
-        validationProvider: INTERNAL_LLM_PROVIDER,
-        validationModel: INTERNAL_VALIDATION_MODEL,
         executionTemperature,
         planningTemperature: INTERNAL_PLANNING_TEMPERATURE,
         validationTemperature: INTERNAL_VALIDATION_TEMPERATURE,
@@ -261,10 +254,6 @@ export class StepOrchestratorService {
         invariants,
         userProvider,
         userModel,
-        planningProvider: INTERNAL_LLM_PROVIDER,
-        planningModel: INTERNAL_PLANNING_MODEL,
-        validationProvider: INTERNAL_LLM_PROVIDER,
-        validationModel: INTERNAL_VALIDATION_MODEL,
         executionTemperature,
         planningTemperature: INTERNAL_PLANNING_TEMPERATURE,
         validationTemperature: INTERNAL_VALIDATION_TEMPERATURE,
@@ -389,6 +378,8 @@ export class StepOrchestratorService {
           conversationId,
           userContent,
           result.execResult,
+          userProvider,
+          userModel,
         );
       }
     } catch (error) {
@@ -434,10 +425,6 @@ export class StepOrchestratorService {
     invariants: string[];
     userProvider: AIProvider;
     userModel: string;
-    planningProvider: AIProvider;
-    planningModel: string;
-    validationProvider: AIProvider;
-    validationModel: string;
     executionTemperature: number;
     planningTemperature: number;
     validationTemperature: number;
@@ -463,10 +450,6 @@ export class StepOrchestratorService {
       invariants,
       userProvider,
       userModel,
-      planningProvider,
-      planningModel,
-      validationProvider,
-      validationModel,
       executionTemperature,
       planningTemperature,
       validationTemperature,
@@ -505,6 +488,8 @@ export class StepOrchestratorService {
         ragQueryRewriteEnabled,
         conversationId,
         userContent,
+        userProvider,
+        userModel,
       });
 
       if (completedStepTypes.has('planning') && currentPlanResult) {
@@ -555,8 +540,8 @@ export class StepOrchestratorService {
           messageId,
           stepType: 'planning',
           attempt,
-          provider: planningProvider,
-          model: planningModel,
+          provider: userProvider,
+          model: userModel,
           temperature: planningTemperature,
           maxTokens,
           messages: planningMessages,
@@ -678,8 +663,8 @@ export class StepOrchestratorService {
           messageId,
           stepType: 'validation',
           attempt,
-          provider: validationProvider,
-          model: validationModel,
+          provider: userProvider,
+          model: userModel,
           temperature: validationTemperature,
           maxTokens,
           messages: validationMessages,
