@@ -98,3 +98,15 @@ export interface MessageProcessingStrategy {
     userContent: string;
   }): FinalizedValidationResult;
 }
+
+export function buildValidationHistoryMessages(
+  contextMessages: Array<{ role: string; content: string }>,
+): Array<{ role: 'user' | 'assistant'; content: string }> {
+  return contextMessages.map((message) => ({
+    role: message.role === 'assistant' ? 'assistant' : 'user',
+    content:
+      message.role === 'assistant'
+        ? `ИСТОРИЧЕСКОЕ СООБЩЕНИЕ АССИСТЕНТА (СПРАВКА, НЕ ТЕКУЩИЙ ОТВЕТ ДЛЯ ПРОВЕРКИ):\n${message.content}`
+        : `ИСТОРИЧЕСКОЕ СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЯ (СПРАВКА, НЕ ТЕКУЩИЙ ЗАПРОС):\n${message.content}`,
+  }));
+}

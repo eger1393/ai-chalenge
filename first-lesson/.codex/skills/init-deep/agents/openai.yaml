@@ -1,4 +1,0 @@
-interface:
-  display_name: "Init Deep"
-  short_description: "Иерархическая генерация AGENTS.md"
-  default_prompt: "Используй $init-deep, чтобы создать или обновить иерархию AGENTS.md в этом репозитории."

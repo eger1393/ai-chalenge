@@ -35,7 +35,7 @@ export const PROVIDER_LABELS: Record<AIProvider, string> = {
 
 export const MODELS_BY_PROVIDER: Record<AIProvider, readonly string[]> = {
   openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-nano', 'gpt-4.1-mini', 'gpt-4.1', 'gpt-5.4', 'gpt-5.4-mini'],
-  ollama: ['gemma4:31b'],
+  ollama: ['gemma4:31b', 'gemma4:26b'],
 };
 
 export const AVAILABLE_MODELS = Object.values(MODELS_BY_PROVIDER).flat() as string[];
@@ -49,6 +49,7 @@ export const MODEL_LABELS: Record<string, string> = {
   'gpt-5.4': 'GPT-5.4 — $2.50/$15.00',
   'gpt-5.4-mini': 'GPT-5.4 Mini — $0.75/$4.50',
   'gemma4:31b': 'Gemma 4 31B — local',
+  'gemma4:26b': 'Gemma 4 26B — local',
 };
 
 export const MODEL_CONTEXT_SIZES: Record<string, number> = {
@@ -59,6 +60,8 @@ export const MODEL_CONTEXT_SIZES: Record<string, number> = {
   'gpt-4.1': 1048576,
   'gpt-5.4': 128000,
   'gpt-5.4-mini': 128000,
+  'gemma4:31b': 32768,
+  'gemma4:26b': 32768,
 };
 
 export const DEFAULT_AI_PARAMS: AIParams = {

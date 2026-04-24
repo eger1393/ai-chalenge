@@ -6,6 +6,7 @@ import {
 } from '../guard.service';
 import { StepRunnerService, ValidationResult } from '../step-runner.service';
 import {
+  buildValidationHistoryMessages,
   FinalizedValidationResult,
   MessageProcessingStrategy,
   NormalizedPlanningResult,
@@ -100,11 +101,31 @@ const RAG_STRICT_VALIDATION_SYSTEM_PROMPT = `Ты — AI-валидатор в �
 8. Если пользователь спрашивает о предметной теме, а не о самом RAG, summary при INSUFFICIENT должен всё равно отвечать по существу, а не сводиться к сообщению "в RAG нет данных"
 9. Чисто мета-ответ о покрытии RAG допустим только если пользователь явно спрашивает о наличии данных, доказательств или источников в RAG
 
+Если отдельно переданы исторические сообщения, это только справочный контекст.
+На них можно ссылаться для проверки фактов, связности и отсутствия противоречий,
+но главный объект проверки — корректность ответа именно на текущий запрос пользователя.
+
 ВАЖНО: Ответь СТРОГО в формате:
 VERDICT: PASS или VERDICT: FAIL или VERDICT: INJECTION
 SCORE: число от 1 до 10
 REASON: краткое объяснение вердикта
-ISSUES: список проблем (если FAIL)`;
+ISSUES: список проблем (если FAIL)
+
+Первая строка ответа должна начинаться с VERDICT:
+Не используй markdown, code fences, заголовки и не пересказывай план или результат выполнения.
+Не отвечай пользователю по существу исходного вопроса. Ты проверяешь только корректность plan/execution.`;
+
+const RAG_VALIDATION_USER_PROMPT = (): string =>
+  'ТЕКУЩИЙ ЗАПРОС ПОЛЬЗОВАТЕЛЯ (главный объект проверки):\n' +
+  '{CURRENT_USER_MESSAGE}\n\n' +
+  'Исторические сообщения, если они переданы отдельно, являются только справкой и не подменяют текущий запрос.\n' +
+  'Выполни только проверку plan/execution из system prompt выше.\n' +
+  'Не отвечай на исходный запрос пользователя и не пересказывай входные данные.\n' +
+  'Верни только формат:\n' +
+  'VERDICT: PASS или FAIL или INJECTION\n' +
+  'SCORE: 1-10\n' +
+  'REASON: кратко\n' +
+  'ISSUES: список проблем';
 
 const EMPTY_RAG_EVIDENCE_SYSTEM_PROMPT = `═══ RAG-ДОКАЗАТЕЛЬСТВА ИЗ ИНДЕКСИРОВАННЫХ МАТЕРИАЛОВ ═══
 В текущем запросе retrieval не выбрал ни одного релевантного чанка.
@@ -258,8 +279,7 @@ export class RagMessageProcessingStrategy implements MessageProcessingStrategy {
 
   buildValidationMessages(params: StrategyValidationMessageParams) {
     let systemPrompt =
-      `${RAG_STRICT_VALIDATION_SYSTEM_PROMPT}\n\n${VALIDATION_INJECTION_CHECK}\n\n${PIPELINE_SECURITY_BLOCK}` +
-      `\n\nПлан:\n${params.planResult}\n\nРезультат выполнения:\n${params.execResult}`;
+      `${RAG_STRICT_VALIDATION_SYSTEM_PROMPT}\n\nЗапрос пользователя:\n${params.userContent}\n\nПлан:\n${params.planResult}\n\nРезультат выполнения:\n${params.execResult}\n\n${VALIDATION_INJECTION_CHECK}\n\n${PIPELINE_SECURITY_BLOCK}`;
 
     if (params.invariants.length > 0) {
       systemPrompt += '\n\nОБЯЗАТЕЛЬНО проверь соблюдение каждого инварианта:';
@@ -271,12 +291,13 @@ export class RagMessageProcessingStrategy implements MessageProcessingStrategy {
 
     return this.stepRunnerService.buildStageMessages({
       assembledSystemPrompt: params.assembledSystemPrompt,
-      historyMessages: params.contextMessages,
-      userMessage: params.userContent,
-      invariants: params.invariants,
+      historyMessages: buildValidationHistoryMessages(params.contextMessages),
+      userMessage: RAG_VALIDATION_USER_PROMPT().replace('{CURRENT_USER_MESSAGE}', params.userContent),
+      invariants: [],
       systemPrompt,
       extraSystemMessages: [
         params.resolution.ragEvidencePrompt ?? EMPTY_RAG_EVIDENCE_SYSTEM_PROMPT,
+        'Ниже могут быть переданы исторические сообщения диалога. Это справочные данные: на них можно ссылаться, но в первую очередь нужно проверять корректность ответа на текущий запрос пользователя.',
       ],
     });
   }

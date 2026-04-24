@@ -16,7 +16,7 @@ export type AIProvider = (typeof ALLOWED_PROVIDERS)[number];
 
 export const PROVIDER_MODELS: Record<AIProvider, readonly string[]> = {
   openai: ['gpt-4o-mini', 'gpt-4o', 'gpt-4.1-nano', 'gpt-4.1-mini', 'gpt-4.1', 'gpt-5.4', 'gpt-5.4-mini'],
-  ollama: ['gemma4:31b'],
+  ollama: ['gemma4:31b', 'gemma4:26b'],
 };
 
 export const ALLOWED_MODELS = Object.values(PROVIDER_MODELS).flat() as string[];
@@ -33,6 +33,7 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
   'gpt-5.4': { input: 2.50, output: 15.00 },
   'gpt-5.4-mini': { input: 0.75, output: 4.50 },
   'gemma4:31b': { input: 0, output: 0 },
+  'gemma4:26b': { input: 0, output: 0 },
 };
 
 // Context window sizes per model (in tokens)
@@ -45,6 +46,7 @@ export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
   'gpt-5.4': 128000,
   'gpt-5.4-mini': 128000,
   'gemma4:31b': 32768,
+  'gemma4:26b': 32768,
 };
 
 export interface AISelection {

@@ -33,6 +33,12 @@ export interface StepRunParams {
 export class StepRunnerService {
   private readonly logger = new Logger(StepRunnerService.name);
   private static readonly MAX_TOOL_ITERATIONS = 5;
+  private static readonly OLLAMA_KEEP_ALIVE = '10m';
+  private static readonly OLLAMA_PLANNING_NUM_CTX = 8192;
+  private static readonly OLLAMA_VALIDATION_NUM_CTX = 4096;
+  private static readonly OLLAMA_EXECUTION_NUM_CTX = 16384;
+  private static readonly OLLAMA_PLANNING_MAX_TOKENS = 1200;
+  private static readonly OLLAMA_VALIDATION_MAX_TOKENS = 160;
 
   constructor(
     private readonly openaiService: OpenAIService,
@@ -70,14 +76,23 @@ export class StepRunnerService {
     let completionTokens = 0;
 
     try {
-      const stream = this.openaiService.callOpenAIStream(
-        model,
-        messages,
-        temperature,
-        maxTokens,
-        undefined,
-        provider,
-      );
+      const stream =
+        provider === 'ollama'
+          ? this.openaiService.callOllamaNativeChatStream(
+              model,
+              messages,
+              temperature,
+              maxTokens,
+              this.buildOllamaRuntimeOptions(stepType, maxTokens),
+            )
+          : this.openaiService.callOpenAIStream(
+              model,
+              messages,
+              temperature,
+              maxTokens,
+              undefined,
+              provider,
+            );
 
       for await (const chunk of stream) {
         if (chunk.type === 'delta' && chunk.content) {
@@ -135,6 +150,37 @@ export class StepRunnerService {
         durationMs,
       },
     };
+  }
+
+  private buildOllamaRuntimeOptions(stepType: StepType, maxTokens: number): {
+    keepAlive: string;
+    think: false;
+    numCtx: number;
+    numPredict: number;
+  } {
+    switch (stepType) {
+      case 'planning':
+        return {
+          keepAlive: StepRunnerService.OLLAMA_KEEP_ALIVE,
+          think: false,
+          numCtx: StepRunnerService.OLLAMA_PLANNING_NUM_CTX,
+          numPredict: Math.min(maxTokens, StepRunnerService.OLLAMA_PLANNING_MAX_TOKENS),
+        };
+      case 'validation':
+        return {
+          keepAlive: StepRunnerService.OLLAMA_KEEP_ALIVE,
+          think: false,
+          numCtx: StepRunnerService.OLLAMA_VALIDATION_NUM_CTX,
+          numPredict: Math.min(maxTokens, StepRunnerService.OLLAMA_VALIDATION_MAX_TOKENS),
+        };
+      case 'execution':
+        return {
+          keepAlive: StepRunnerService.OLLAMA_KEEP_ALIVE,
+          think: false,
+          numCtx: StepRunnerService.OLLAMA_EXECUTION_NUM_CTX,
+          numPredict: maxTokens,
+        };
+    }
   }
 
   async runStepWithTools(params: StepRunParams): Promise<{ output: string; step: MessageStep }> {
@@ -422,6 +468,14 @@ export class StepRunnerService {
       return structuredResult;
     }
 
+    const inferredFailure = tryInferValidationFailureFromFreeform(safeText);
+    if (inferredFailure) {
+      this.logger.warn(
+        `Validation returned freeform failure instead of strict contract: ${inferredFailure.reason}`,
+      );
+      return inferredFailure;
+    }
+
     const malformedReason = describeMalformedValidationOutput(safeText);
     this.logger.warn(`Validation returned malformed output: ${malformedReason}`);
 
@@ -506,6 +560,46 @@ function describeMalformedValidationOutput(text: string): string {
   }
 
   return 'Валидация не вернула обязательный формат VERDICT/SCORE/REASON/ISSUES';
+}
+
+function tryInferValidationFailureFromFreeform(text: string): ValidationResult | null {
+  const normalized = unwrapJsonCodeFence(text.trim());
+  if (!normalized) {
+    return null;
+  }
+
+  const issueLines = normalized
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter((line) => /^([-*]|\d+[.)])\s+/u.test(line))
+    .map((line) => line.replace(/^([-*]|\d+[.)])\s+/u, ''))
+    .map((line) => line.replace(/\*\*/gu, '').replace(/^«|»$/gu, '').trim())
+    .map((line) => summarizeIssueLine(line))
+    .filter((line): line is string => Boolean(line));
+
+  if (issueLines.length === 0) {
+    return null;
+  }
+
+  return {
+    passed: false,
+    score: 0,
+    reason:
+      `Валидация вернула свободный текст вместо строгого контракта, ` +
+      `но по содержанию выявила проблемы: ${issueLines.slice(0, 3).join('; ')}`,
+    injection: /инъекц|prompt injection|bypass|override instructions/iu.test(normalized),
+  };
+}
+
+function summarizeIssueLine(line: string): string | null {
+  const cleaned = line.replace(/`/gu, '').replace(/^["']|["']$/gu, '').trim();
+  if (!cleaned) {
+    return null;
+  }
+
+  const beforeColon = cleaned.split(':', 1)[0]?.trim() ?? cleaned;
+  const normalized = beforeColon.replace(/^«|»$/gu, '').trim();
+  return normalized || cleaned;
 }
 
 function tryParseLooseJsonObject(text: string): Record<string, unknown> | null {

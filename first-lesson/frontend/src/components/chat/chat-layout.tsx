@@ -28,6 +28,25 @@ import { EmptyState } from './empty-state';
 import { AIParamsPanel } from './ai-params-panel';
 import { PipelineMessageBubble } from './pipeline-message-bubble';
 
+const TEST_DIALOG_MESSAGES = [
+  'Какая цель у нашего проекта?',
+  'Спроектируй верхнеуровневую архитектуру проекта.',
+  'Распиши больше связку бэкенд + БД из каких частей она будет состоять?',
+  'Подробно распиши ответственность каждого модуля и каждой сущности.',
+  'Какие функциональные и не функциональные требования мне стоит уточнить?',
+  'Требования по уровню отклика - до 200 мс. Идем в политику zero downtime. Планируемая нагрузка - 1 миллион сообщений в секунду. Какое примерно железо понадобится?',
+  'Какие метрики мне стоит собирать для мониторинга и какие алерты сделать?',
+  'Я хочу написать этот проект с помощью нейросетей, стоит ли мне использовать Claude Code или лучше выбрать что-то другое?',
+  'че каво, какие траблы были в Claude code?',
+  'Сделай короткое резюме по рискам проекта и следующим шагам.',
+] as const;
+
+const TEST_DIALOG_LOG_PREFIX = '[test-dialog]';
+
+type TestDialogRunState = {
+  remaining: string[];
+};
+
 export function ChatLayout() {
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -45,15 +64,17 @@ export function ChatLayout() {
   const facts = useFacts(chat.conversationId);
   const { tasks, addTask, removeTask } = useTasks();
   const invariantsHook = useInvariants();
-  const { notifications, subscriptions, loadNotifications, loadSubscriptions, markRead } = useNotificationContext();
+  const { notifications, subscriptions, loadNotifications, markRead } = useNotificationContext();
   const [showParams, setShowParams] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [conversationStrategy, setConversationStrategy] = useState<string | undefined>(undefined);
   const [isContextStrategyLocked, setIsContextStrategyLocked] = useState(false);
+  const [testDialogRun, setTestDialogRun] = useState<TestDialogRunState | null>(null);
   const scrollRef = useAutoScroll(chat.messages);
 
   // Track previous activeId to avoid re-loading the same conversation
   const prevActiveIdRef = useRef<string | null | undefined>(undefined);
+  const processedPipelineMessageIdRef = useRef<string | null>(null);
 
   // Determine current strategy: conversation's fixed strategy or params strategy
   const currentStrategy = conversationStrategy || params.contextStrategy;
@@ -120,7 +141,6 @@ export function ChatLayout() {
   // Load subscriptions & notifications when conversation changes
   useEffect(() => {
     if (conversations.activeId) {
-      loadSubscriptions(conversations.activeId);
       loadNotifications(conversations.activeId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -227,6 +247,40 @@ export function ChatLayout() {
     [chat, params, conversations, currentStrategy, facts, conversationStrategy, pipeline, activeProject, tasks],
   );
 
+  const canStartTestDialog =
+    chat.messages.length === 0 &&
+    !chat.isLoadingHistory &&
+    !pipeline.isRunning &&
+    Boolean(chat.conversationId || activeProject?.id || tasks[0]?.id);
+
+  const handleStartTestDialog = useCallback(async () => {
+    if (!canStartTestDialog) {
+      console.debug(`${TEST_DIALOG_LOG_PREFIX} start blocked`, {
+        canStartTestDialog,
+        messageCount: chat.messages.length,
+        isLoadingHistory: chat.isLoadingHistory,
+        isPipelineRunning: pipeline.isRunning,
+        conversationId: chat.conversationId,
+        activeProjectId: activeProject?.id ?? null,
+        fallbackProjectId: tasks[0]?.id ?? null,
+      });
+      return;
+    }
+
+    const [firstMessage, ...remainingMessages] = [...TEST_DIALOG_MESSAGES];
+    console.debug(`${TEST_DIALOG_LOG_PREFIX} start`, {
+      firstMessage,
+      remainingCount: remainingMessages.length,
+      conversationId: chat.conversationId,
+      params,
+      currentStrategy,
+    });
+    setTestDialogRun({
+      remaining: remainingMessages,
+    });
+    await handleSend(firstMessage);
+  }, [activeProject?.id, canStartTestDialog, chat.conversationId, chat.isLoadingHistory, chat.messages.length, currentStrategy, handleSend, params, pipeline.isRunning, tasks]);
+
   // Sync auto-created conversationId back to conversations
   useEffect(() => {
     if (chat.conversationId && !conversations.activeId) {
@@ -285,10 +339,29 @@ export function ChatLayout() {
 
   // Handle pipeline completion
   useEffect(() => {
-    if (pipeline.pipelineState?.status === 'completed') {
-      const finalContent = pipeline.pipelineState.finalContent;
+    const pipelineState = pipeline.pipelineState;
+    if (!pipelineState || pipelineState.status !== 'completed' || !pipelineState.messageId) {
+      return;
+    }
+
+    if (processedPipelineMessageIdRef.current === pipelineState.messageId) {
+      console.debug(`${TEST_DIALOG_LOG_PREFIX} completion skipped: already processed`, {
+        messageId: pipelineState.messageId,
+        status: pipelineState.status,
+      });
+      return;
+    }
+    processedPipelineMessageIdRef.current = pipelineState.messageId;
+    console.debug(`${TEST_DIALOG_LOG_PREFIX} completion received`, {
+      messageId: pipelineState.messageId,
+      finalContentLength: pipelineState.finalContent?.length ?? 0,
+      remainingCount: testDialogRun?.remaining.length ?? 0,
+      conversationId: chat.conversationId,
+    });
+
+    const finalContent = pipelineState.finalContent;
       const content = finalContent || (() => {
-        const execStep = [...(pipeline.pipelineState!.steps || [])].reverse().find(
+        const execStep = [...(pipelineState.steps || [])].reverse().find(
           (s) => s.stepType === 'execution' && s.status === 'completed',
         );
         return execStep?.content;
@@ -302,6 +375,40 @@ export function ChatLayout() {
         };
         chat.setMessages((prev: Message[]) => [...prev, assistantMsg]);
       }
+
+      const continueTestDialog = () => {
+        const nextMessage = testDialogRun?.remaining[0] ?? null;
+        const remainingMessages = testDialogRun?.remaining.slice(1) ?? [];
+
+        console.debug(`${TEST_DIALOG_LOG_PREFIX} continue`, {
+          completedMessageId: pipelineState.messageId,
+          nextMessage,
+          remainingAfterNext: remainingMessages.length,
+          conversationId: chat.conversationId,
+        });
+
+        setTestDialogRun(nextMessage ? { remaining: remainingMessages } : null);
+
+        pipeline.reset();
+        console.debug(`${TEST_DIALOG_LOG_PREFIX} pipeline reset after completion`, {
+          completedMessageId: pipelineState.messageId,
+        });
+
+        if (nextMessage) {
+          setTimeout(() => {
+            console.debug(`${TEST_DIALOG_LOG_PREFIX} auto send next`, {
+              nextMessage,
+              conversationId: chat.conversationId,
+            });
+            void handleSend(nextMessage!);
+          }, 0);
+        } else {
+          console.debug(`${TEST_DIALOG_LOG_PREFIX} finished all scripted messages`, {
+            completedMessageId: pipelineState.messageId,
+          });
+        }
+      };
+
       if (chat.conversationId) {
         chat.loadConversation(chat.conversationId).then((detail) => {
           setConversationStrategy(detail?.contextStrategy || undefined);
@@ -318,17 +425,48 @@ export function ChatLayout() {
               ragQueryRewriteEnabled: detail.ragQueryRewriteEnabled,
               ragMode: detail.ragMode,
               contextStrategy: (detail.contextStrategy as ContextStrategyType) || params.contextStrategy,
-            });
+              });
           }
-          loadSubscriptions(chat.conversationId!);
-          pipeline.reset();
+          continueTestDialog();
         });
       } else {
-        pipeline.reset();
+        continueTestDialog();
       }
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pipeline.pipelineState?.status, pipeline.pipelineState?.finalContent]);
+  }, [chat, handleSend, hydrateConversationParams, params.contextStrategy, pipeline.pipelineState, testDialogRun]);
+
+  useEffect(() => {
+    if (pipeline.pipelineState?.status === 'failed') {
+      console.debug(`${TEST_DIALOG_LOG_PREFIX} pipeline failed`, {
+        messageId: pipeline.pipelineState.messageId,
+        error: pipeline.pipelineState.error,
+        remainingCount: testDialogRun?.remaining.length ?? 0,
+      });
+      processedPipelineMessageIdRef.current = null;
+      setTestDialogRun(null);
+    }
+  }, [pipeline.pipelineState?.error, pipeline.pipelineState?.messageId, pipeline.pipelineState?.status, testDialogRun?.remaining.length]);
+
+  useEffect(() => {
+    if (!pipeline.pipelineState) {
+      console.debug(`${TEST_DIALOG_LOG_PREFIX} pipeline state cleared`);
+      processedPipelineMessageIdRef.current = null;
+    }
+  }, [pipeline.pipelineState]);
+
+  useEffect(() => {
+    if (!testDialogRun && !pipeline.pipelineState) {
+      return;
+    }
+
+    console.debug(`${TEST_DIALOG_LOG_PREFIX} state snapshot`, {
+      conversationId: chat.conversationId,
+      scriptedRemaining: testDialogRun?.remaining.length ?? 0,
+      pipelineStatus: pipeline.pipelineState?.status ?? null,
+      pipelineMessageId: pipeline.pipelineState?.messageId ?? null,
+      pipelineCurrentStep: pipeline.pipelineState?.currentStep ?? null,
+    });
+  }, [chat.conversationId, pipeline.pipelineState?.currentStep, pipeline.pipelineState?.messageId, pipeline.pipelineState?.status, testDialogRun]);
 
   return (
     <>
@@ -453,7 +591,10 @@ export function ChatLayout() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600" />
               </div>
             ) : chat.messages.length === 0 ? (
-              <EmptyState />
+              <EmptyState
+                onStartTestDialog={handleStartTestDialog}
+                isTestDialogAvailable={canStartTestDialog}
+              />
             ) : (
               <div className="max-w-3xl mx-auto px-4 py-6">
                 {timeline.map((item) => {
