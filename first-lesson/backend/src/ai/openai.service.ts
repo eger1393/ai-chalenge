@@ -35,7 +35,10 @@ type NativeOllamaChatResponse = {
 @Injectable()
 export class OpenAIService {
   private readonly logger = new Logger(OpenAIService.name);
+  private static readonly MAX_CONCURRENT_LLM_REQUESTS = 3;
   private readonly clients = new Map<AIProvider, OpenAI>();
+  private activeLlmRequests = 0;
+  private readonly llmWaitQueue: Array<() => void> = [];
 
   calculateCost(
     provider: AIProvider,
@@ -105,50 +108,52 @@ export class OpenAIService {
     provider: AIProvider = DEFAULT_PROVIDER,
     options?: CompletionOptions,
   ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
-    const params = this.buildCompletionParams(
-      provider,
-      model,
-      messages,
-      temperature,
-      maxTokens,
-      frequencyPenalty,
-      options,
-    );
-    const client = this.getClient(provider);
-    this.logger.debug(
-      `→ LLM request: provider=${provider} model=${model} messages=${messages.length} maxTokens=${maxTokens} temp=${temperature}`,
-    );
-    const t0 = Date.now();
-    try {
-      const response = await client.chat.completions.create(params);
-      this.logger.debug(`← LLM response: provider=${provider} ${Date.now() - t0}ms | tokens=${response.usage?.total_tokens ?? '?'} | finish=${response.choices?.[0]?.finish_reason}`);
-      return response;
-    } catch (error: unknown) {
-      if (error instanceof OpenAI.APIConnectionTimeoutError) {
-        this.logger.error(`LLM timeout after ${Date.now() - t0}ms (provider=${provider}, model=${model})`);
-        throw new GatewayTimeoutException(`${provider} request timed out after ${Math.round((Date.now() - t0) / 1000)}s`);
-      }
-      if (error instanceof OpenAI.RateLimitError) {
-        this.logger.warn(`LLM rate limit hit, retrying after 2s (provider=${provider}, model=${model})`);
-        await new Promise((r) => setTimeout(r, 2000));
-        try {
-          const response = await client.chat.completions.create(params);
-          this.logger.debug(`← LLM retry response: provider=${provider} ${Date.now() - t0}ms | tokens=${response.usage?.total_tokens ?? '?'}`);
-          return response;
-        } catch (retryError: unknown) {
-          const message = retryError instanceof Error ? retryError.message : 'Unknown error';
-          this.logger.error(`LLM rate limit retry failed: provider=${provider} ${message}`);
-          throw new BadGatewayException(`${provider} API rate limit error after retry: ${message}`);
+    return this.withLlmConcurrencySlot(`call provider=${provider} model=${model}`, async () => {
+      const params = this.buildCompletionParams(
+        provider,
+        model,
+        messages,
+        temperature,
+        maxTokens,
+        frequencyPenalty,
+        options,
+      );
+      const client = this.getClient(provider);
+      this.logger.debug(
+        `→ LLM request: provider=${provider} model=${model} messages=${messages.length} maxTokens=${maxTokens} temp=${temperature}`,
+      );
+      const t0 = Date.now();
+      try {
+        const response = await client.chat.completions.create(params);
+        this.logger.debug(`← LLM response: provider=${provider} ${Date.now() - t0}ms | tokens=${response.usage?.total_tokens ?? '?'} | finish=${response.choices?.[0]?.finish_reason}`);
+        return response;
+      } catch (error: unknown) {
+        if (error instanceof OpenAI.APIConnectionTimeoutError) {
+          this.logger.error(`LLM timeout after ${Date.now() - t0}ms (provider=${provider}, model=${model})`);
+          throw new GatewayTimeoutException(`${provider} request timed out after ${Math.round((Date.now() - t0) / 1000)}s`);
         }
+        if (error instanceof OpenAI.RateLimitError) {
+          this.logger.warn(`LLM rate limit hit, retrying after 2s (provider=${provider}, model=${model})`);
+          await new Promise((r) => setTimeout(r, 2000));
+          try {
+            const response = await client.chat.completions.create(params);
+            this.logger.debug(`← LLM retry response: provider=${provider} ${Date.now() - t0}ms | tokens=${response.usage?.total_tokens ?? '?'}`);
+            return response;
+          } catch (retryError: unknown) {
+            const message = retryError instanceof Error ? retryError.message : 'Unknown error';
+            this.logger.error(`LLM rate limit retry failed: provider=${provider} ${message}`);
+            throw new BadGatewayException(`${provider} API rate limit error after retry: ${message}`);
+          }
+        }
+        if (error instanceof OpenAI.APIError) {
+          this.logger.error(`LLM API error provider=${provider} status=${error.status}: ${error.message}`);
+          throw new BadGatewayException(`${provider} API error (${error.status}): ${error.message}`);
+        }
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.error(`LLM unexpected error provider=${provider}: ${message}`);
+        throw new BadGatewayException(`${provider} API error: ${message}`);
       }
-      if (error instanceof OpenAI.APIError) {
-        this.logger.error(`LLM API error provider=${provider} status=${error.status}: ${error.message}`);
-        throw new BadGatewayException(`${provider} API error (${error.status}): ${error.message}`);
-      }
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`LLM unexpected error provider=${provider}: ${message}`);
-      throw new BadGatewayException(`${provider} API error: ${message}`);
-    }
+    });
   }
 
   async callOllamaNativeChat(
@@ -158,84 +163,86 @@ export class OpenAIService {
     maxTokens: number,
     options?: NativeOllamaChatOptions,
   ): Promise<NativeOllamaChatResponse> {
-    const apiKey = this.getRequiredOllamaApiKey();
-    const timeoutMs = this.getRequestTimeoutMs('ollama');
-    const requestBody = {
-      model,
-      messages,
-      stream: false,
-      think: options?.think ?? false,
-      ...(options?.keepAlive != null ? { keep_alive: options.keepAlive } : {}),
-      ...(options?.format ? { format: options.format } : {}),
-      options: {
-        temperature,
-        num_predict: options?.numPredict ?? maxTokens,
-        ...(options?.numCtx != null ? { num_ctx: options.numCtx } : {}),
-        ...(options?.topK != null ? { top_k: options.topK } : {}),
-        ...(options?.topP != null ? { top_p: options.topP } : {}),
-      },
-    };
-
-    this.logger.debug(
-      `→ Ollama native chat request: model=${model} messages=${messages.length} maxTokens=${maxTokens} temp=${temperature} think=${requestBody.think}`,
-    );
-
-    const t0 = Date.now();
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-    try {
-      const response = await fetch(`${this.getOllamaNativeBaseUrl()}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-          'X-GPU-Service': 'ollama',
-          'X-API-Key': apiKey,
-        },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-      const responseText = await response.text();
-      const parsed = parseNativeOllamaChatResponse(responseText);
-
-      if (!response.ok) {
-        const errorMessage = extractNativeOllamaError(parsed) ?? response.statusText;
-        this.logger.error(`Ollama native API error status=${response.status}: ${errorMessage}`);
-        throw new BadGatewayException(`ollama native API error (${response.status}): ${errorMessage}`);
-      }
-
-      this.logger.debug(
-        `← Ollama native chat response: ${Date.now() - t0}ms | done=${parsed.done ?? '?'} | doneReason=${parsed.done_reason ?? '?'} | eval=${parsed.eval_count ?? '?'} | thinking=${typeof parsed.message?.thinking === 'string' ? 'yes' : 'no'}`,
-      );
-
-      return {
-        content: typeof parsed.message?.content === 'string' ? parsed.message.content : '',
-        thinking: typeof parsed.message?.thinking === 'string' ? parsed.message.thinking : null,
-        doneReason: typeof parsed.done_reason === 'string' ? parsed.done_reason : null,
-        usage: {
-          promptTokens: readOptionalFiniteNumber(parsed.prompt_eval_count),
-          completionTokens: readOptionalFiniteNumber(parsed.eval_count),
-          totalTokens:
-            readOptionalFiniteNumber(parsed.prompt_eval_count) +
-            readOptionalFiniteNumber(parsed.eval_count),
+    return this.withLlmConcurrencySlot(`native-call provider=ollama model=${model}`, async () => {
+      const apiKey = this.getRequiredOllamaApiKey();
+      const timeoutMs = this.getRequestTimeoutMs('ollama');
+      const requestBody = {
+        model,
+        messages,
+        stream: false,
+        think: options?.think ?? false,
+        ...(options?.keepAlive != null ? { keep_alive: options.keepAlive } : {}),
+        ...(options?.format ? { format: options.format } : {}),
+        options: {
+          temperature,
+          num_predict: options?.numPredict ?? maxTokens,
+          ...(options?.numCtx != null ? { num_ctx: options.numCtx } : {}),
+          ...(options?.topK != null ? { top_k: options.topK } : {}),
+          ...(options?.topP != null ? { top_p: options.topP } : {}),
         },
       };
-    } catch (error: unknown) {
-      if (error instanceof BadGatewayException) {
-        throw error;
-      }
-      if (error instanceof Error && error.name === 'AbortError') {
-        this.logger.error(`Ollama native chat timeout after ${Date.now() - t0}ms (model=${model})`);
-        throw new GatewayTimeoutException(`ollama native request timed out after ${Math.round((Date.now() - t0) / 1000)}s`);
-      }
 
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Ollama native chat unexpected error: ${message}`);
-      throw new BadGatewayException(`ollama native API error: ${message}`);
-    } finally {
-      clearTimeout(timeoutId);
-    }
+      this.logger.debug(
+        `→ Ollama native chat request: model=${model} messages=${messages.length} maxTokens=${maxTokens} temp=${temperature} think=${requestBody.think}`,
+      );
+
+      const t0 = Date.now();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+      try {
+        const response = await fetch(`${this.getOllamaNativeBaseUrl()}/api/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+            'X-GPU-Service': 'ollama',
+            'X-API-Key': apiKey,
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+        const responseText = await response.text();
+        const parsed = parseNativeOllamaChatResponse(responseText);
+
+        if (!response.ok) {
+          const errorMessage = extractNativeOllamaError(parsed) ?? response.statusText;
+          this.logger.error(`Ollama native API error status=${response.status}: ${errorMessage}`);
+          throw new BadGatewayException(`ollama native API error (${response.status}): ${errorMessage}`);
+        }
+
+        this.logger.debug(
+          `← Ollama native chat response: ${Date.now() - t0}ms | done=${parsed.done ?? '?'} | doneReason=${parsed.done_reason ?? '?'} | eval=${parsed.eval_count ?? '?'} | thinking=${typeof parsed.message?.thinking === 'string' ? 'yes' : 'no'}`,
+        );
+
+        return {
+          content: typeof parsed.message?.content === 'string' ? parsed.message.content : '',
+          thinking: typeof parsed.message?.thinking === 'string' ? parsed.message.thinking : null,
+          doneReason: typeof parsed.done_reason === 'string' ? parsed.done_reason : null,
+          usage: {
+            promptTokens: readOptionalFiniteNumber(parsed.prompt_eval_count),
+            completionTokens: readOptionalFiniteNumber(parsed.eval_count),
+            totalTokens:
+              readOptionalFiniteNumber(parsed.prompt_eval_count) +
+              readOptionalFiniteNumber(parsed.eval_count),
+          },
+        };
+      } catch (error: unknown) {
+        if (error instanceof BadGatewayException) {
+          throw error;
+        }
+        if (error instanceof Error && error.name === 'AbortError') {
+          this.logger.error(`Ollama native chat timeout after ${Date.now() - t0}ms (model=${model})`);
+          throw new GatewayTimeoutException(`ollama native request timed out after ${Math.round((Date.now() - t0) / 1000)}s`);
+        }
+
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.error(`Ollama native chat unexpected error: ${message}`);
+        throw new BadGatewayException(`ollama native API error: ${message}`);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    });
   }
 
   async *callOllamaNativeChatStream(
@@ -249,133 +256,141 @@ export class OpenAIService {
     content?: string;
     usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
   }> {
-    const apiKey = this.getRequiredOllamaApiKey();
-    const timeoutMs = this.getRequestTimeoutMs('ollama');
-    const requestBody = {
-      model,
-      messages,
-      stream: true,
-      think: options?.think ?? false,
-      ...(options?.keepAlive != null ? { keep_alive: options.keepAlive } : {}),
-      ...(options?.format ? { format: options.format } : {}),
-      options: {
-        temperature,
-        num_predict: options?.numPredict ?? maxTokens,
-        ...(options?.numCtx != null ? { num_ctx: options.numCtx } : {}),
-        ...(options?.topK != null ? { top_k: options.topK } : {}),
-        ...(options?.topP != null ? { top_p: options.topP } : {}),
-      },
-    };
-
-    this.logger.debug(
-      `→ Ollama native chat stream request: model=${model} messages=${messages.length} maxTokens=${maxTokens} temp=${temperature} think=${requestBody.think}`,
+    const releaseSlot = await this.acquireLlmConcurrencySlot(
+      `native-stream provider=ollama model=${model}`,
     );
 
-    const t0 = Date.now();
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
     try {
-      const response = await fetch(`${this.getOllamaNativeBaseUrl()}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-          'X-GPU-Service': 'ollama',
-          'X-API-Key': apiKey,
+      const apiKey = this.getRequiredOllamaApiKey();
+      const timeoutMs = this.getRequestTimeoutMs('ollama');
+      const requestBody = {
+        model,
+        messages,
+        stream: true,
+        think: options?.think ?? false,
+        ...(options?.keepAlive != null ? { keep_alive: options.keepAlive } : {}),
+        ...(options?.format ? { format: options.format } : {}),
+        options: {
+          temperature,
+          num_predict: options?.numPredict ?? maxTokens,
+          ...(options?.numCtx != null ? { num_ctx: options.numCtx } : {}),
+          ...(options?.topK != null ? { top_k: options.topK } : {}),
+          ...(options?.topP != null ? { top_p: options.topP } : {}),
         },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
-
-      if (!response.ok) {
-        const responseText = await response.text();
-        const parsed = parseNativeOllamaChatResponse(responseText);
-        const errorMessage = extractNativeOllamaError(parsed) ?? response.statusText;
-        this.logger.error(`Ollama native stream API error status=${response.status}: ${errorMessage}`);
-        throw new BadGatewayException(`ollama native API error (${response.status}): ${errorMessage}`);
-      }
-
-      if (!response.body) {
-        throw new BadGatewayException('ollama native API returned empty response body');
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let finalUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-      let finalDoneReason: string | null = null;
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        let newlineIndex = buffer.indexOf('\n');
-        while (newlineIndex >= 0) {
-          const line = buffer.slice(0, newlineIndex).trim();
-          buffer = buffer.slice(newlineIndex + 1);
-          if (line) {
-            const parsed = parseNativeOllamaChatResponse(line);
-            const delta = typeof parsed.message?.content === 'string' ? parsed.message.content : '';
-            if (delta) {
-              yield { type: 'delta' as const, content: delta };
-            }
-            if (parsed.done) {
-              finalUsage = {
-                prompt_tokens: readOptionalFiniteNumber(parsed.prompt_eval_count),
-                completion_tokens: readOptionalFiniteNumber(parsed.eval_count),
-                total_tokens:
-                  readOptionalFiniteNumber(parsed.prompt_eval_count) +
-                  readOptionalFiniteNumber(parsed.eval_count),
-              };
-              finalDoneReason = typeof parsed.done_reason === 'string' ? parsed.done_reason : null;
-            }
-          }
-          newlineIndex = buffer.indexOf('\n');
-        }
-      }
-
-      const trailing = buffer.trim();
-      if (trailing) {
-        const parsed = parseNativeOllamaChatResponse(trailing);
-        const delta = typeof parsed.message?.content === 'string' ? parsed.message.content : '';
-        if (delta) {
-          yield { type: 'delta' as const, content: delta };
-        }
-        if (parsed.done) {
-          finalUsage = {
-            prompt_tokens: readOptionalFiniteNumber(parsed.prompt_eval_count),
-            completion_tokens: readOptionalFiniteNumber(parsed.eval_count),
-            total_tokens:
-              readOptionalFiniteNumber(parsed.prompt_eval_count) +
-              readOptionalFiniteNumber(parsed.eval_count),
-          };
-          finalDoneReason = typeof parsed.done_reason === 'string' ? parsed.done_reason : null;
-        }
-      }
+      };
 
       this.logger.debug(
-        `← Ollama native chat stream response: ${Date.now() - t0}ms | tokens=${finalUsage.total_tokens} | doneReason=${finalDoneReason ?? '?'}`,
+        `→ Ollama native chat stream request: model=${model} messages=${messages.length} maxTokens=${maxTokens} temp=${temperature} think=${requestBody.think}`,
       );
 
-      yield { type: 'done' as const, usage: finalUsage };
-    } catch (error: unknown) {
-      if (error instanceof BadGatewayException) {
-        throw error;
-      }
-      if (error instanceof Error && error.name === 'AbortError') {
-        this.logger.error(`Ollama native chat stream timeout after ${Date.now() - t0}ms (model=${model})`);
-        throw new GatewayTimeoutException(`ollama native request timed out after ${Math.round((Date.now() - t0) / 1000)}s`);
-      }
+      const t0 = Date.now();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Ollama native chat stream unexpected error: ${message}`);
-      throw new BadGatewayException(`ollama native API error: ${message}`);
+      try {
+        const response = await fetch(`${this.getOllamaNativeBaseUrl()}/api/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+            'X-GPU-Service': 'ollama',
+            'X-API-Key': apiKey,
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const responseText = await response.text();
+          const parsed = parseNativeOllamaChatResponse(responseText);
+          const errorMessage = extractNativeOllamaError(parsed) ?? response.statusText;
+          this.logger.error(`Ollama native stream API error status=${response.status}: ${errorMessage}`);
+          throw new BadGatewayException(`ollama native API error (${response.status}): ${errorMessage}`);
+        }
+
+        if (!response.body) {
+          throw new BadGatewayException('ollama native API returned empty response body');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let finalUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+        let finalDoneReason: string | null = null;
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) {
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          let newlineIndex = buffer.indexOf('\n');
+          while (newlineIndex >= 0) {
+            const line = buffer.slice(0, newlineIndex).trim();
+            buffer = buffer.slice(newlineIndex + 1);
+            if (line) {
+              const parsed = parseNativeOllamaChatResponse(line);
+              const delta = typeof parsed.message?.content === 'string' ? parsed.message.content : '';
+              if (delta) {
+                yield { type: 'delta' as const, content: delta };
+              }
+              if (parsed.done) {
+                finalUsage = {
+                  prompt_tokens: readOptionalFiniteNumber(parsed.prompt_eval_count),
+                  completion_tokens: readOptionalFiniteNumber(parsed.eval_count),
+                  total_tokens:
+                    readOptionalFiniteNumber(parsed.prompt_eval_count) +
+                    readOptionalFiniteNumber(parsed.eval_count),
+                };
+                finalDoneReason = typeof parsed.done_reason === 'string' ? parsed.done_reason : null;
+              }
+            }
+            newlineIndex = buffer.indexOf('\n');
+          }
+        }
+
+        const trailing = buffer.trim();
+        if (trailing) {
+          const parsed = parseNativeOllamaChatResponse(trailing);
+          const delta = typeof parsed.message?.content === 'string' ? parsed.message.content : '';
+          if (delta) {
+            yield { type: 'delta' as const, content: delta };
+          }
+          if (parsed.done) {
+            finalUsage = {
+              prompt_tokens: readOptionalFiniteNumber(parsed.prompt_eval_count),
+              completion_tokens: readOptionalFiniteNumber(parsed.eval_count),
+              total_tokens:
+                readOptionalFiniteNumber(parsed.prompt_eval_count) +
+                readOptionalFiniteNumber(parsed.eval_count),
+            };
+            finalDoneReason = typeof parsed.done_reason === 'string' ? parsed.done_reason : null;
+          }
+        }
+
+        this.logger.debug(
+          `← Ollama native chat stream response: ${Date.now() - t0}ms | tokens=${finalUsage.total_tokens} | doneReason=${finalDoneReason ?? '?'}`,
+        );
+
+        yield { type: 'done' as const, usage: finalUsage };
+      } catch (error: unknown) {
+        if (error instanceof BadGatewayException) {
+          throw error;
+        }
+        if (error instanceof Error && error.name === 'AbortError') {
+          this.logger.error(`Ollama native chat stream timeout after ${Date.now() - t0}ms (model=${model})`);
+          throw new GatewayTimeoutException(`ollama native request timed out after ${Math.round((Date.now() - t0) / 1000)}s`);
+        }
+
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        this.logger.error(`Ollama native chat stream unexpected error: ${message}`);
+        throw new BadGatewayException(`ollama native API error: ${message}`);
+      } finally {
+        clearTimeout(timeoutId);
+      }
     } finally {
-      clearTimeout(timeoutId);
+      releaseSlot();
     }
   }
 
@@ -391,32 +406,40 @@ export class OpenAIService {
     content?: string;
     usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
   }> {
-    const baseParams = this.buildBaseParams(provider, model, messages, temperature, maxTokens, frequencyPenalty);
-    const streamParams = {
-      ...baseParams,
-      stream: true as const,
-      stream_options: { include_usage: true },
-    } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
+    const releaseSlot = await this.acquireLlmConcurrencySlot(
+      `stream provider=${provider} model=${model}`,
+    );
 
-    const client = this.getClient(provider);
-    this.logger.debug(`→ LLM stream request: provider=${provider} model=${model} messages=${messages.length}`);
-    const stream = await client.chat.completions.create(streamParams);
+    try {
+      const baseParams = this.buildBaseParams(provider, model, messages, temperature, maxTokens, frequencyPenalty);
+      const streamParams = {
+        ...baseParams,
+        stream: true as const,
+        stream_options: { include_usage: true },
+      } as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming;
 
-    for await (const chunk of stream) {
-      const delta = chunk.choices?.[0]?.delta?.content;
-      if (delta) {
-        yield { type: 'delta' as const, content: delta };
+      const client = this.getClient(provider);
+      this.logger.debug(`→ LLM stream request: provider=${provider} model=${model} messages=${messages.length}`);
+      const stream = await client.chat.completions.create(streamParams);
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices?.[0]?.delta?.content;
+        if (delta) {
+          yield { type: 'delta' as const, content: delta };
+        }
+        if (chunk.usage) {
+          yield {
+            type: 'done' as const,
+            usage: {
+              prompt_tokens: chunk.usage.prompt_tokens,
+              completion_tokens: chunk.usage.completion_tokens,
+              total_tokens: chunk.usage.total_tokens,
+            },
+          };
+        }
       }
-      if (chunk.usage) {
-        yield {
-          type: 'done' as const,
-          usage: {
-            prompt_tokens: chunk.usage.prompt_tokens,
-            completion_tokens: chunk.usage.completion_tokens,
-            total_tokens: chunk.usage.total_tokens,
-          },
-        };
-      }
+    } finally {
+      releaseSlot();
     }
   }
 
@@ -433,80 +456,146 @@ export class OpenAIService {
     usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
     toolCalls?: Array<{ id: string; function: { name: string; arguments: string } }>;
   }> {
-    const params: Record<string, unknown> = {
-      model,
-      messages,
-      temperature,
-      ...(this.usesMaxCompletionTokens(provider, model)
-        ? { max_completion_tokens: maxTokens }
-        : { max_tokens: maxTokens }),
-      stream: true,
-      stream_options: { include_usage: true },
-      ...(tools && tools.length > 0 ? { tools } : {}),
-    };
-
-    this.logger.debug(
-      `→ LLM stream+tools request: provider=${provider} model=${model} messages=${messages.length} tools=${tools?.length ?? 0}`,
+    const releaseSlot = await this.acquireLlmConcurrencySlot(
+      `stream-tools provider=${provider} model=${model}`,
     );
 
-    const client = this.getClient(provider);
-    const stream = await client.chat.completions.create(
-      params as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
-    );
+    try {
+      const params: Record<string, unknown> = {
+        model,
+        messages,
+        temperature,
+        ...(this.usesMaxCompletionTokens(provider, model)
+          ? { max_completion_tokens: maxTokens }
+          : { max_tokens: maxTokens }),
+        stream: true,
+        stream_options: { include_usage: true },
+        ...(tools && tools.length > 0 ? { tools } : {}),
+      };
 
-    // Accumulate tool calls across chunks
-    const toolCallAccumulator = new Map<number, { id: string; name: string; arguments: string }>();
-    let hasToolCalls = false;
+      this.logger.debug(
+        `→ LLM stream+tools request: provider=${provider} model=${model} messages=${messages.length} tools=${tools?.length ?? 0}`,
+      );
 
-    for await (const chunk of stream) {
-      const choice = chunk.choices?.[0];
+      const client = this.getClient(provider);
+      const stream = await client.chat.completions.create(
+        params as unknown as OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming,
+      );
 
-      // Accumulate tool call deltas
-      if (choice?.delta?.tool_calls) {
-        hasToolCalls = true;
-        for (const tc of choice.delta.tool_calls) {
-          const existing = toolCallAccumulator.get(tc.index);
-          if (existing) {
-            if (tc.function?.arguments) {
-              existing.arguments += tc.function.arguments;
+      // Accumulate tool calls across chunks
+      const toolCallAccumulator = new Map<number, { id: string; name: string; arguments: string }>();
+      let hasToolCalls = false;
+
+      for await (const chunk of stream) {
+        const choice = chunk.choices?.[0];
+
+        // Accumulate tool call deltas
+        if (choice?.delta?.tool_calls) {
+          hasToolCalls = true;
+          for (const tc of choice.delta.tool_calls) {
+            const existing = toolCallAccumulator.get(tc.index);
+            if (existing) {
+              if (tc.function?.arguments) {
+                existing.arguments += tc.function.arguments;
+              }
+            } else {
+              toolCallAccumulator.set(tc.index, {
+                id: tc.id || '',
+                name: tc.function?.name || '',
+                arguments: tc.function?.arguments || '',
+              });
             }
-          } else {
-            toolCallAccumulator.set(tc.index, {
-              id: tc.id || '',
-              name: tc.function?.name || '',
-              arguments: tc.function?.arguments || '',
-            });
           }
         }
-      }
 
-      // Stream text deltas
-      const delta = choice?.delta?.content;
-      if (delta) {
-        yield { type: 'delta' as const, content: delta };
-      }
+        // Stream text deltas
+        const delta = choice?.delta?.content;
+        if (delta) {
+          yield { type: 'delta' as const, content: delta };
+        }
 
-      // On finish_reason === 'tool_calls', emit collected tool calls
-      if (choice?.finish_reason === 'tool_calls' && hasToolCalls) {
-        const calls = Array.from(toolCallAccumulator.values()).map((tc) => ({
-          id: tc.id,
-          function: { name: tc.name, arguments: tc.arguments },
-        }));
-        yield { type: 'tool_calls' as const, toolCalls: calls };
-      }
+        // On finish_reason === 'tool_calls', emit collected tool calls
+        if (choice?.finish_reason === 'tool_calls' && hasToolCalls) {
+          const calls = Array.from(toolCallAccumulator.values()).map((tc) => ({
+            id: tc.id,
+            function: { name: tc.name, arguments: tc.arguments },
+          }));
+          yield { type: 'tool_calls' as const, toolCalls: calls };
+        }
 
-      // Usage info (comes in the last chunk)
-      if (chunk.usage) {
-        yield {
-          type: 'done' as const,
-          usage: {
-            prompt_tokens: chunk.usage.prompt_tokens,
-            completion_tokens: chunk.usage.completion_tokens,
-            total_tokens: chunk.usage.total_tokens,
-          },
-        };
+        // Usage info (comes in the last chunk)
+        if (chunk.usage) {
+          yield {
+            type: 'done' as const,
+            usage: {
+              prompt_tokens: chunk.usage.prompt_tokens,
+              completion_tokens: chunk.usage.completion_tokens,
+              total_tokens: chunk.usage.total_tokens,
+            },
+          };
+        }
       }
+    } finally {
+      releaseSlot();
     }
+  }
+
+  private async withLlmConcurrencySlot<T>(label: string, callback: () => Promise<T>): Promise<T> {
+    const releaseSlot = await this.acquireLlmConcurrencySlot(label);
+
+    try {
+      return await callback();
+    } finally {
+      releaseSlot();
+    }
+  }
+
+  private async acquireLlmConcurrencySlot(label: string): Promise<() => void> {
+    if (this.activeLlmRequests < OpenAIService.MAX_CONCURRENT_LLM_REQUESTS) {
+      this.activeLlmRequests += 1;
+      this.logger.debug(
+        `LLM slot acquired: active=${this.activeLlmRequests} queued=${this.llmWaitQueue.length} ${label}`,
+      );
+      return this.createLlmSlotRelease(label);
+    }
+
+    const queuedPosition = this.llmWaitQueue.length + 1;
+    this.logger.warn(
+      `LLM concurrency limit reached (${OpenAIService.MAX_CONCURRENT_LLM_REQUESTS}), waiting: active=${this.activeLlmRequests} queued=${queuedPosition} ${label}`,
+    );
+
+    return new Promise((resolve) => {
+      this.llmWaitQueue.push(() => {
+        this.activeLlmRequests += 1;
+        this.logger.debug(
+          `LLM slot acquired after wait: active=${this.activeLlmRequests} queued=${this.llmWaitQueue.length} ${label}`,
+        );
+        resolve(this.createLlmSlotRelease(label));
+      });
+    });
+  }
+
+  private createLlmSlotRelease(label: string): () => void {
+    let released = false;
+
+    return () => {
+      if (released) {
+        return;
+      }
+
+      released = true;
+      const next = this.llmWaitQueue.shift();
+      if (next) {
+        this.activeLlmRequests = Math.max(0, this.activeLlmRequests - 1);
+        next();
+        return;
+      }
+
+      this.activeLlmRequests = Math.max(0, this.activeLlmRequests - 1);
+      this.logger.debug(
+        `LLM slot released: active=${this.activeLlmRequests} queued=${this.llmWaitQueue.length} ${label}`,
+      );
+    };
   }
 
   private getClient(provider: AIProvider): OpenAI {
