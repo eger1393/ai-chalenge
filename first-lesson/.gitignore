@@ -27,3 +27,6 @@ Thumbs.db
 .vscode/
 *.swp
 backend/.next/
+
+# Local documentation RAG
+.lorex/

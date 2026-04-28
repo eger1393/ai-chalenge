@@ -8,6 +8,8 @@ ChatGPT-клиент с аутентификацией, историей диа�
 first-lesson/
 ├── GLOBAL_AGENTS_CONTEXT.md    # Снимок глобального AGENTS из /home/unix/.codex/AGENTS.md
 ├── AGENTS.md                   # Корневые правила проекта + карта вложенных AGENTS.md
+├── .opencode/commands/         # Локальные slash-команды OpenCode, включая `/docs` для lorex
+├── .opencode/skills/           # Project skills для lorex query/reindex и других локальных workflow
 ├── backend/                    # NestJS API
 ├── docs/                       # Эксплуатационная и интеграционная документация
 ├── frontend/                   # Next.js 14 SPA
