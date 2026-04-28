@@ -5,3 +5,5 @@ first-lesson/frontend/tsconfig.tsbuildinfo
 first-lesson/backend/.cache/huggingface/Xenova/bge-m3/onnx
 first-lesson/backend/.cache
 first-lesson/result.json
+ai-reviewer/node_modules/
+ai-reviewer/dist/

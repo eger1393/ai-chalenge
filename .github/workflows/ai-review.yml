@@ -1,0 +1,66 @@
+name: AI Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to review
+        required: false
+        type: string
+      model:
+        description: OpenAI model or alias from .github/ai-review.yml
+        required: false
+        default: gpt-4.1
+        type: string
+      profile:
+        description: Review profile
+        required: false
+        default: default
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  ai-review:
+    if: github.event_name != 'issue_comment' || startsWith(github.event.comment.body, '/ai-review')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: ai-reviewer/package-lock.json
+
+      - name: Install ai-reviewer dependencies
+        working-directory: ai-reviewer
+        run: npm ci
+
+      - name: Build ai-reviewer
+        working-directory: ai-reviewer
+        run: npm run build
+
+      - name: Run AI review
+        run: >-
+          node ai-reviewer/dist/index.js review
+          --event "$GITHUB_EVENT_PATH"
+          --repo "$GITHUB_REPOSITORY"
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AI_REVIEW_MODEL: ${{ github.event.inputs.model || '' }}
+          AI_REVIEW_PROFILE: ${{ github.event.inputs.profile || '' }}

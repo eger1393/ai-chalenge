@@ -1,0 +1,33 @@
+provider:
+  type: openai
+  api_key_env: OPENAI_API_KEY
+
+defaults:
+  model: gpt-4.1
+  temperature: 0.1
+  max_tokens: 4000
+
+model_aliases:
+  chatgpt: gpt-4.1
+  gpt4.1: gpt-4.1
+  gpt-4.1: gpt-4.1
+  gpt-4.1-mini: gpt-4.1-mini
+
+profiles:
+  default:
+    prompt: .github/ai-review/prompts/default.md
+    tools:
+      - git_diff
+      - github_pr_files
+
+  security:
+    prompt: .github/ai-review/prompts/security.md
+    tools:
+      - git_diff
+      - github_pr_files
+
+review:
+  max_diff_bytes: 120000
+  max_comments: 20
+  severity_threshold: medium
+  post_pr_comment: true
