@@ -4,9 +4,9 @@ import type { ConfigRepository } from '../application/init-config.js';
 import { AppError } from '../application/errors.js';
 import type { DocsRagConfig } from '../domain/config.js';
 
-const INDEX_DIR = '.docs-rag';
+const INDEX_DIR = '.lorex';
 const CONFIG_FILE = 'config.json';
-const GITIGNORE_ENTRY = '.docs-rag/';
+const GITIGNORE_ENTRY = '.lorex/';
 
 export class FsConfigRepository implements ConfigRepository {
   async configExists(projectRoot: string): Promise<boolean> {
@@ -35,7 +35,7 @@ export class FsConfigRepository implements ConfigRepository {
         throw new AppError(`Файл ${configPath} содержит невалидный JSON.`, 'INVALID_JSON');
       }
 
-      throw new AppError(`Не удалось прочитать ${configPath}. Сначала выполните docs-rag init.`, 'CONFIG_NOT_FOUND');
+      throw new AppError(`Не удалось прочитать ${configPath}. Сначала выполните lorex init.`, 'CONFIG_NOT_FOUND');
     }
   }
 
@@ -54,7 +54,7 @@ export class FsConfigRepository implements ConfigRepository {
     }
 
     const lines = content.split(/\r?\n/).map((line) => line.trim());
-    if (lines.includes(GITIGNORE_ENTRY) || lines.includes('.docs-rag')) {
+    if (lines.includes(GITIGNORE_ENTRY) || lines.includes('.lorex')) {
       return;
     }
 

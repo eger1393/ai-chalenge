@@ -8,7 +8,7 @@ import type { LexicalSearchRepository, VectorSearchRepository } from '../applica
 import type { ChunkEmbedding, ChunkEmbeddingStorage } from '../application/embed-chunks.js';
 import { AppError } from '../application/errors.js';
 
-const INDEX_DIR = '.docs-rag';
+const INDEX_DIR = '.lorex';
 const DB_FILE = 'index.sqlite';
 
 export interface ChunkStorageRepository extends LexicalSearchRepository, VectorSearchRepository, ChunkEmbeddingStorage {
@@ -207,7 +207,7 @@ export class SqliteChunkStorage implements ChunkStorageRepository {
       });
     } catch (error) {
       if (error instanceof Error && error.message.includes('unable to open database file')) {
-        throw new AppError('Индекс не найден. Сначала выполните docs-rag index.', 'INDEX_NOT_FOUND');
+        throw new AppError('Индекс не найден. Сначала выполните lorex index.', 'INDEX_NOT_FOUND');
       }
 
       throw error;
@@ -249,7 +249,7 @@ export class SqliteChunkStorage implements ChunkStorageRepository {
         .slice(0, limit);
     } catch (error) {
       if (error instanceof Error && error.message.includes('unable to open database file')) {
-        throw new AppError('Индекс не найден. Сначала выполните docs-rag index.', 'INDEX_NOT_FOUND');
+        throw new AppError('Индекс не найден. Сначала выполните lorex index.', 'INDEX_NOT_FOUND');
       }
 
       throw error;

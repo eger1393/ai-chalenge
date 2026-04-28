@@ -1,9 +1,9 @@
 # /docs
 
-Вызови локальный docs-rag CLI и используй результат как документационный RAG-контекст.
+Вызови локальный lorex CLI и используй результат как документационный RAG-контекст.
 
 ```bash
-cd "$PROJECT_ROOT/tools/docs-rag" && node dist/cli/index.js query "$ARGUMENTS" --project-root ../.. --format markdown --max-chunks 8
+cd "$PROJECT_ROOT/tools/lorex" && node dist/cli/index.js query "$ARGUMENTS" --project-root ../.. --format markdown --max-chunks 8
 ```
 
 Инструкции для ответа:

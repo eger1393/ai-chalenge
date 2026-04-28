@@ -8,6 +8,7 @@ import { FastGlobDocumentDiscovery } from '../infrastructure/fast-glob-document-
 import { FsConfigRepository } from '../infrastructure/fs-config-repository.js';
 import { FsDocumentReader } from '../infrastructure/fs-document-reader.js';
 import { FsManifestRepository } from '../infrastructure/fs-manifest-repository.js';
+import { resolveOpenAiApiKey } from '../infrastructure/openai-api-key.js';
 import { OpenAiEmbeddingProvider } from '../infrastructure/openai-embedding-provider.js';
 import { SqliteChunkStorage } from '../infrastructure/sqlite-chunk-storage.js';
 import { formatJsonResults, formatMarkdownResults } from '../presentation/format-results.js';
@@ -30,26 +31,32 @@ async function main(): Promise<void> {
       });
       console.log(`${result.overwritten ? 'Обновлён' : 'Создан'} конфиг: ${result.configPath}`);
       console.log(`Папки документации: ${result.folders.join(', ')}`);
-      console.log('Добавлено правило .docs-rag/ в .gitignore при необходимости.');
+      console.log('Добавлено правило .lorex/ в .gitignore при необходимости.');
       return;
     }
     case 'status': {
       const config = await loadConfig(repository, args.projectRoot);
-      console.log('docs-rag config: OK');
+      console.log('lorex config: OK');
       console.log(`Project root: ${args.projectRoot}`);
       console.log(`Folders: ${config.folders.join(', ')}`);
       console.log(`Index dir: ${config.indexDir}`);
       return;
     }
     case 'auth-status': {
-      if (process.env.OPENAI_API_KEY) {
+      const apiKey = await resolveOpenAiApiKey();
+      if (apiKey.source === 'environment') {
         console.log('OPENAI_API_KEY: configured');
-        console.log('Ключ найден в окружении. Значение не выводится из соображений безопасности.');
+        console.log('Источник: переменная окружения. Значение не выводится из соображений безопасности.');
+      } else if (apiKey.source === 'dotenv') {
+        console.log('OPENAI_API_KEY: configured');
+        console.log(`Источник: ${apiKey.dotenvPath}`);
+        console.log('Значение ключа не выводится из соображений безопасности.');
       } else {
         console.log('OPENAI_API_KEY: missing');
-        console.log('Настройте ключ один раз в shell-сессии:');
+        console.log('Настройте ключ через shell-сессию:');
         console.log('  export OPENAI_API_KEY="sk-..."');
-        console.log('Для постоянной настройки добавьте эту строку в ~/.bashrc или ~/.zshrc.');
+        console.log('Или создайте .env в директории запуска CLI:');
+        console.log('  OPENAI_API_KEY=sk-...');
       }
       return;
     }
@@ -102,7 +109,7 @@ main().catch((error: unknown) => {
     return;
   }
 
-  console.error('Непредвиденная ошибка docs-rag. Запустите с корректными аргументами или проверьте конфиг.');
+  console.error('Непредвиденная ошибка lorex. Запустите с корректными аргументами или проверьте конфиг.');
   process.exitCode = 1;
 });
 

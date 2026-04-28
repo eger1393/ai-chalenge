@@ -28,10 +28,10 @@
 - Статус: Done / Частично
 - Результаты сохраняются в `./swarm-report/<feature-slug>/<slug>-<report-name>.md`.
 
-## docs-rag
+## lorex
 
-- Исходники локальной CLI-утилиты лежат в `tools/docs-rag`.
-- Runtime-индекс и конфиг создаются в `.docs-rag/`; директория не должна попадать в git.
-- `OPENAI_API_KEY` нельзя хранить в `.docs-rag/config.json`; только переменная окружения.
+- Исходники локальной CLI-утилиты лежат в `tools/lorex`.
+- Runtime-индекс и конфиг создаются в `.lorex/`; директория не должна попадать в git.
+- `OPENAI_API_KEY` нельзя хранить в `.lorex/config.json`; только env или локальный `.env` директории запуска.
 - Датасет `example/swarm-report` подключать явно, не использовать как дефолтный scope.
 - OpenCode-команда `/docs` описана в `.opencode/commands/docs.md` и должна оставаться тонким вызовом CLI.

@@ -33,7 +33,7 @@ export const DEFAULT_EXCLUDE = [
   '**/*key*',
   '**/node_modules/**',
   '**/.git/**',
-  '**/.docs-rag/**',
+  '**/.lorex/**',
   '**/dist/**',
   '**/build/**',
 ] as const;
@@ -55,7 +55,7 @@ export function createDefaultConfig(folders: string[]): DocsRagConfig {
     folders,
     include: [...DEFAULT_INCLUDE],
     exclude: [...DEFAULT_EXCLUDE],
-    indexDir: '.docs-rag',
+    indexDir: '.lorex',
     chunking: {
       strategy: 'markdown-headings',
       maxTokens: 700,

@@ -1,4 +1,8 @@
 .docs-rag/
+.lorex/
 tools/docs-rag/node_modules/
 tools/docs-rag/dist/
+tools/lorex/node_modules/
+tools/lorex/dist/
 .env
+.env*

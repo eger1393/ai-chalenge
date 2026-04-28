@@ -1,16 +1,17 @@
 import OpenAI from 'openai';
 import type { EmbeddingProvider } from '../application/embed-chunks.js';
 import { AppError } from '../application/errors.js';
+import { resolveOpenAiApiKey } from './openai-api-key.js';
 
 export class OpenAiEmbeddingProvider implements EmbeddingProvider {
   async embedTexts(texts: string[], model: string): Promise<number[][]> {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new AppError('OPENAI_API_KEY не задан. Передайте ключ через переменную окружения, не через config.json.', 'OPENAI_API_KEY_MISSING');
+    const apiKey = await resolveOpenAiApiKey();
+    if (!apiKey.key) {
+      throw new AppError('OPENAI_API_KEY не задан. Передайте ключ через окружение или .env в директории запуска CLI.', 'OPENAI_API_KEY_MISSING');
     }
 
     try {
-      const client = new OpenAI({ apiKey });
+      const client = new OpenAI({ apiKey: apiKey.key });
       const response = await client.embeddings.create({
         model,
         input: texts,

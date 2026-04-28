@@ -24,7 +24,7 @@ export interface InitConfigResult {
 export async function initConfig(repository: ConfigRepository, options: InitConfigOptions): Promise<InitConfigResult> {
   const exists = await repository.configExists(options.projectRoot);
   if (exists && !options.force) {
-    throw new AppError('Конфиг .docs-rag/config.json уже существует. Используйте --force для перезаписи.', 'CONFIG_EXISTS');
+    throw new AppError('Конфиг .lorex/config.json уже существует. Используйте --force для перезаписи.', 'CONFIG_EXISTS');
   }
 
   const folders = options.folders?.length ? options.folders : await detectDefaultFolders(repository, options.projectRoot);

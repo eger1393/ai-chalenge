@@ -4,7 +4,7 @@ import type { ManifestRepository } from '../application/index-documents.js';
 import { AppError } from '../application/errors.js';
 import { isManifest, type Manifest } from '../domain/manifest.js';
 
-const INDEX_DIR = '.docs-rag';
+const INDEX_DIR = '.lorex';
 const MANIFEST_FILE = 'manifest.json';
 
 export class FsManifestRepository implements ManifestRepository {

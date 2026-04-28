@@ -32,7 +32,7 @@ export async function embedMissingChunks(
     return { embedded: 0, skipped: 0 };
   }
 
-  const batchSize = 64;
+  const batchSize = 16;
   let embedded = 0;
 
   for (let index = 0; index < chunks.length; index += batchSize) {

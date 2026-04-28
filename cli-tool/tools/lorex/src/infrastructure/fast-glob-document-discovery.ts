@@ -26,13 +26,17 @@ export class FastGlobDocumentDiscovery implements DocumentDiscovery {
       paths.sort().map(async (relativePath) => this.createManifestDocument(projectRoot, relativePath)),
     );
 
-    return documents;
+    return documents.filter((document): document is ManifestDocument => document !== undefined);
   }
 
-  private async createManifestDocument(projectRoot: string, relativePath: string): Promise<ManifestDocument> {
+  private async createManifestDocument(projectRoot: string, relativePath: string): Promise<ManifestDocument | undefined> {
     const safeRelativePath = normalizeSafeRelativePath(relativePath, 'document path');
     const absolutePath = path.join(projectRoot, safeRelativePath);
     const [metadata, content] = await Promise.all([stat(absolutePath), readFile(absolutePath)]);
+
+    if (isProbablyBinary(content)) {
+      return undefined;
+    }
 
     return {
       path: safeRelativePath,
@@ -56,4 +60,26 @@ export function normalizeSafeRelativePath(value: string, field: string): string 
   }
 
   return normalized;
+}
+
+function isProbablyBinary(content: Buffer): boolean {
+  if (content.length === 0) {
+    return false;
+  }
+
+  const sample = content.subarray(0, Math.min(content.length, 4096));
+  let controlBytes = 0;
+
+  for (const byte of sample) {
+    if (byte === 0) {
+      return true;
+    }
+
+    const isAllowedWhitespace = byte === 9 || byte === 10 || byte === 13;
+    if (byte < 32 && !isAllowedWhitespace) {
+      controlBytes += 1;
+    }
+  }
+
+  return controlBytes / sample.length > 0.1;
 }

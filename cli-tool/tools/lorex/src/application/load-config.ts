@@ -10,7 +10,7 @@ export async function loadConfig(reader: ConfigReader, projectRoot: string): Pro
   const validation = validateConfig(rawConfig);
 
   if (!validation.valid) {
-    throw new AppError(`Некорректный .docs-rag/config.json:\n- ${validation.errors.join('\n- ')}`, 'INVALID_CONFIG');
+    throw new AppError(`Некорректный .lorex/config.json:\n- ${validation.errors.join('\n- ')}`, 'INVALID_CONFIG');
   }
 
   return rawConfig as DocsRagConfig;
