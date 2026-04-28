@@ -16,11 +16,15 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ConversationService } from './conversation.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
+import { MessageRepository } from './repositories/message.repository';
 
 @Controller('conversations')
 @UseGuards(JwtAuthGuard)
 export class ConversationController {
-  constructor(private readonly conversationService: ConversationService) {}
+  constructor(
+    private readonly conversationService: ConversationService,
+    private readonly messageRepository: MessageRepository,
+  ) {}
 
   @Post()
   create(@Request() req, @Body() dto: CreateConversationDto) {
@@ -33,11 +37,28 @@ export class ConversationController {
   }
 
   @Get(':id')
-  findOne(@Request() req, @Param('id') id: string) {
-    return this.conversationService.getConversationWithMessages(
+  async findOne(
+    @Request() req,
+    @Param('id') id: string,
+    @Query('includeStats') includeStats?: string,
+  ) {
+    const conversation = await this.conversationService.getConversationWithMessages(
       req.user.userId,
       id,
     );
+
+    if (includeStats !== 'true') {
+      return conversation;
+    }
+
+    const messages = await this.messageRepository.findByConversationId(id);
+    return {
+      ...conversation,
+      uiStats: {
+        messageCount: messages.length,
+        hasLargeHistory: messages.length > 25,
+      },
+    };
   }
 
   @Patch(':id')

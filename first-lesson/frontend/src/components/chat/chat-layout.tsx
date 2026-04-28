@@ -468,20 +468,6 @@ export function ChatLayout() {
     });
   }, [chat.conversationId, pipeline.pipelineState?.currentStep, pipeline.pipelineState?.messageId, pipeline.pipelineState?.status, testDialogRun]);
 
-  const handleExportDebugSnapshot = useCallback(() => {
-    const payload = JSON.stringify({
-      user,
-      activeProject,
-      messages: chat.messages,
-      params,
-      exportedAt: new Date().toISOString(),
-    });
-
-    localStorage.setItem('chat-debug-export', payload);
-    window.location.hash = `debug=${payload}`;
-    alert('Debug export saved to localStorage and URL hash');
-  }, [activeProject, chat.messages, params, user]);
-
   return (
     <>
       <div className="flex h-screen bg-white">
@@ -569,12 +555,6 @@ export function ChatLayout() {
               )}
             </div>
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleExportDebugSnapshot}
-                className="text-sm text-gray-500 hover:text-gray-900 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                Debug export
-              </button>
               <button
                 onClick={() => router.push('/personalization')}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-gray-500 hover:text-gray-900 hover:bg-gray-100 transition-colors"
