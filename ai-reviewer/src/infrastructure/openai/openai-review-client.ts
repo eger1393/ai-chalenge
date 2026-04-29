@@ -35,7 +35,8 @@ export class OpenAiReviewClient implements AiReviewClient {
                 severity: "low | medium | high | critical",
                 title: "string",
                 explanation: "string",
-                suggested_fix: "string | optional"
+                suggested_fix: "string | optional",
+                documentation_refs: "string[] | optional"
               }]
             }
           })
@@ -79,8 +80,21 @@ function normalizeReviewResult(value: unknown): ReviewResult {
         severity: normalizeSeverity(finding.severity),
         title: String(finding.title ?? "Untitled finding"),
         explanation: String(finding.explanation ?? "No explanation provided."),
-        suggested_fix: typeof finding.suggested_fix === "string" ? finding.suggested_fix : undefined
+        suggested_fix: typeof finding.suggested_fix === "string" ? finding.suggested_fix : undefined,
+        documentation_refs: normalizeStringArray(finding.documentation_refs)
       };
     })
   };
+}
+
+function normalizeStringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  const items = value
+    .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    .map((item) => item.trim());
+
+  return items.length > 0 ? items : undefined;
 }

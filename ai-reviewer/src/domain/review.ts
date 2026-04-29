@@ -7,6 +7,7 @@ export interface ReviewFinding {
   title: string;
   explanation: string;
   suggested_fix?: string;
+  documentation_refs?: string[];
 }
 
 export interface ReviewResult {
