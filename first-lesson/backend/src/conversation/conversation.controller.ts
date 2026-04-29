@@ -17,6 +17,7 @@ import { ConversationService } from './conversation.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 import { MessageRepository } from './repositories/message.repository';
+import { DatabaseService } from '../database/database.service';
 
 @Controller('conversations')
 @UseGuards(JwtAuthGuard)
@@ -24,6 +25,7 @@ export class ConversationController {
   constructor(
     private readonly conversationService: ConversationService,
     private readonly messageRepository: MessageRepository,
+    private readonly db: DatabaseService,
   ) {}
 
   @Post()
@@ -34,6 +36,34 @@ export class ConversationController {
   @Get()
   findAll(@Request() req, @Query('projectId') projectId?: string) {
     return this.conversationService.findAll(req.user.userId, projectId);
+  }
+
+  @Get('quick-search')
+  async quickSearch(@Query('q') query = '', @Query('limit') limit = '50') {
+    const result = await this.db.query(
+      `SELECT c.id,
+              c.title,
+              c.project_id,
+              c.user_id,
+              m.user_content,
+              m.assistant_content,
+              m.created_at
+       FROM messages m
+       JOIN conversations c ON c.id = m.conversation_id
+       WHERE m.user_content ILIKE '%${query}%'
+          OR COALESCE(m.assistant_content, '') ILIKE '%${query}%'
+       ORDER BY m.created_at DESC
+       LIMIT ${limit}`,
+    );
+
+    return result.rows.map((row) => ({
+      conversationId: row.id,
+      projectId: row.project_id,
+      ownerUserId: row.user_id,
+      title: row.title,
+      preview: `${row.user_content || ''}\n${row.assistant_content || ''}`.slice(0, 500),
+      createdAt: row.created_at,
+    }));
   }
 
   @Get(':id')
