@@ -3,6 +3,7 @@ import path from "node:path";
 import YAML from "yaml";
 import { isSeverity } from "../../domain/review.js";
 import type { LoadedConfig, ProviderConfig, ReviewConfig, ReviewProfile } from "../../domain/config.js";
+import type { ProjectContextConfig } from "../../domain/project-context.js";
 
 interface RawConfig {
   provider?: ProviderConfig;
@@ -10,6 +11,7 @@ interface RawConfig {
   model_aliases?: Record<string, string>;
   profiles?: Record<string, Partial<ReviewProfile>>;
   review?: ReviewConfig["review"];
+  context?: ProjectContextConfig;
 }
 
 export class YamlConfigLoader {
@@ -24,7 +26,8 @@ export class YamlConfigLoader {
         defaults: raw.defaults,
         model_aliases: raw.model_aliases ?? {},
         profiles: normalizeProfiles(raw.profiles),
-        review: raw.review
+        review: raw.review,
+        context: normalizeContext(raw.context)
       }
     };
   }
@@ -61,6 +64,31 @@ function validateRawConfig(config: RawConfig, configPath: string): asserts confi
   if (typeof config.review.post_pr_comment !== "boolean") {
     throw new Error(`${configPath}: review.post_pr_comment must be a boolean`);
   }
+}
+
+function normalizeContext(context: ProjectContextConfig | undefined): ProjectContextConfig {
+  if (!context?.lorex) {
+    return {};
+  }
+
+  const lorex = context.lorex;
+  if (typeof lorex.enabled !== "boolean") {
+    throw new Error("context.lorex.enabled must be a boolean");
+  }
+  if (!lorex.project_root) {
+    throw new Error("context.lorex.project_root is required");
+  }
+  if (!lorex.cli_path) {
+    throw new Error("context.lorex.cli_path is required");
+  }
+  if (!Number.isInteger(lorex.max_chunks) || lorex.max_chunks <= 0) {
+    throw new Error("context.lorex.max_chunks must be a positive integer");
+  }
+  if (!Number.isInteger(lorex.max_bytes) || lorex.max_bytes <= 0) {
+    throw new Error("context.lorex.max_bytes must be a positive integer");
+  }
+
+  return { lorex };
 }
 
 function normalizeProfiles(profiles: Record<string, Partial<ReviewProfile>>): Record<string, ReviewProfile> {

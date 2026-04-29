@@ -31,3 +31,11 @@ review:
   max_comments: 20
   severity_threshold: medium
   post_pr_comment: true
+
+context:
+  lorex:
+    enabled: true
+    project_root: first-lesson
+    cli_path: cli-tool/tools/lorex/dist/cli/index.js
+    max_chunks: 8
+    max_bytes: 20000

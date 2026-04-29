@@ -1,4 +1,5 @@
 import type { ReviewPolicy } from "./review.js";
+import type { ProjectContextConfig } from "./project-context.js";
 
 export interface ReviewProfile {
   prompt: string;
@@ -16,6 +17,7 @@ export interface ReviewConfig {
   model_aliases: Record<string, string>;
   profiles: Record<string, ReviewProfile>;
   review: ReviewPolicy;
+  context: ProjectContextConfig;
 }
 
 export interface ProviderConfig {

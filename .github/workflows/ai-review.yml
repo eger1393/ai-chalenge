@@ -44,7 +44,17 @@ jobs:
         with:
           node-version: '20'
           cache: npm
-          cache-dependency-path: ai-reviewer/package-lock.json
+          cache-dependency-path: |
+            ai-reviewer/package-lock.json
+            cli-tool/tools/lorex/package-lock.json
+
+      - name: Restore lorex index cache
+        uses: actions/cache/restore@v4
+        with:
+          path: first-lesson/.lorex
+          key: lorex-${{ runner.os }}-first-lesson-${{ github.run_id }}
+          restore-keys: |
+            lorex-${{ runner.os }}-first-lesson-
 
       - name: Install ai-reviewer dependencies
         working-directory: ai-reviewer
@@ -52,6 +62,14 @@ jobs:
 
       - name: Build ai-reviewer
         working-directory: ai-reviewer
+        run: npm run build
+
+      - name: Install lorex dependencies
+        working-directory: cli-tool/tools/lorex
+        run: npm ci
+
+      - name: Build lorex
+        working-directory: cli-tool/tools/lorex
         run: npm run build
 
       - name: Run AI review

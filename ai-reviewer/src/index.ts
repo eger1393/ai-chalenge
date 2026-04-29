@@ -10,6 +10,7 @@ import { GitHubEventContextResolver } from "./infrastructure/github/github-event
 import { GitHubPullRequestDiffProvider } from "./infrastructure/github/github-pull-request-diff-provider.js";
 import { GitHubReviewCommentPublisher } from "./infrastructure/github/github-review-comment-publisher.js";
 import { GitHubStepSummaryPublisher } from "./infrastructure/github/github-step-summary-publisher.js";
+import { LorexProjectContextProvider } from "./infrastructure/lorex/lorex-project-context-provider.js";
 import { OpenAiReviewClient } from "./infrastructure/openai/openai-review-client.js";
 import { ConsoleOutputWriter } from "./infrastructure/presentation/console-output-writer.js";
 
@@ -46,6 +47,7 @@ async function main(): Promise<void> {
       new LocalGitDiffProvider(),
       new GitHubPullRequestDiffProvider(githubClient)
     ]),
+    projectContextProvider: new LorexProjectContextProvider(loadedConfig.review.context.lorex),
     aiReviewClient: new OpenAiReviewClient({
       apiKey: env.getRequired(loadedConfig.provider.api_key_env),
       configPath: args.configPath

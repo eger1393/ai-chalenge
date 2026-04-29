@@ -1,6 +1,7 @@
 import type { DiffResult, ReviewResult } from "../domain/review.js";
 import type { ReviewConfig, ReviewProfile } from "../domain/config.js";
 import type { ReviewContext } from "../domain/review-context.js";
+import type { ProjectContextSnippet } from "../domain/project-context.js";
 
 export interface ReviewContextInput {
   eventPath?: string;
@@ -25,7 +26,16 @@ export interface AiReviewClient {
     profile: ReviewProfile;
     model: string;
     diff: string;
+    projectContext: ProjectContextSnippet[];
   }): Promise<ReviewResult>;
+}
+
+export interface ProjectContextProvider {
+  getContext(input: {
+    context: ReviewContext;
+    diff: string;
+    profileName: string;
+  }): Promise<ProjectContextSnippet[]>;
 }
 
 export interface ReviewPublisher {
@@ -38,6 +48,7 @@ export interface ReviewPublication {
   model: string;
   profileName: string;
   diff: DiffResult;
+  projectContext: ProjectContextSnippet[];
 }
 
 export interface OutputWriter {

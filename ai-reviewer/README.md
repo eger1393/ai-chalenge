@@ -66,7 +66,7 @@ Run it from GitHub Actions with `workflow_dispatch`. It builds `cli-tool/tools/l
 lorex-<runner-os>-first-lesson-
 ```
 
-The review workflow should later restore this cache and run only `lorex query`, avoiding full documentation embedding recalculation on every PR review.
+The review workflow restores this cache and runs only `lorex query`, avoiding full documentation embedding recalculation on every PR review. If the cache is unavailable, `ai-reviewer` logs a warning and continues without RAG context.
 
 ## Source Layout
 

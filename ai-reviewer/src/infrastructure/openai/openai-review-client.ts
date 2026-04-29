@@ -25,6 +25,7 @@ export class OpenAiReviewClient implements AiReviewClient {
           content: JSON.stringify({
             profile: input.profileName,
             enabled_tools: input.profile.tools,
+            project_context: input.projectContext,
             diff: input.diff,
             required_output: {
               summary: "string",
