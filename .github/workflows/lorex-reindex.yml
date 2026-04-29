@@ -1,0 +1,106 @@
+name: Lorex Reindex
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_root:
+        description: Project directory to index
+        required: true
+        default: first-lesson
+        type: string
+      folders:
+        description: Comma-separated documentation folders inside project_root
+        required: true
+        default: docs,swarm-report,backend,frontend,github-explorer-mcp,knowledge-base-mcp
+        type: string
+      retention_days:
+        description: How long to keep the uploaded index artifact
+        required: true
+        default: 14
+        type: number
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  reindex:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: cli-tool/tools/lorex/package-lock.json
+
+      - name: Install lorex dependencies
+        working-directory: cli-tool/tools/lorex
+        run: npm ci
+
+      - name: Build lorex
+        working-directory: cli-tool/tools/lorex
+        run: npm run build
+
+      - name: Rebuild lorex index
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          PROJECT_ROOT: ${{ inputs.project_root }}
+          LOREX_FOLDERS: ${{ inputs.folders }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "OPENAI_API_KEY secret is required for lorex embeddings" >&2
+            exit 1
+          fi
+
+          if [ ! -d "$PROJECT_ROOT" ]; then
+            echo "Project root does not exist: $PROJECT_ROOT" >&2
+            exit 1
+          fi
+
+          rm -rf "$PROJECT_ROOT/.lorex"
+
+          node cli-tool/tools/lorex/dist/cli/index.js auth status
+          node cli-tool/tools/lorex/dist/cli/index.js init \
+            --project-root "$PROJECT_ROOT" \
+            --force \
+            --folders "$LOREX_FOLDERS"
+          node cli-tool/tools/lorex/dist/cli/index.js index --project-root "$PROJECT_ROOT"
+
+      - name: Upload lorex index artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lorex-index-${{ inputs.project_root }}-${{ github.run_id }}
+          path: |
+            ${{ inputs.project_root }}/.lorex/config.json
+            ${{ inputs.project_root }}/.lorex/manifest.json
+            ${{ inputs.project_root }}/.lorex/index.sqlite
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}
+
+      - name: Save lorex index cache
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ inputs.project_root }}/.lorex
+          key: lorex-${{ runner.os }}-${{ inputs.project_root }}-${{ github.run_id }}
+
+      - name: Write job summary
+        env:
+          PROJECT_ROOT: ${{ inputs.project_root }}
+          LOREX_FOLDERS: ${{ inputs.folders }}
+        run: |
+          {
+            echo "## Lorex reindex complete"
+            echo ""
+            echo "Project root: \`$PROJECT_ROOT\`"
+            echo "Folders: \`$LOREX_FOLDERS\`"
+            echo "Artifact: \`lorex-index-${PROJECT_ROOT}-${GITHUB_RUN_ID}\`"
+            echo "Cache restore prefix for review workflows: \`lorex-${RUNNER_OS}-${PROJECT_ROOT}-\`"
+          } >> "$GITHUB_STEP_SUMMARY"

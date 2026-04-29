@@ -52,6 +52,22 @@ npm run build
 
 Local review requires a GitHub event payload and `OPENAI_API_KEY`.
 
+## Lorex Reindex Workflow
+
+Project documentation RAG index is rebuilt by a separate manual workflow:
+
+```text
+.github/workflows/lorex-reindex.yml
+```
+
+Run it from GitHub Actions with `workflow_dispatch`. It builds `cli-tool/tools/lorex`, recreates `first-lesson/.lorex`, uploads the index as an artifact, and saves a cache entry with this prefix:
+
+```text
+lorex-<runner-os>-first-lesson-
+```
+
+The review workflow should later restore this cache and run only `lorex query`, avoiding full documentation embedding recalculation on every PR review.
+
 ## Source Layout
 
 ```text
