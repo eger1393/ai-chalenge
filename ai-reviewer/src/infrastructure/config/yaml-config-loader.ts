@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import YAML from "yaml";
 import { isSeverity } from "../../domain/review.js";
-import type { LoadedConfig, ProviderConfig, ReviewConfig, ReviewProfile } from "../../domain/config.js";
+import type { IssueAnswerConfig, LoadedConfig, ProviderConfig, ReviewConfig, ReviewProfile } from "../../domain/config.js";
 import type { ProjectContextConfig } from "../../domain/project-context.js";
 
 interface RawConfig {
@@ -12,6 +12,7 @@ interface RawConfig {
   profiles?: Record<string, Partial<ReviewProfile>>;
   review?: ReviewConfig["review"];
   context?: ProjectContextConfig;
+  issue_answer?: Partial<IssueAnswerConfig>;
 }
 
 export class YamlConfigLoader {
@@ -27,7 +28,8 @@ export class YamlConfigLoader {
         model_aliases: raw.model_aliases ?? {},
         profiles: normalizeProfiles(raw.profiles),
         review: raw.review,
-        context: normalizeContext(raw.context)
+        context: normalizeContext(raw.context),
+        issue_answer: normalizeIssueAnswer(raw.issue_answer)
       }
     };
   }
@@ -102,4 +104,26 @@ function normalizeProfiles(profiles: Record<string, Partial<ReviewProfile>>): Re
       tools: profile.tools ?? []
     }];
   }));
+}
+
+function normalizeIssueAnswer(config: Partial<IssueAnswerConfig> | undefined): IssueAnswerConfig | undefined {
+  if (!config) {
+    return undefined;
+  }
+  if (!config.prompt) {
+    throw new Error("issue_answer.prompt is required");
+  }
+  if (typeof config.post_issue_comment !== "boolean") {
+    throw new Error("issue_answer.post_issue_comment must be a boolean");
+  }
+  const maxCodeFiles = config.max_code_files;
+  if (!Number.isInteger(maxCodeFiles) || !maxCodeFiles || maxCodeFiles <= 0) {
+    throw new Error("issue_answer.max_code_files must be a positive integer");
+  }
+  const maxCodeBytes = config.max_code_bytes;
+  if (!Number.isInteger(maxCodeBytes) || !maxCodeBytes || maxCodeBytes <= 0) {
+    throw new Error("issue_answer.max_code_bytes must be a positive integer");
+  }
+
+  return config as IssueAnswerConfig;
 }

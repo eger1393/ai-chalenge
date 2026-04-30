@@ -6,6 +6,13 @@ export interface ReviewProfile {
   tools: string[];
 }
 
+export interface IssueAnswerConfig {
+  prompt: string;
+  post_issue_comment: boolean;
+  max_code_files: number;
+  max_code_bytes: number;
+}
+
 export interface ModelDefaults {
   model: string;
   temperature: number;
@@ -18,6 +25,7 @@ export interface ReviewConfig {
   profiles: Record<string, ReviewProfile>;
   review: ReviewPolicy;
   context: ProjectContextConfig;
+  issue_answer?: IssueAnswerConfig;
 }
 
 export interface ProviderConfig {

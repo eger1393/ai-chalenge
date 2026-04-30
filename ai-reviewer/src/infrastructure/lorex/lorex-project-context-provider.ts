@@ -24,7 +24,7 @@ export class LorexProjectContextProvider implements ProjectContextProvider {
     }
 
     try {
-      const query = buildLorexQuery(input.diff, input.profileName);
+      const query = input.query ?? buildLorexQuery(input.diff, input.profileName);
       const { stdout } = await execFileAsync(process.execPath, [
         path.resolve(this.config.cli_path),
         "query",

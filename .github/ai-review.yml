@@ -32,6 +32,12 @@ review:
   severity_threshold: medium
   post_pr_comment: true
 
+issue_answer:
+  prompt: .github/ai-review/prompts/issue-answer.md
+  post_issue_comment: true
+  max_code_files: 8
+  max_code_bytes: 24000
+
 context:
   lorex:
     enabled: true

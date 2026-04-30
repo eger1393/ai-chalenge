@@ -2,6 +2,7 @@ import type { DiffResult, ReviewResult } from "../domain/review.js";
 import type { ReviewConfig, ReviewProfile } from "../domain/config.js";
 import type { ReviewContext } from "../domain/review-context.js";
 import type { ProjectContextSnippet } from "../domain/project-context.js";
+import type { IssueAnswerContext, IssueAnswerResult } from "../domain/issue-answer.js";
 
 export interface ReviewContextInput {
   eventPath?: string;
@@ -35,7 +36,49 @@ export interface ProjectContextProvider {
     context: ReviewContext;
     diff: string;
     profileName: string;
+    query?: string;
   }): Promise<ProjectContextSnippet[]>;
+}
+
+export interface IssueAnswerContextInput {
+  eventPath?: string;
+  repo?: string;
+  model?: string;
+}
+
+export interface IssueAnswerContextResolver {
+  resolve(input: IssueAnswerContextInput): Promise<IssueAnswerContext>;
+}
+
+export interface CodeContextProvider {
+  getContext(input: {
+    issue: IssueAnswerContext;
+    maxFiles: number;
+    maxBytes: number;
+  }): Promise<ProjectContextSnippet[]>;
+}
+
+export interface AiIssueAnswerClient {
+  answer(input: {
+    config: ReviewConfig;
+    promptPath: string;
+    model: string;
+    issue: IssueAnswerContext;
+    projectContext: ProjectContextSnippet[];
+    codeContext: ProjectContextSnippet[];
+  }): Promise<IssueAnswerResult>;
+}
+
+export interface IssueAnswerPublisher {
+  publish(input: IssueAnswerPublication): Promise<void>;
+}
+
+export interface IssueAnswerPublication {
+  issue: IssueAnswerContext;
+  result: IssueAnswerResult;
+  model: string;
+  projectContext: ProjectContextSnippet[];
+  codeContext: ProjectContextSnippet[];
 }
 
 export interface ReviewPublisher {

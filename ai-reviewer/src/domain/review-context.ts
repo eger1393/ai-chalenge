@@ -4,6 +4,7 @@ export interface ReviewContext {
   name: string;
   eventName: string;
   prNumber?: number;
+  issueNumber?: number;
   baseSha?: string;
   headSha?: string;
   requestedModel?: string;

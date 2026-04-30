@@ -51,6 +51,7 @@ export function parseArgs(argv: string[]): CliArgs {
 export function printHelp(): void {
   console.log(`Usage:
   ai-reviewer review --event <GITHUB_EVENT_PATH> --repo <owner/repo>
+  ai-reviewer answer-issue --event <GITHUB_EVENT_PATH> --repo <owner/repo>
 
 Options:
   --config <path>    Path to YAML config, default .github/ai-review.yml

@@ -1,0 +1,62 @@
+name: AI Issue Answer
+
+on:
+  issues:
+    types: [opened, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  answer-issue:
+    if: ${{ !github.event.issue.pull_request && github.event.issue.user.type != 'Bot' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            ai-reviewer/package-lock.json
+            cli-tool/tools/lorex/package-lock.json
+
+      - name: Restore lorex index cache
+        uses: actions/cache/restore@v4
+        with:
+          path: first-lesson/.lorex
+          key: lorex-${{ runner.os }}-first-lesson-${{ github.run_id }}
+          restore-keys: |
+            lorex-${{ runner.os }}-first-lesson-
+
+      - name: Install ai-reviewer dependencies
+        working-directory: ai-reviewer
+        run: npm ci
+
+      - name: Build ai-reviewer
+        working-directory: ai-reviewer
+        run: npm run build
+
+      - name: Install lorex dependencies
+        working-directory: cli-tool/tools/lorex
+        run: npm ci
+
+      - name: Build lorex
+        working-directory: cli-tool/tools/lorex
+        run: npm run build
+
+      - name: Run AI issue answer
+        run: >-
+          node ai-reviewer/dist/index.js answer-issue
+          --event "$GITHUB_EVENT_PATH"
+          --repo "$GITHUB_REPOSITORY"
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

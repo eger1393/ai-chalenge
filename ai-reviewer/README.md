@@ -20,6 +20,8 @@ The workflow lives in `.github/workflows/ai-review.yml` and runs on:
 - PR comment starting with `/ai-review`;
 - manual `workflow_dispatch`.
 
+Issue answers are handled by `.github/workflows/ai-issue-answer.yml`. It runs on new/reopened GitHub issues, restores the `lorex` RAG index, retrieves relevant project documentation, extracts relevant code snippets from tracked files, asks OpenAI for an answer, and posts it as an issue comment.
+
 Model/profile selection priority:
 
 ```text
@@ -50,7 +52,7 @@ npm install
 npm run build
 ```
 
-Local review requires a GitHub event payload and `OPENAI_API_KEY`.
+Local review/issue answer runs require a GitHub event payload and `OPENAI_API_KEY`.
 
 ## Lorex Reindex Workflow
 
